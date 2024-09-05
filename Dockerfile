@@ -1,4 +1,3 @@
-# DO NOT CHANGE
 FROM 812206152185.dkr.ecr.us-west-2.amazonaws.com/latch-base:fe0b-main
 
 WORKDIR /tmp/docker-build/work/
@@ -19,12 +18,17 @@ ENV LANG='en_US.UTF-8'
 
 ARG DEBIAN_FRONTEND=noninteractive
 
+# Install base packages
+RUN apt-get install libz-dev
+
 # Latch SDK
 # DO NOT REMOVE
 RUN pip install latch==2.52.2
 RUN mkdir /opt/latch
 
 # Install pip dependencies from `requirements.txt`
+RUN pip install numpy==1.25.2
+
 COPY requirements.txt /opt/latch/requirements.txt
 RUN pip install --requirement /opt/latch/requirements.txt
 

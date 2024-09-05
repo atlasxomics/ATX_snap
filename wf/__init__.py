@@ -1,11 +1,14 @@
-from wf.task import task
+from typing import List
 
 from latch.resources.workflow import workflow
-from latch.types.directory import LatchOutputDir
-from latch.types.file import LatchFile
-from latch.types.metadata import LatchAuthor, LatchMetadata, LatchParameter
+from latch.types import LatchDir
+from latch.types.metadata import (
+    LatchAuthor, LatchMetadata, LatchParameter, LatchRule
+)
 
-from preprocessing import Runs
+from wf.task import snap_task
+from wf.utils import Run, Genome
+
 
 metadata = LatchMetadata(
     display_name="atx_snap",
@@ -14,21 +17,76 @@ metadata = LatchMetadata(
         email="jamesm@atlasxomics.com",
         github="github.com/atlasxomics"
     ),
+    repository="https://github.com/atlasxomics/ATX_snap",
+    license="MIT",
     parameters={
-        "input_file": LatchParameter(
-            display_name="Input File",
-            batch_table_column=True,  # Show this parameter in batched mode.
+        "runs": LatchParameter(
+            display_name="runs",
+            description="List of runs to be analyzed; each run must contain a \
+                        run_id and fragments.tsv file; optional: condition, \
+                        tissue position file for filtering on/off tissue.  \
+                        Note that multiple Conditions must be separted by '_' \
+                        (i.e., Female-control-old).",
+            batch_table_column=True,
+            samplesheet=True
         ),
-        "output_directory": LatchParameter(
-            display_name="Output Directory",
-            batch_table_column=True,  # Show this parameter in batched mode.
+        "genome": LatchParameter(
+            display_name="genome",
+            description="Reference genome for runs.",
+            batch_table_column=True,
         ),
-    },
+        "min_tss": LatchParameter(
+            display_name="minimum TSS",
+            description="The minimum numeric transcription start site (TSS) \
+                        enrichment score required for a cell to pass \
+                        filtering.",
+            batch_table_column=True,
+            hidden=True
+        ),
+        "min_frags": LatchParameter(
+            display_name="minimum fragments",
+            description="The minimum number of mapped ATAC-seq fragments \
+                        required per cell to pass filtering.",
+            batch_table_column=True,
+            hidden=True
+        ),
+        "tile_size": LatchParameter(
+            display_name="tile size",
+            description="The size of the tiles used for binning counts in the \
+                        TileMatrix.",
+            batch_table_column=True,
+            hidden=True
+        ),
+        "project_name": LatchParameter(
+            display_name="project name",
+            description="Name of output directory in snap_outs/",
+            batch_table_column=True,
+            rules=[
+                LatchRule(
+                    regex="^[^/].*",
+                    message="project name cannot start with a '/'"
+                )
+            ]
+        ),
+    }
 )
 
 
 @workflow(metadata)
-def template_workflow(
-    input_file: LatchFile, output_directory: LatchOutputDir
-) -> LatchFile:
-    return task(input_file=input_file, output_directory=output_directory)
+def snap_workflow(
+    runs: List[Run],
+    genome: Genome,
+    project_name: str,
+    min_tss: float = 2.0,
+    min_frags: int = 0,
+    tile_size: int = 5000
+) -> LatchDir:
+
+    return snap_task(
+        runs=runs,
+        genome=genome,
+        min_tss=min_tss,
+        min_frags=min_frags,
+        tile_size=tile_size,
+        project_name=project_name
+    )
