@@ -7,14 +7,14 @@ import snapatac2 as snap
 
 from typing import List
 
-from latch.resources.tasks import custom_task
+from latch.resources.tasks import large_task
 from latch.types import LatchDir
 
 import wf.preprocessing as pp
 import wf.spatial as sp
 import wf.features as ft
 
-from wf.utils import Genome, Run, get_genome_fasta
+from wf.utils import Genome, Run
 
 
 logging.basicConfig(
@@ -23,7 +23,7 @@ logging.basicConfig(
 )
 
 
-@custom_task(cpu=62, memory=384, storage_gib=4949)
+@large_task
 def snap_task(
     runs: List[Run],
     genome: Genome,
@@ -117,22 +117,6 @@ def snap_task(
         ).to_csv(f"{out_dir}/marker_peaks_per_{group}.csv", index=False)
 
     adata.write(f"{out_dir}/combined.h5ad")
-
-    # Motifs -----------------------------------------------------------------
-    logging.info("Downloading reference genome for motifs...")
-    fasta = get_genome_fasta(genome)
-
-    logging.info("Preparing peak matrix for motifs...")
-    cluster_peaks = peak_mats["cluster"]
-    cluster_peaks = ft.get_motifs(cluster_peaks, fasta.local_path)
-    cluster_peaks.write(f"{out_dir}/cluster_peaks.h5ad")  # Save with motifs
-
-    # Have to convert X to float64 for pc.compute_deviations
-    cluster_peaks.X = cluster_peaks.X.astype(np.float64)
-
-    logging.info("Computing motif deviation matrix...")
-    adata_motif = pc.compute_deviations(cluster_peaks, n_jobs=90)
-    adata_motif.write(f"{out_dir}/combined_motifs.h5ad")
 
     # Fin --------------------------------------------------------------------
 
