@@ -53,7 +53,7 @@ metadata = LatchMetadata(
             description="Minimum number of cells in a cluster.",
             batch_table_column=True,
             hidden=True
-        )
+        ),
         "min_tss": LatchParameter(
             display_name="minimum TSS",
             description="The minimum numeric transcription start site (TSS) \
@@ -95,9 +95,9 @@ def snap_workflow(
     runs: List[Run],
     genome: Genome,
     project_name: str,
-    resolution: float = 1,
+    resolution: float = 1.0,
     iterations: int = -1,
-    min_cluster_size=20,
+    min_cluster_size: int = 20,
     min_tss: float = 2.0,
     min_frags: int = 0,
     tile_size: int = 5000
