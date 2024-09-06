@@ -44,6 +44,7 @@ def snap_task(
     out_dir = f"/root/{project_name}"
     os.makedirs(out_dir, exist_ok=True)
 
+    # Preprocessing ------
     logging.info("Creating AnnData objects...")
     adatas = pp.make_anndatas(runs, genome, min_frags=min_frags)
     adatas = pp.filter_adatas(adatas, min_tss=min_tss)
@@ -59,6 +60,7 @@ def snap_task(
     adata = pp.add_clusters(adata, resolution, iterations, min_cluster_size)
     adata = sp.add_spatial(adata)  # Add spatial coordinates to tixels
 
+    # Gene matrix ------
     logging.info("Making gene matrix...")
     adata_gene = ft.make_geneadata(adata, genome)
 
@@ -72,7 +74,7 @@ def snap_task(
             key_added=f"{group}_genes"
         )
 
-        # Write to csv
+        # Write marker genes to csv
         sc.get.rank_genes_groups_df(
             adata_gene,
             group=None,
@@ -83,6 +85,38 @@ def snap_task(
 
     adata_gene.write(f"{out_dir}/combined_ge.h5ad")
 
+    # Peak calling ------
+    peak_mats = {}
+    for group in groups:
+
+        logging.info(f"Calling peaks for {group}s...")
+        snap.tl.macs3(
+            adata,
+            groupby=group,
+            shift=-75,
+            extsize=150,
+            qvalue=0.1,
+            key_added=f"{group}_peaks"
+        )
+
+        logging.info("Making peak matrix AnnData...")
+        anndata_peak = ft.make_peakmatrix(
+            adata, genome, f"{group}_peaks", log_norm=True
+        )
+
+        peak_mats[group] = anndata_peak
+
+        logging.info
+        sc.tl.rank_genes_groups(
+            peak_mats[group], groupby=group, method="wilcoxon"
+        )
+
+        anndata_peak.write(f"{out_dir}/group_peaks.h5ad")  # Save AnnData
+        sc.get.rank_genes_groups_df(  # Save as csv
+            peak_mats[group], group=None, pval_cutoff=0.05, log2fc_min=0.1
+        ).to_csv(f"{out_dir}/marker_peaks_per_{group}.csv", index=False)
+
+    # Fin ------
     adata.write(f"{out_dir}/combined.h5ad")
 
     return LatchDir(
