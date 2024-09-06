@@ -16,7 +16,12 @@ logging.basicConfig(
 )
 
 
-def add_clusters(adata: anndata.AnnData) -> anndata.AnnData:
+def add_clusters(
+    adata: anndata.AnnData,
+    resolution: float,
+    iterations: int,
+    min_cluster_size: int
+) -> anndata.AnnData:
     """Perform dimensionality reduction, batch correction, umap, clustering.
     """
 
@@ -41,7 +46,13 @@ def add_clusters(adata: anndata.AnnData) -> anndata.AnnData:
     # Add umap, nearest neightbors, clusters to .obs
     snap.tl.umap(adata, use_rep=rep)
     snap.pp.knn(adata, use_rep=rep)
-    snap.tl.leiden(adata)
+    snap.tl.leiden(
+        adata,
+        resolution=resolution,
+        n_iterations=iterations,
+        min_cluster_size=min_cluster_size,
+        key_added="cluster"
+    )
 
     return adata
 

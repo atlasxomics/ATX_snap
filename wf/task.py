@@ -2,6 +2,7 @@ import logging
 import os
 import pandas as pd
 import pychromvar as pc
+import scanpy as sc
 import snapatac2 as snap
 
 from typing import List
@@ -27,6 +28,9 @@ logging.basicConfig(
 def snap_task(
     runs: List[Run],
     genome: Genome,
+    resolution: float,
+    iterations: int,
+    min_cluster_size: int,
     min_tss: float,
     min_frags: int,
     tile_size: int,
@@ -40,19 +44,44 @@ def snap_task(
     out_dir = f"/root/{project_name}"
     os.makedirs(out_dir, exist_ok=True)
 
+    logging.info("Creating AnnData objects...")
     adatas = pp.make_anndatas(runs, genome, min_frags=min_frags)
     adatas = pp.filter_adatas(adatas, min_tss=min_tss)
+
+    logging.info("Adding tile matrix to objects...")
     adatas = pp.add_tilematrix(adatas, tile_size=tile_size, n_features=25000)
 
-    # Combine seperate runs into single analysis object
+    logging.info("Combining objects...")
     adata = pp.combine_anndata(adatas, samples, filename="combined")
     snap.pp.select_features(adata, n_features=25000)
-    adata = pp.add_clusters(adata)
-    adata = sp.add_spatial(adata)
 
+    logging.info("Performing dimensionality reduction...")
+    adata = pp.add_clusters(adata, resolution, iterations, min_cluster_size)
+    adata = sp.add_spatial(adata)  # Add spatial coordinates to tixels
+
+    logging.info("Making gene matrix...")
     adata_gene = ft.make_geneadata(adata, genome)
-    
 
+    for group in groups:
+
+        logging.info(f"Finding marker genes for {group}s...")
+        sc.tl.rank_genes_groups(
+            adata_gene,
+            groupby=group,
+            method="t-test",
+            key_added=f"{group}_genes"
+        )
+
+        # Write to csv
+        sc.get.rank_genes_groups_df(
+            adata_gene,
+            group=None,
+            key=f"{group}_genes",
+            pval_cutoff=0.05,
+            log2fc_min=0.1
+        ).to_csv(f"{out_dir}/marker_genes_per_{group}.csv", index=False)
+
+    adata_gene.write(f"{out_dir}/combined_ge.h5ad")
 
     adata.write(f"{out_dir}/combined.h5ad")
 
