@@ -14,7 +14,7 @@ import wf.preprocessing as pp
 import wf.spatial as sp
 import wf.features as ft
 
-from wf.utils import Genome, Run
+from wf.utils import Genome, Run, get_genome_fasta
 
 
 logging.basicConfig(
@@ -119,15 +119,17 @@ def snap_task(
     adata.write(f"{out_dir}/combined.h5ad")
 
     # Motifs -----------------------------------------------------------------
-    # cluster_peaks = peak_mats["cluster"]
-    # cluster_peaks = ft.get_motifs(cluster_peaks, genome)
-    # cluster_peaks.write(f"{out_dir}/cluster_peaks.h5ad")  # Save with motifs
+    fasta = get_genome_fasta(genome)  # Genome fasta for motif identification
 
-    # # Have to convert X to float64 for pc.compute_deviations
-    # cluster_peaks.X = cluster_peaks.X.astype(np.float64)
+    cluster_peaks = peak_mats["cluster"]
+    cluster_peaks = ft.get_motifs(cluster_peaks, fasta.local_path)
+    cluster_peaks.write(f"{out_dir}/cluster_peaks.h5ad")  # Save with motifs
 
-    # adata_motif = pc.compute_deviations(cluster_peaks, n_jobs=90)
-    # adata_motif.write(f"{out_dir}/combined_motifs.h5ad")
+    # Have to convert X to float64 for pc.compute_deviations
+    cluster_peaks.X = cluster_peaks.X.astype(np.float64)
+
+    adata_motif = pc.compute_deviations(cluster_peaks, n_jobs=90)
+    adata_motif.write(f"{out_dir}/combined_motifs.h5ad")
 
     # Fin --------------------------------------------------------------------
 

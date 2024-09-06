@@ -15,20 +15,13 @@ logging.basicConfig(
 
 
 def get_motifs(
-    adata: anndata.AnnData, genome: str, release: str = "JASPAR2024"
+    adata: anndata.AnnData, fasta_path: str, release: str = "JASPAR2024"
 ) -> anndata.AnnData:
     """With the python implementation of chromVAR, pychromvar, map motifs to
     peaks; return the AnnData with peak sequences (uns.['peak_seq']), sequence
     gc (.var['gc_bias']), background peaks (.varm['bg_peaks']), and motifs
     (varm['motif_match']).
     """
-
-    fasta_paths = {
-        "mm10": "GRCm38_genome.fa",
-        "hg38": "GRCh38_genome.fa",
-        "rnor6": "Rnor6_genome.fa"
-    }
-    fasta_path = fasta_paths[genome]
 
     jdb_obj = jaspardb(release=release)
     motifs = jdb_obj.fetch_motifs(
