@@ -1,9 +1,8 @@
 import logging
-import numpy as np
 import os
 import pandas as pd
 import pychromvar as pc
-# import snapatac2 as snap
+import snapatac2 as snap
 
 from typing import List
 from pyjaspar import jaspardb

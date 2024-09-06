@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
+
 import snapatac2 as snap
 
 from latch.types import LatchFile, LatchDir
@@ -24,7 +25,7 @@ class Run:
     )
 
 
-# genome_dict = {
-#     "mm10": snap.genome.mm10,
-#     "hg38": snap.genome.hg38
-# }
+genome_dict = {
+    "mm10": snap.genome.mm10,
+    "hg38": snap.genome.hg38
+}
