@@ -23,6 +23,12 @@ logging.basicConfig(
 )
 
 
+# genome_dict = {
+#     "mm10": snap.genome.mm10,
+#     "hg38": snap.genome.hg38
+# }
+
+
 @large_task
 def snap_task(
     runs: List[Run],
@@ -33,7 +39,6 @@ def snap_task(
     project_name: str
 ) -> LatchDir:
 
-    global genome_dict
     groups = ["cluster", "sample", "condition"]
     samples = [run.run_id for run in runs]
 
@@ -45,14 +50,12 @@ def snap_task(
     adatas = pp.add_tilematrix(adatas, tile_size=tile_size, n_features=25000)
 
     adata = pp.combine_anndata(adatas, samples, filename="combined")
-    snap.pp.select_features(adata, n_features=25000)
+    adata = snap.pp.select_features(adata, n_features=25000)
     adata = pp.add_clusters(adata)
     adata = sp.add_spatial(adata)
 
     adata.write(f"{out_dir}/combined.h5ad")
-    for adata, i in zip(adatas, range(len(adatas))):
-        adata.write(f"{out_dir}/combined_{i}.h5ad")
 
     return LatchDir(
-        out_dir, f"latch://13502.accounts/snap_outs/{project_name}"
+        out_dir, f"latch:///snap_outs/{project_name}"
     )

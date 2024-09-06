@@ -23,9 +23,3 @@ class Run:
     positions_file: LatchFile = LatchFile(
         "latch:///spatials/demo/spatial/tissue_positions_list.csv"
     )
-
-
-genome_dict = {
-    "mm10": snap.genome.mm10,
-    "hg38": snap.genome.hg38
-}

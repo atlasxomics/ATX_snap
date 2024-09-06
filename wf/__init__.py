@@ -27,8 +27,7 @@ metadata = LatchMetadata(
                         tissue position file for filtering on/off tissue.  \
                         Note that multiple Conditions must be separted by '_' \
                         (i.e., Female-control-old).",
-            batch_table_column=True,
-            samplesheet=True
+            batch_table_column=True
         ),
         "genome": LatchParameter(
             display_name="genome",
@@ -82,11 +81,12 @@ def snap_workflow(
     tile_size: int = 5000
 ) -> LatchDir:
 
-    return snap_task(
+    results = snap_task(
         runs=runs,
         genome=genome,
+        project_name=project_name,
         min_tss=min_tss,
         min_frags=min_frags,
-        tile_size=tile_size,
-        project_name=project_name
+        tile_size=tile_size
     )
+    return results

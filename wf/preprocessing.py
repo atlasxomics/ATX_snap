@@ -7,7 +7,7 @@ import snapatac2 as snap
 from scipy.sparse import vstack
 from typing import List
 
-from wf.utils import genome_dict, Run
+from wf.utils import Genome, Run
 
 
 logging.basicConfig(
@@ -173,17 +173,17 @@ def filter_adatas(
 
 
 def make_anndatas(
-    runs,
-    genome,
-    min_frags
-):
+    runs: List[Run],
+    genome: Genome,
+    min_frags: int
+) -> List[anndata.AnnData]:
     """Basic preprocessing for snapATAC2 analysis; converts fragement_tsv.gz
     files into list of _in memory_ AnnData objects. QCs, metadata and spatial
     data are stored in AnnData.obs.
     """
 
-    global genome_dict
-    genome_ref = genome_dict[genome]
+    # Can't use a dict because of flyte
+    genome_ref = snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
 
     # As 'in_memory' so we can add metadata to .obs
     adatas = snap.pp.import_data(
