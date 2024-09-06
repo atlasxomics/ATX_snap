@@ -83,11 +83,14 @@ def make_geneadata(
     Parameters recapitulate ArchR defaults.
     """
 
+    # Can't use a dict because of flyte
+    genome_ref = snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
+
     # New AnnData, parameters to match ArchR
     logging.info("Creating gene matrix...")
     adata_ge = snap.pp.make_gene_matrix(
         adata,
-        gene_anno=genome_dict[genome],
+        gene_anno=genome_ref,
         upstream=5000,  # ArchR default
         downstream=0,  # ArchR default
         include_gene_body=True  # Use genebody, not TSS, per ArchR
