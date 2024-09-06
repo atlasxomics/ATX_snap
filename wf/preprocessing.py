@@ -30,7 +30,7 @@ def add_clusters(
     snap.tl.spectral(adata)
 
     try:
-        n_runs = len(adata.obs["run_id"].unique())
+        n_runs = len(adata.obs["sample"].unique())
     except KeyError as e:
         logging.warn(
             f"Exception {e}: Please add metadata to combined AnnData."
@@ -38,7 +38,7 @@ def add_clusters(
 
     if n_runs > 1:
         logging.info("Performing batch correction with Harmony...")
-        snap.pp.harmony(adata, batch="run_id", max_iter_harmony=20)
+        snap.pp.harmony(adata, batch="sample", max_iter_harmony=20)
         rep = "X_spectral_harmony"
     else:
         rep = "X_spectral"
@@ -72,14 +72,14 @@ def add_metadata(run: Run, adata: anndata.AnnData) -> anndata.AnnData:
     adata.obs["barcode"] = adata.obs.index
     adata.obs = adata.obs.merge(positions, on="barcode", how="left")
 
-    # Set run_id, codition
-    adata.obs["run_id"] = run.run_id
+    # Set run_id, condition
+    adata.obs["sample"] = run.run_id
     adata.obs["condition"] = run.condition
 
     # Ensure obs_names unique
     adata.obs_names = [
         run_id + "#" + bc for
-        run_id, bc in zip(adata.obs["run_id"], adata.obs["barcode"])
+        run_id, bc in zip(adata.obs["sample"], adata.obs["barcode"])
     ]
 
     return adata
@@ -135,7 +135,7 @@ def combine_anndata(
     combined_adata.obs_names = [
         run_id + "#" + bc for
         run_id, bc in
-        zip(combined_adata.obs["run_id"], combined_adata.obs["barcode"])
+        zip(combined_adata.obs["sample"], combined_adata.obs["barcode"])
     ]
 
     # AnnDataSet does not inherit .obsm; add manually :/

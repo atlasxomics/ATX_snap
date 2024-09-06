@@ -44,7 +44,7 @@ def snap_task(
     out_dir = f"/root/{project_name}"
     os.makedirs(out_dir, exist_ok=True)
 
-    # Preprocessing ------
+    # Preprocessing -----------------------------------------------------------
     logging.info("Creating AnnData objects...")
     adatas = pp.make_anndatas(runs, genome, min_frags=min_frags)
     adatas = pp.filter_adatas(adatas, min_tss=min_tss)
@@ -60,7 +60,7 @@ def snap_task(
     adata = pp.add_clusters(adata, resolution, iterations, min_cluster_size)
     adata = sp.add_spatial(adata)  # Add spatial coordinates to tixels
 
-    # Gene matrix ------
+    # Genes ------------------------------------------------------------------
     logging.info("Making gene matrix...")
     adata_gene = ft.make_geneadata(adata, genome)
 
@@ -85,7 +85,7 @@ def snap_task(
 
     adata_gene.write(f"{out_dir}/combined_ge.h5ad")
 
-    # Peak calling ------
+    # Peaks ------------------------------------------------------------------
     peak_mats = {}
     for group in groups:
 
@@ -115,6 +115,9 @@ def snap_task(
         sc.get.rank_genes_groups_df(  # Save as csv
             peak_mats[group], group=None, pval_cutoff=0.05, log2fc_min=0.1
         ).to_csv(f"{out_dir}/marker_peaks_per_{group}.csv", index=False)
+
+    # Motifs -----------------------------------------------------------------
+    
 
     # Fin ------
     adata.write(f"{out_dir}/combined.h5ad")
