@@ -1,8 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
 
-import snapatac2 as snap
-
 from latch.types import LatchFile, LatchDir
 
 

@@ -7,8 +7,6 @@ import snapatac2 as snap
 
 from pyjaspar import jaspardb
 
-from utils import genome_dict
-
 
 logging.basicConfig(
     format="%(levelname)s - %(asctime)s - %(message)s",
@@ -62,7 +60,9 @@ def make_peakmatrix(
     if not isinstance(peaks, dict):  # Convert to dict for merge_peaks()
         peaks = {"0": adata.uns[key]}
 
-    merged_peaks = snap.tl.merge_peaks(peaks, genome_dict[genome])
+    # Can't use a dict because of flyte
+    genome_ref = snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
+    merged_peaks = snap.tl.merge_peaks(peaks, genome_ref)
 
     adata_p = snap.pp.make_peak_matrix(adata, use_rep=merged_peaks["Peaks"])
 

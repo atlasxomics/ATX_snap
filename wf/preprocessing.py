@@ -16,7 +16,7 @@ logging.basicConfig(
 )
 
 
-def add_clusters(adata: anndata.AnnData, batch="run_id") -> anndata.AnnData:
+def add_clusters(adata: anndata.AnnData) -> anndata.AnnData:
     """Perform dimensionality reduction, batch correction, umap, clustering.
     """
 
