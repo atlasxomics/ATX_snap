@@ -119,15 +119,15 @@ def snap_task(
     adata.write(f"{out_dir}/combined.h5ad")
 
     # Motifs -----------------------------------------------------------------
-    cluster_peaks = peak_mats["cluster"]
-    cluster_peaks = ft.get_motifs(cluster_peaks, genome)
-    cluster_peaks.write(f"{out_dir}/cluster_peaks.h5ad")  # Save with motifs
+    # cluster_peaks = peak_mats["cluster"]
+    # cluster_peaks = ft.get_motifs(cluster_peaks, genome)
+    # cluster_peaks.write(f"{out_dir}/cluster_peaks.h5ad")  # Save with motifs
 
-    # Have to convert X to float64 for pc.compute_deviations
-    cluster_peaks.X = cluster_peaks.X.astype(np.float64)
+    # # Have to convert X to float64 for pc.compute_deviations
+    # cluster_peaks.X = cluster_peaks.X.astype(np.float64)
 
-    adata_motif = pc.compute_deviations(cluster_peaks, n_jobs=90)
-    adata_motif.write(f"{out_dir}/combined_motifs.h5ad")
+    # adata_motif = pc.compute_deviations(cluster_peaks, n_jobs=90)
+    # adata_motif.write(f"{out_dir}/combined_motifs.h5ad")
 
     # Fin --------------------------------------------------------------------
 
