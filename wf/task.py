@@ -10,11 +10,12 @@ from typing import List
 from latch.resources.tasks import large_task
 from latch.types import LatchDir
 
+import wf.features as ft
+import wf.plotting as pl
 import wf.preprocessing as pp
 import wf.spatial as sp
-import wf.features as ft
 
-from wf.utils import Genome, Run
+from wf.utils import Genome, Run, get_genome_fasta
 
 
 logging.basicConfig(
@@ -38,10 +39,14 @@ def snap_task(
 
     samples = [run.run_id for run in runs]
     groups = ["cluster", "sample", "condition"]
+    qc_metrics = ["n_fragment", "log10_frags", "tsse"]
     genome = genome.value  # Convert to str
 
     out_dir = f"/root/{project_name}"
     os.makedirs(out_dir, exist_ok=True)
+
+    figures_dir = f"{out_dir}/figures"
+    os.makedirs(figures_dir, exist_ok=True)
 
     # Preprocessing -----------------------------------------------------------
     logging.info("Creating AnnData objects...")
@@ -58,6 +63,15 @@ def snap_task(
     logging.info("Performing dimensionality reduction...")
     adata = pp.add_clusters(adata, resolution, iterations, min_cluster_size)
     adata = sp.add_spatial(adata)  # Add spatial coordinates to tixels
+
+    # Plotting --
+    pl.plot_umaps(adata, groups, f"{figures_dir}/umap.pdf")
+    pl.plot_spatial(
+        adata, samples, "cluster", f"{figures_dir}/spatial_dim.pdf"
+    )
+    pl.plot_spatial_qc(
+        adata, samples, qc_metrics, f"{figures_dir}/spatial_qc.pdf"
+    )
 
     # Genes ------------------------------------------------------------------
     logging.info("Making gene matrix...")
@@ -117,6 +131,22 @@ def snap_task(
         ).to_csv(f"{out_dir}/marker_peaks_per_{group}.csv", index=False)
 
     adata.write(f"{out_dir}/combined.h5ad")
+
+    # Motifs -----------------------------------------------------------------
+    logging.info("Downloading reference genome for motifs...")
+    fasta = get_genome_fasta(genome)
+
+    logging.info("Preparing peak matrix for motifs...")
+    cluster_peaks = peak_mats["cluster"]
+    cluster_peaks = ft.get_motifs(cluster_peaks, fasta.local_path)
+    cluster_peaks.write(f"{out_dir}/cluster_peaks.h5ad")  # Save with motifs
+
+    # Have to convert X to float64 for pc.compute_deviations
+    cluster_peaks.X = cluster_peaks.X.astype(np.float64)
+
+    logging.info("Computing motif deviation matrix...")
+    adata_motif = pc.compute_deviations(cluster_peaks, n_jobs=90)
+    adata_motif.write(f"{out_dir}/combined_motifs.h5ad")
 
     # Fin --------------------------------------------------------------------
 
