@@ -107,7 +107,7 @@ def plot_spatial_qc(
 
                     ax = axs[row_idx][col_idx]
                     sq.pl.spatial_scatter(
-                        adata[adata.obs['run_id'] == sample],
+                        adata[adata.obs['sample'] == sample],
                         color=qc_metric,
                         size=25,
                         shape=None,
