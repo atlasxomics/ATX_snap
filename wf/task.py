@@ -7,7 +7,7 @@ import snapatac2 as snap
 
 from typing import List
 
-from latch.resources.tasks import large_task
+from latch.resources.tasks import custom_task
 from latch.types import LatchDir
 
 import wf.features as ft
@@ -24,7 +24,7 @@ logging.basicConfig(
 )
 
 
-@large_task
+@custom_task(cpu=62, memory=384, storage_gib=4949)
 def snap_task(
     runs: List[Run],
     genome: Genome,
