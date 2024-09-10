@@ -26,7 +26,6 @@ def add_clusters(
     """
 
     # Dimensionality reduction
-    logging.info("Performing dimensionality reduction...")
     snap.tl.spectral(adata)
 
     try:

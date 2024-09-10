@@ -20,6 +20,7 @@ def plot_umaps(
         group = groups[i]
         sc.pl.umap(
             adata,
+            s=10,
             color=group,
             ax=axs[i],
             show=False,
@@ -54,13 +55,13 @@ def plot_spatial(
                 sq.pl.spatial_scatter(
                     adata[adata.obs["sample"] == sample],
                     color=color_by,
-                    size=25,
+                    size=75,
                     shape=None,
                     library_id=sample,
                     ax=axs[i],
-                    return_ax=True,
                     title=f"{sample}: {color_by}"
                 )
+                axs[i].axis("off")
 
             # Ensure empty plots are not displayed
             for j in range(len(sample_batch), 4):
