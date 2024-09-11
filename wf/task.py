@@ -86,7 +86,9 @@ def snap_task(
 
     # Genes ------------------------------------------------------------------
     logging.info("Making gene matrix...")
-    whitelist = list(pd.read_csv("/whitelists/mm10_genes_archr.csv")["x"])
+    whitelist = list(
+        pd.read_csv(f"/root/whitelists/{genome}_genes_archr.csv")["x"]
+    )
     adata_gene = ft.make_geneadata(adata, genome, whitelist)
 
     for group in groups:
