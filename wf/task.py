@@ -38,8 +38,18 @@ def snap_task(
 ) -> LatchDir:
 
     samples = [run.run_id for run in runs]
-    groups = ["cluster", "sample", "condition"]
+    conditions = list({run.condition for run in runs})
+
+    # Set 'groups' list for differential analysis
+    groups = ["cluster"]
+    if len(samples) > 1:
+        groups.append("sample")
+    if len(conditions) > 1:
+        groups.append("condition")
+    logging.info(f"Comparing features amoung groups {groups}.")
+
     qc_metrics = ["n_fragment", "log10_frags", "tsse"]
+
     genome = genome.value  # Convert to str
 
     out_dir = f"/root/{project_name}"
@@ -137,7 +147,7 @@ def snap_task(
     fasta = get_genome_fasta(genome)
 
     logging.info("Preparing peak matrix for motifs...")
-    cluster_peaks = peak_mats["cluster"]
+    cluster_peaks = peak_mats["cluster"]  # Only motifs for cluster peaks
     cluster_peaks = ft.get_motifs(cluster_peaks, fasta.local_path)
     cluster_peaks.write(f"{out_dir}/cluster_peaks.h5ad")  # Save with motifs
 
