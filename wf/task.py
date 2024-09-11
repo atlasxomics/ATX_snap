@@ -1,6 +1,7 @@
 import logging
 import numpy as np
 import os
+import pandas as pd
 import pychromvar as pc
 import scanpy as sc
 import snapatac2 as snap
@@ -85,7 +86,8 @@ def snap_task(
 
     # Genes ------------------------------------------------------------------
     logging.info("Making gene matrix...")
-    adata_gene = ft.make_geneadata(adata, genome)
+    whitelist = list(pd.read_csv("/whitelists/mm10_genes_archr.csv")["x"])
+    adata_gene = ft.make_geneadata(adata, genome, whitelist)
 
     for group in groups:
 

@@ -6,6 +6,7 @@ import scanpy as sc
 import snapatac2 as snap
 
 from pyjaspar import jaspardb
+from typing import List
 
 
 logging.basicConfig(
@@ -68,12 +69,13 @@ def make_peakmatrix(
 def make_geneadata(
     adata: anndata.AnnData,
     genome: str,
+    whitelist: List[str],
     min_counts: int = 1,
     min_cells: int = 1,
 ) -> anndata.AnnData:
     """Create an AnnData object where X is a Gene Expression Matrix; .obs is
-    inherited from input AnnData; filter genes with low cells, counts.
-    Parameters recapitulate ArchR defaults.
+    inherited from input AnnData; filter genes with low cells, counts; filter
+    genes to only those returned in ArchR.
     """
 
     # Can't use a dict because of flyte
@@ -98,9 +100,8 @@ def make_geneadata(
                 f"Exception {e}: no annotation {obsm} found for observations."
             )
 
-    # TODO: Remove mitochodiral, rRNA genes
-    # TODO: Remove non-coding
-    # TODO: remove ChrY...ChrX?
+    # Filter to only genes from ArchR to remove non-coding etc
+    adata_ge = adata_ge[:, adata_ge.var_names.isin(whitelist)].copy()
 
     # Remove genes with no cells, counts; per sc, one metric per call...
     logging.info("Filtering genes...")
