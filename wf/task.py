@@ -4,6 +4,7 @@ import os
 import pychromvar as pc
 import scanpy as sc
 import snapatac2 as snap
+import subprocess
 
 from typing import List
 
@@ -24,7 +25,7 @@ logging.basicConfig(
 )
 
 
-@custom_task(cpu=62, memory=384, storage_gib=4949)
+@custom_task(cpu=62, memory=768, storage_gib=4949)
 def snap_task(
     runs: List[Run],
     genome: Genome,
@@ -106,6 +107,17 @@ def snap_task(
             log2fc_min=0.1
         ).to_csv(f"{out_dir}/marker_genes_per_{group}.csv", index=False)
 
+    # Plot heatmap for genes
+    sc.pl.rank_genes_groups_matrixplot(
+        adata_gene,
+        n_genes=5,
+        groupby="cluster",
+        values_to_plot="scores",
+        key="cluster_genes",
+        min_logfoldchange=0.1,
+        save="genes"
+    )
+
     adata_gene.write(f"{out_dir}/combined_ge.h5ad")
 
     # Peaks ------------------------------------------------------------------
@@ -159,6 +171,9 @@ def snap_task(
     adata_motif.write(f"{out_dir}/combined_motifs.h5ad")
 
     # Fin --------------------------------------------------------------------
+
+    # Move scanpy plots
+    subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
 
     return LatchDir(
         out_dir, f"latch:///snap_outs/{project_name}"

@@ -102,7 +102,7 @@ def snap_workflow(
     min_frags: int = 0,
     tile_size: int = 5000
 ) -> LatchDir:
-
+    print(locals().values())
     results = snap_task(
         runs=runs,
         genome=genome,
