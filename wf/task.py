@@ -1,3 +1,4 @@
+import anndata
 import logging
 import numpy as np
 import os
@@ -6,10 +7,10 @@ import scanpy as sc
 import snapatac2 as snap
 import subprocess
 
-from typing import List
+from typing import List, Tuple
 
 from latch.resources.tasks import custom_task
-from latch.types import LatchDir
+from latch.types import LatchDir, LatchFile
 
 import wf.features as ft
 import wf.plotting as pl
@@ -25,7 +26,7 @@ logging.basicConfig(
 )
 
 
-@custom_task(cpu=62, memory=768, storage_gib=4949)
+@custom_task(cpu=62, memory=192, storage_gib=4949)
 def snap_task(
     runs: List[Run],
     genome: Genome,
@@ -36,7 +37,7 @@ def snap_task(
     min_frags: int,
     tile_size: int,
     project_name: str
-) -> LatchDir:
+) -> Tuple[LatchDir, anndata.AnnData]:
 
     samples = [run.run_id for run in runs]
     conditions = list({run.condition for run in runs})
@@ -67,9 +68,11 @@ def snap_task(
     logging.info("Adding tile matrix to objects...")
     adatas = pp.add_tilematrix(adatas, tile_size=tile_size, n_features=25000)
 
-    logging.info("Combining objects...")
-    adata = pp.combine_anndata(adatas, samples, filename="combined")
-    snap.pp.select_features(adata, n_features=25000)
+    if len(samples) > 1:
+        logging.info("Combining objects...")
+        adata = pp.combine_anndata(adatas, samples, filename="combined")
+    else:
+        adata = adatas[0]
 
     logging.info("Performing dimensionality reduction...")
     adata = pp.add_clusters(adata, resolution, iterations, min_cluster_size)
@@ -154,27 +157,53 @@ def snap_task(
 
     adata.write(f"{out_dir}/combined.h5ad")
 
-    # Motifs -----------------------------------------------------------------
+    # Move scanpy plots
+    subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
+
+    return (
+        LatchDir(out_dir, f"latch:///snap_outs/{project_name}"),
+        peak_mats["cluster"]
+    )
+
+
+@custom_task(cpu=62, memory=975, storage_gib=4949)
+def motif_task(
+    cluster_peaks: anndata.AnnData, genome: Genome, project_name: str
+) -> Tuple[LatchFile, LatchFile]:
+    """Get Anndata object with motifs matrix from cluster peak matrix.  We
+    seperated into a seperate task because of the high memory requirements.
+    """
+    genome = genome.value
+
     logging.info("Downloading reference genome for motifs...")
     fasta = get_genome_fasta(genome)
 
     logging.info("Preparing peak matrix for motifs...")
-    cluster_peaks = peak_mats["cluster"]  # Only motifs for cluster peaks
     cluster_peaks = ft.get_motifs(cluster_peaks, fasta.local_path)
-    cluster_peaks.write(f"{out_dir}/cluster_peaks.h5ad")  # Save with motifs
+    cluster_peaks.write("cluster_peaks.h5ad")
 
     # Have to convert X to float64 for pc.compute_deviations
     cluster_peaks.X = cluster_peaks.X.astype(np.float64)
 
     logging.info("Computing motif deviation matrix...")
     adata_motif = pc.compute_deviations(cluster_peaks, n_jobs=90)
-    adata_motif.write(f"{out_dir}/combined_motifs.h5ad")
+    adata_motif.write("combined_motifs.h5ad")
 
-    # Fin --------------------------------------------------------------------
+    return (
+        LatchFile(
+            "cluster_peaks.h5ad",
+            f"latch:///snap_outs/{project_name}/cluster_peaks.h5ad"
+        ),
+        LatchFile(
+            "combined_motifs.h5ad",
+            f"latch:///snap_outs/{project_name}/combined_motifs.h5ad"
+        )
+    )
 
-    # Move scanpy plots
-    subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
 
-    return LatchDir(
-        out_dir, f"latch:///snap_outs/{project_name}"
+if __name__ == "__main__":
+    motif_task(
+        cluster_peaks=anndata.read_h5ad("cluster_peaks.h5ad"),
+        genome=Genome.hg38,
+        project_name="latch_dev"
     )

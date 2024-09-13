@@ -19,7 +19,7 @@ ENV LANG='en_US.UTF-8'
 ARG DEBIAN_FRONTEND=noninteractive
 
 # Install base packages
-RUN apt-get install libz-dev
+RUN apt-get install libz-dev wget
 
 # Latch SDK
 # DO NOT REMOVE

@@ -6,7 +6,7 @@ from latch.types.metadata import (
     LatchAuthor, LatchMetadata, LatchParameter, LatchRule
 )
 
-from wf.task import snap_task
+from wf.task import motif_task, snap_task
 from wf.utils import Run, Genome
 
 
@@ -102,8 +102,8 @@ def snap_workflow(
     min_frags: int = 0,
     tile_size: int = 5000
 ) -> LatchDir:
-    print(locals().values())
-    results = snap_task(
+
+    results, cluster_peaks = snap_task(
         runs=runs,
         genome=genome,
         project_name=project_name,
@@ -114,4 +114,29 @@ def snap_workflow(
         min_frags=min_frags,
         tile_size=tile_size
     )
+
+    _, _ = motif_task(
+        cluster_peaks=cluster_peaks,
+        genome=genome,
+        project_name=project_name
+    )
+
     return results
+
+
+if __name__ == "__main__":
+    from latch.types import LatchFile
+
+    snap_workflow(
+        runs=[
+            Run(
+                run_id="",
+                fragments_file=LatchFile(),
+                condition=None,
+                spatial_dir=LatchDir(),
+                positions_file=LatchFile()
+            )
+        ],
+        genome=Genome.hg38,
+        project_name="latch_dev"
+    )
