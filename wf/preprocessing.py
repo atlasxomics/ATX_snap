@@ -31,7 +31,7 @@ def add_clusters(
     try:
         n_runs = len(adata.obs["sample"].unique())
     except KeyError as e:
-        logging.warn(
+        logging.warning(
             f"Exception {e}: Please add metadata to combined AnnData."
         )
 
@@ -140,6 +140,8 @@ def combine_anndata(
     # AnnDataSet does not inherit .obsm; add manually :/
     frags = vstack([adata.obsm["fragment_paired"] for adata in adatas])
     combined_adata.obsm["fragment_paired"] = frags
+
+    snap.pp.select_features(combined_adata, n_features=25000)
 
     return combined_adata
 
