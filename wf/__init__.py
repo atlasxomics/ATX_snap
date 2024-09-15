@@ -125,18 +125,10 @@ def snap_workflow(
 
 
 if __name__ == "__main__":
-    from latch.types import LatchFile
+    import anndata
 
-    snap_workflow(
-        runs=[
-            Run(
-                run_id="",
-                fragments_file=LatchFile(),
-                condition=None,
-                spatial_dir=LatchDir(),
-                positions_file=LatchFile()
-            )
-        ],
+    motif_task(
+        cluster_peaks=anndata.read_h5ad("cluster_peaks.h5ad"),
         genome=Genome.hg38,
         project_name="latch_dev"
     )
