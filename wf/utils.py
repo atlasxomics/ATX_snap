@@ -1,7 +1,17 @@
 from dataclasses import dataclass
 from enum import Enum
+import json
 
 from latch.types import LatchFile, LatchDir
+
+
+# Map DBiT channels to plot point sizes for various spatial plots
+pt_sizes = {
+    50: {"dim": 75, "qc": 25},
+    96: {"dim": 1, "qc": 1},
+    210: {"dim": 0.25, "qc": 0.1},
+    220: {"dim": 0.25, "qc": 0.1}
+}
 
 
 class Genome(Enum):
@@ -21,6 +31,17 @@ class Run:
     positions_file: LatchFile = LatchFile(
         "latch:///spatials/demo/spatial/tissue_positions_list.csv"
     )
+
+
+def get_channels(run: Run):
+    spatial_dir = run.spatial_dir.local_path
+    metadata_json = f"{spatial_dir}/metadata.json"
+
+    with open(metadata_json, "r") as f:
+        metadata = json.load(f)
+        channels = metadata["numChannels"]
+
+    return channels
 
 
 def get_genome_fasta(genome: str) -> LatchFile:

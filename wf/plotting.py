@@ -37,7 +37,11 @@ def plot_umaps(
 
 
 def plot_spatial(
-    adata: anndata.AnnData, samples: List[str], color_by: str, output_path: str
+    adata: anndata.AnnData,
+    samples: List[str],
+    color_by: str,
+    output_path: str,
+    pt_size: int = 75
 ) -> None:
     """Plot cells spatially, color by metadata stored in .obs. The function
     creates a plot for each run and saves to a .pdf, with four runs per page.
@@ -55,7 +59,7 @@ def plot_spatial(
                 sq.pl.spatial_scatter(
                     adata[adata.obs["sample"] == sample],
                     color=color_by,
-                    size=75,
+                    size=pt_size,
                     shape=None,
                     library_id=sample,
                     ax=axs[i],
@@ -77,7 +81,8 @@ def plot_spatial_qc(
     adata: anndata.AnnData,
     samples: List[str],
     qc_metrics: List[str],
-    output_path: str
+    output_path: str,
+    pt_size: int = 25
 ):
     """Generates a grid of spatial scatter plots for each sample and QC metric,
     saving them into a PDF.  Each row corresponds to a sample and each column
@@ -110,7 +115,7 @@ def plot_spatial_qc(
                     sq.pl.spatial_scatter(
                         adata[adata.obs['sample'] == sample],
                         color=qc_metric,
-                        size=25,
+                        size=pt_size,
                         shape=None,
                         ax=ax,
                         library_id=sample,

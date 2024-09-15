@@ -16,8 +16,7 @@ import wf.features as ft
 import wf.plotting as pl
 import wf.preprocessing as pp
 import wf.spatial as sp
-
-from wf.utils import Genome, Run, get_genome_fasta
+import wf.utils as utils
 
 
 logging.basicConfig(
@@ -28,8 +27,8 @@ logging.basicConfig(
 
 @custom_task(cpu=62, memory=192, storage_gib=4949)
 def snap_task(
-    runs: List[Run],
-    genome: Genome,
+    runs: List[utils.Run],
+    genome: utils.Genome,
     resolution: float,
     iterations: int,
     min_cluster_size: int,
@@ -41,6 +40,9 @@ def snap_task(
 
     samples = [run.run_id for run in runs]
     conditions = list({run.condition for run in runs})
+
+    # Get channels for specifying plot point size, use max for now...
+    channels = max({utils.get_channels(run) for run in runs})
 
     # Set 'groups' list for differential analysis
     groups = ["cluster"]
@@ -168,7 +170,7 @@ def snap_task(
 
 @custom_task(cpu=62, memory=975, storage_gib=4949)
 def motif_task(
-    cluster_peaks: anndata.AnnData, genome: Genome, project_name: str
+    cluster_peaks: anndata.AnnData, genome: utils.Genome, project_name: str
 ) -> Tuple[LatchFile, LatchFile]:
     """Get Anndata object with motifs matrix from cluster peak matrix.  We
     seperated into a seperate task because of the high memory requirements.
@@ -204,6 +206,6 @@ def motif_task(
 if __name__ == "__main__":
     motif_task(
         cluster_peaks=anndata.read_h5ad("cluster_peaks.h5ad"),
-        genome=Genome.hg38,
+        genome=utils.Genome.hg38,
         project_name="latch_dev"
     )
