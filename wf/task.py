@@ -36,7 +36,7 @@ def snap_task(
     min_frags: int,
     tile_size: int,
     project_name: str
-) -> Tuple[LatchDir, anndata.AnnData]:
+) -> LatchDir:
 
     samples = [run.run_id for run in runs]
     conditions = list({run.condition for run in runs})
@@ -83,10 +83,18 @@ def snap_task(
     # Plotting --
     pl.plot_umaps(adata, groups, f"{figures_dir}/umap.pdf")
     pl.plot_spatial(
-        adata, samples, "cluster", f"{figures_dir}/spatial_dim.pdf"
+        adata,
+        samples,
+        "cluster",
+        f"{figures_dir}/spatial_dim.pdf",
+        pt_size=utils.pt_sizes[channels]["dim"]
     )
     pl.plot_spatial_qc(
-        adata, samples, qc_metrics, f"{figures_dir}/spatial_qc.pdf"
+        adata,
+        samples,
+        qc_metrics,
+        f"{figures_dir}/spatial_qc.pdf",
+        pt_size=utils.pt_sizes[channels]["qc"]
     )
 
     # Genes ------------------------------------------------------------------
@@ -162,10 +170,7 @@ def snap_task(
     # Move scanpy plots
     subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
 
-    return (
-        LatchDir(out_dir, f"latch:///snap_outs/{project_name}"),
-        peak_mats["cluster"]
-    )
+    return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
 
 
 @custom_task(cpu=62, memory=975, storage_gib=4949)
@@ -181,7 +186,8 @@ def motif_task(
     cluster_peaks = anndata.read_h5ad(anndata_path)
 
     logging.info("Downloading reference genome for motifs...")
-    fasta = get_genome_fasta(genome)
+    genome = genome.value  # Convert to str
+    fasta = utils.get_genome_fasta(genome)
 
     logging.info("Preparing peak matrix for motifs...")
     cluster_peaks = ft.get_motifs(cluster_peaks, fasta.local_path)
