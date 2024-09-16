@@ -99,7 +99,7 @@ def snap_workflow(
     iterations: int = -1,
     min_cluster_size: int = 20,
     min_tss: float = 2.0,
-    min_frags: int = 0,
+    min_frags: int = 10,
     tile_size: int = 5000
 ) -> LatchDir:
 

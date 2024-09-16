@@ -1,6 +1,7 @@
 import anndata
 import logging
 import math
+import numpy as np
 import pandas as pd
 import snapatac2 as snap
 
@@ -176,7 +177,9 @@ def filter_adatas(
     try:
         adatas = [adata[adata.obs["on_off"] == 1] for adata in adatas]
     except KeyError as e:
-        logging.warn(f"Exception {e}: no positions data found in AnnData.obs")
+        logging.warning(
+            f"Exception {e}: no positions data found in AnnData.obs"
+        )
 
     # Filter cells by tss, max_counts
     snap.pp.filter_cells(adatas, min_tsse=min_tss, max_counts=1e7)
@@ -210,7 +213,15 @@ def make_anndatas(
 
     # Add addtional QCs
     snap.metrics.tsse(adatas, genome_ref)
+
     for adata in adatas:
+
+        if min_frags == 0:  # Convert 0 to NA if min_frags == 0
+            logging.warning("Converting 0's to NA in .obs['n_fragment']")
+            adata.obs["n_fragment"] = adata.obs["n_fragment"].apply(
+                lambda x: np.nan if x <= 0 else x
+            )
+
         adata.obs["log10_frags"] = adata.obs["n_fragment"].apply(math.log10)
 
     return adatas

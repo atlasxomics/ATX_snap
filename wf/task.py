@@ -9,6 +9,7 @@ import subprocess
 
 from typing import List, Tuple
 
+from latch import message
 from latch.resources.tasks import custom_task
 from latch.types import LatchDir, LatchFile
 
@@ -61,6 +62,13 @@ def snap_task(
 
     figures_dir = f"{out_dir}/figures"
     os.makedirs(figures_dir, exist_ok=True)
+
+    if min_frags == 0:
+        logging.warning("Minimum fragments set to 0.")
+        message(
+            typ="warning",
+            data={"title": "min_frags", "body": "Minimum fragments set to 0."}
+        )
 
     # Preprocessing -----------------------------------------------------------
     logging.info("Creating AnnData objects...")
