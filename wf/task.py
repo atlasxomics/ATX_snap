@@ -170,12 +170,15 @@ def snap_task(
 
 @custom_task(cpu=62, memory=975, storage_gib=4949)
 def motif_task(
-    cluster_peaks: anndata.AnnData, genome: utils.Genome, project_name: str
+    input_dir: LatchDir, genome: utils.Genome, project_name: str
 ) -> Tuple[LatchFile, LatchFile]:
     """Get Anndata object with motifs matrix from cluster peak matrix.  We
     seperated into a seperate task because of the high memory requirements.
     """
-    genome = genome.value
+
+    logging.info("Downloading data from previous step...")
+    anndata_path = f"{input_dir.local_path}/cluster_peaks.h5ad"
+    cluster_peaks = anndata.read_h5ad(anndata_path)
 
     logging.info("Downloading reference genome for motifs...")
     fasta = get_genome_fasta(genome)

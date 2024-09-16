@@ -103,7 +103,7 @@ def snap_workflow(
     tile_size: int = 5000
 ) -> LatchDir:
 
-    results, cluster_peaks = snap_task(
+    results = snap_task(
         runs=runs,
         genome=genome,
         project_name=project_name,
@@ -115,8 +115,8 @@ def snap_workflow(
         tile_size=tile_size
     )
 
-    _, _ = motif_task(
-        cluster_peaks=cluster_peaks,
+    cluster_peaks, motifs = motif_task(
+        input_dir=results,
         genome=genome,
         project_name=project_name
     )
