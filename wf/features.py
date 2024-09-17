@@ -98,11 +98,12 @@ def make_geneadata(
                 f"Exception {e}: no annotation {obsm} found for observations."
             )
 
-    # TODO: Remove non-coding?
-    # TODO: remove ChrY...ChrX?
-
     # Remove genes with no cells, counts; per sc, one metric per call...
-    logging.info("Filtering genes...")
+    logging.info("Removing mitochondtrial genes, filtering...")
+
+    adata_ge.var["mt"] = adata_ge.var_names.str.startswith("MT-")
+    adata_ge = adata_ge[:, ~adata.var["mt"] == True].copy()
+
     sc.pp.filter_genes(adata_ge, min_counts=min_counts)
     sc.pp.filter_genes(adata_ge, min_cells=min_cells)
 
@@ -113,6 +114,10 @@ def make_geneadata(
     if "X_spectral_harmony" in adata.obsm:  # batch correction if >1 sample
         logging.info("Batch correction with MAGIC...")
         sc.external.pp.magic(adata_ge, solver="approximate")
+
+    sc.pp.calculate_qc_metrics(
+        adata_ge, qc_vars="mt", inplace=True, log1p=True
+    )
 
     return adata_ge
 
