@@ -102,7 +102,7 @@ def make_geneadata(
     logging.info("Removing mitochondtrial genes, filtering...")
 
     adata_ge.var["mt"] = adata_ge.var_names.str.startswith("MT-")
-    adata_ge = adata_ge[:, ~adata.var["mt"] == True].copy()
+    adata_ge = adata_ge[:, ~adata_ge.var["mt"]].copy()
 
     sc.pp.filter_genes(adata_ge, min_counts=min_counts)
     sc.pp.filter_genes(adata_ge, min_cells=min_cells)
