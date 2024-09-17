@@ -9,8 +9,8 @@ from latch.types import LatchFile, LatchDir
 pt_sizes = {
     50: {"dim": 75, "qc": 25},
     96: {"dim": 1, "qc": 1},
-    210: {"dim": 0.25, "qc": 0.1},
-    220: {"dim": 0.25, "qc": 0.1}
+    210: {"dim": 1, "qc": 0.5},
+    220: {"dim": 5, "qc": 0.5}
 }
 
 
