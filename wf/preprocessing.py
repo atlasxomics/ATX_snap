@@ -182,7 +182,9 @@ def filter_adatas(
         )
 
     # Filter cells by tss, max_counts
-    snap.pp.filter_cells(adatas, min_tsse=min_tss, max_counts=1e7)
+    snap.pp.filter_cells(
+        adatas, min_tsse=min_tss, min_counts=None, max_counts=1e7
+    )
 
     return adatas
 
@@ -216,7 +218,7 @@ def make_anndatas(
 
     for adata in adatas:
 
-        if min_frags == 0:  # Convert 0 to NA if min_frags == 0
+        if min_frags == 0:  # Convert 0 to NA
             logging.warning("Converting 0's to NA in .obs['n_fragment']")
             adata.obs["n_fragment"] = adata.obs["n_fragment"].apply(
                 lambda x: np.nan if x <= 0 else x
