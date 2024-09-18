@@ -20,7 +20,7 @@ logging.basicConfig(
 def add_clusters(
     adata: anndata.AnnData,
     resolution: float,
-    iterations: int,
+    leiden_iters: int,
     min_cluster_size: int
 ) -> anndata.AnnData:
     """Perform dimensionality reduction, batch correction, umap, clustering.
@@ -49,7 +49,7 @@ def add_clusters(
     snap.tl.leiden(
         adata,
         resolution=resolution,
-        n_iterations=iterations,
+        n_iterations=leiden_iters,
         min_cluster_size=min_cluster_size,
         key_added="cluster"
     )
@@ -85,20 +85,6 @@ def add_metadata(run: Run, adata: anndata.AnnData) -> anndata.AnnData:
     return adata
 
 
-def add_tilematrix(
-    adatas: List[anndata.AnnData],
-    tile_size: int = 5000,
-    n_features: int = 25000
-) -> List[anndata.AnnData]:
-    """Add tile matrix to AnnData.X, and select variable features.
-    """
-
-    snap.pp.add_tile_matrix(adatas, bin_size=tile_size)
-    snap.pp.select_features(adatas, n_features=n_features)
-
-    return adatas
-
-
 def combine_anndata(
     adatas: List[anndata.AnnData],
     names: List[str],
@@ -124,6 +110,11 @@ def combine_anndata(
         adatas=[(name, adata) for name, adata in zip(names, adatas_be)],
         filename=f"{filename}.h5ad"
     )
+    logging.info(f"AnnDataSet created with shape {adataset.shape}")
+
+    # We have seen the dataset lose var_names, ensure them here.
+    if len(adataset.var_names) == 0:
+        adataset.var_names = [str(i) for i in range(len(adatas[0].var_names))]
 
     # Convert back to AnnData so we can add metadata :/
     combined_adata = adataset.to_adata()
@@ -141,8 +132,6 @@ def combine_anndata(
     # AnnDataSet does not inherit .obsm; add manually :/
     frags = vstack([adata.obsm["fragment_paired"] for adata in adatas])
     combined_adata.obsm["fragment_paired"] = frags
-
-    snap.pp.select_features(combined_adata, n_features=25000)
 
     return combined_adata
 

@@ -39,12 +39,13 @@ metadata = LatchMetadata(
                 values result in more clusters.",
             batch_table_column=True
         ),
-        "iterations": LatchParameter(
-            display_name="clustering iterations",
-            description="Number of iterations for the algorithm to perform. \
-                'Positive values above 2 define the total number of \
-                iterations to perform, -1 has the algorithm run until it \
-                reaches its  optimal clustering.' - SnapATAC2 docs.",
+        "leiden_iters": LatchParameter(
+            display_name="leiden iterations",
+            description="Number of iterations for the leiden algorithm to \
+                perform when assigning labels to clusters. 'Positive values \
+                above 2 define the total number of  iterations to perform, -1 \
+                has the algorithm run until it  reaches its  optimal \
+                clustering.' - SnapATAC2 docs.",
             batch_table_column=True,
             hidden=True
         ),
@@ -75,6 +76,23 @@ metadata = LatchMetadata(
             batch_table_column=True,
             hidden=True
         ),
+        "clustering_iters": LatchParameter(
+            display_name="clustering iterations",
+            description="Iterations performed when selecting variable \
+                features for tile matrix. 'If greater than 1, this function \
+                will perform iterative clustering and feature selection based \
+                on variable features found using previous clustering results. \
+                This is similar to the procedure implemented in ArchR... \
+                Default value is 1, which means no iterative clustering is \
+                 performed.'- SnapATAC2 docs",
+            batch_table_column=True
+        ),
+        "n_features": LatchParameter(
+            display_name="number of features",
+            description="Number of features to be selected as 'most \
+                accessible' in tile matrix.",
+            batch_table_column=True
+        ),
         "project_name": LatchParameter(
             display_name="project name",
             description="Name of output directory in snap_outs/",
@@ -96,11 +114,13 @@ def snap_workflow(
     genome: Genome,
     project_name: str,
     resolution: float = 1.0,
-    iterations: int = -1,
+    leiden_iters: int = -1,
     min_cluster_size: int = 20,
     min_tss: float = 2.0,
     min_frags: int = 10,
-    tile_size: int = 5000
+    tile_size: int = 5000,
+    n_features: int = 25000,
+    clustering_iters: int = 1
 ) -> LatchDir:
 
     results = snap_task(
@@ -108,11 +128,13 @@ def snap_workflow(
         genome=genome,
         project_name=project_name,
         resolution=resolution,
-        iterations=iterations,
+        leiden_iters=leiden_iters,
         min_cluster_size=min_cluster_size,
         min_tss=min_tss,
         min_frags=min_frags,
-        tile_size=tile_size
+        tile_size=tile_size,
+        n_features=n_features,
+        clustering_iters=clustering_iters
     )
 
     cluster_peaks, motifs = motif_task(

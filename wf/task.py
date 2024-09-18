@@ -31,11 +31,13 @@ def snap_task(
     runs: List[utils.Run],
     genome: utils.Genome,
     resolution: float,
-    iterations: int,
+    leiden_iters: int,
     min_cluster_size: int,
     min_tss: float,
     min_frags: int,
     tile_size: int,
+    n_features: int,
+    clustering_iters: int,
     project_name: str
 ) -> LatchDir:
 
@@ -76,7 +78,7 @@ def snap_task(
     adatas = pp.filter_adatas(adatas, min_tss=min_tss)
 
     logging.info("Adding tile matrix to objects...")
-    adatas = pp.add_tilematrix(adatas, tile_size=tile_size, n_features=25000)
+    snap.pp.add_tile_matrix(adatas, bin_size=tile_size)
 
     if len(samples) > 1:
         logging.info("Combining objects...")
@@ -84,8 +86,14 @@ def snap_task(
     else:
         adata = adatas[0]
 
+    logging.info(
+        f"Selecting features with {n_features} features and \
+        {clustering_iters} clustering iteration(s)"
+    )
+    snap.pp.select_features(adata, n_features=n_features)
+
     logging.info("Performing dimensionality reduction...")
-    adata = pp.add_clusters(adata, resolution, iterations, min_cluster_size)
+    adata = pp.add_clusters(adata, resolution, leiden_iters, min_cluster_size)
     adata = sp.add_spatial(adata)  # Add spatial coordinates to tixels
 
     # Plotting --
