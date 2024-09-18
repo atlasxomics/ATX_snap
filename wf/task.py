@@ -116,6 +116,7 @@ def snap_task(
     # Genes ------------------------------------------------------------------
     logging.info("Making gene matrix...")
     adata_gene = ft.make_geneadata(adata, genome)
+    adata_gene.obs.to_csv("gene_metadata.csv")
 
     for group in groups:
 
