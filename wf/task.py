@@ -26,7 +26,7 @@ logging.basicConfig(
 )
 
 
-@custom_task(cpu=62, memory=192, storage_gib=4949)
+@custom_task(cpu=62, memory=384, storage_gib=4949)
 def snap_task(
     runs: List[utils.Run],
     genome: utils.Genome,
