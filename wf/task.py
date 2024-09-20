@@ -112,6 +112,15 @@ def snap_task(
         f"{figures_dir}/spatial_qc.pdf",
         pt_size=utils.pt_sizes[channels]["qc"]
     )
+    snap.pl.frag_size_distr(
+        adata, interactive=False, out_file=f"{figures_dir}/fragment_size.pdf"
+    )
+    snap.pl.tsse(
+        adata, interactive=False, out_file=f"{figures_dir}/tss_frags.pdf"
+    )
+
+    # Save adata with tile matrix
+    adata.write(f"{out_dir}/combined.h5ad")
 
     # Genes ------------------------------------------------------------------
     logging.info("Making gene matrix...")
@@ -125,7 +134,8 @@ def snap_task(
             adata_gene,
             groupby=group,
             method="t-test",
-            key_added=f"{group}_genes"
+            key_added=f"{group}_genes",
+            use_raw=False
         )
 
         # Write marker genes to csv
@@ -169,9 +179,38 @@ def snap_task(
             adata, genome, f"{group}_peaks", log_norm=True
         )
 
+        logging.info("Plotting SnapATAC peak heatmap...")
+        # Perform SnapATAC marker peaks and heatmap
+        marker_peaks = snap.tl.marker_regions(
+            anndata_peak, groupby=group, pvalue=0.05
+        )
+        snap.pl.regions(
+            anndata_peak,
+            groupby=group,
+            peaks=marker_peaks,
+            interactive=False,
+            out_file=f"{figures_dir}/snap_peak_heatmap.pdf"
+        )
+
+        logging.info("Plotting SnapATAC motif heatmap...")
+        motifs = snap.tl.motif_enrichment(
+            motifs=snap.datasets.cis_bp(unique=True),
+            regions=anndata_peak,
+            genome_fasta=(
+                snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
+            )
+        )
+        snap.pl.motif_enrichment(
+            motifs,
+            max_fdr=0.0001,
+            height=1600,
+            interactive=False,
+            out_file=f"{figures_dir}/motif_enrichment.pdf"
+        )
+
         peak_mats[group] = anndata_peak
 
-        logging.info("Finded marker peaks ...")
+        logging.info(f"Finding marker peaks for {group}...")
         sc.tl.rank_genes_groups(
             peak_mats[group], groupby=group, method="wilcoxon"
         )
@@ -230,8 +269,67 @@ def motif_task(
 
 
 if __name__ == "__main__":
-    motif_task(
-        cluster_peaks=anndata.read_h5ad("cluster_peaks.h5ad"),
-        genome=utils.Genome.hg38,
-        project_name="latch_dev"
+
+    logging.info("Plotting SnapATAC peak heatmap...")
+    # Perform SnapATAC marker peaks and heatmap
+
+    anndata_peak = anndata.read_h5ad("cluster_peaks.h5ad")
+    group = "cluster"
+    genome = "hg38"
+
+    marker_peaks = snap.tl.marker_regions(
+        anndata_peak, groupby=group, pvalue=0.05
     )
+    snap.pl.regions(
+        anndata_peak,
+        groupby=group,
+        peaks=marker_peaks,
+        interactive=False,
+        out_file="snap_peak_heatmap.pdf"
+    )
+
+    logging.info("Plotting SnapATAC motif heatmap...")
+    motifs = snap.tl.motif_enrichment(
+        motifs=snap.datasets.cis_bp(unique=True),
+        regions=anndata_peak,
+        genome_fasta=(
+            snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
+        )
+    )
+    snap.pl.motif_enrichment(
+        motifs,
+        max_fdr=0.0001,
+        height=1600,
+        interactive=False,
+        out_file="motaf_enrichment.pdf"
+    )
+
+
+    # snap_task(
+    #     runs=[
+    #         Run(
+    #             run_id="D01816_NG05035",
+    #             fragments_file=LatchFile("latch://13502.account/chromap_outputs/Ordog/D01816_NG05035/chromap_output/fragments.tsv.gz"),
+    #             condition="None",
+    #             spatial_dir=LatchDir("latch://atx-illumina.mount/Images_spatial/Ordog_spatials/D1816/spatial"),
+    #             positions_file=LatchFile("latch://atx-illumina.mount/Images_spatial/Ordog_spatials/D1816/spatial/tissue_positions_list.csv"),
+    #         ),
+    #         Run(
+    #             run_id="D01818_NG05049",
+    #             fragments_file=LatchFile("latch://13502.account/chromap_outputs/Ordog/D01818_NG05049/chromap_output/fragments.tsv.gz"),
+    #             condition="None",
+    #             spatial_dir=LatchDir("latch://atx-illumina.mount/Images_spatial/Ordog_spatials/D1818/spatial"),
+    #             positions_file=LatchFile("latch://atx-illumina.mount/Images_spatial/Ordog_spatials/D1818/spatial/tissue_positions_list.csv"),
+    #         ),
+    #     ],
+    #     genome=Genome.hg38,
+    #     resolution=1.0,
+    #     leiden_iters=-1,
+    #     min_cluster_size=20,
+    #     min_tss=2.0,
+    #     min_frags=10,
+    #     tile_size=5000,
+    #     n_features=500000,
+    #     clustering_iters=1,
+    #     project_name="Latch_Dev",
+    # )
