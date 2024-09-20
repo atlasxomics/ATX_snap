@@ -31,7 +31,7 @@ def snap_task(
     runs: List[utils.Run],
     genome: utils.Genome,
     resolution: float,
-    leiden_iters: int,
+    leiden_iters: int, #
     min_cluster_size: int,
     min_tss: float,
     min_frags: int,
@@ -179,34 +179,34 @@ def snap_task(
             adata, genome, f"{group}_peaks", log_norm=True
         )
 
-        logging.info("Plotting SnapATAC peak heatmap...")
-        # Perform SnapATAC marker peaks and heatmap
-        marker_peaks = snap.tl.marker_regions(
-            anndata_peak, groupby=group, pvalue=0.05
-        )
-        snap.pl.regions(
-            anndata_peak,
-            groupby=group,
-            peaks=marker_peaks,
-            interactive=False,
-            out_file=f"{figures_dir}/snap_peak_heatmap.pdf"
-        )
+        # logging.info("Plotting SnapATAC peak heatmap...")
+        # # Perform SnapATAC marker peaks and heatmap
+        # marker_peaks = snap.tl.marker_regions(
+        #     anndata_peak, groupby=group, pvalue=0.05
+        # )
+        # snap.pl.regions(
+        #     anndata_peak,
+        #     groupby=group,
+        #     peaks=marker_peaks,
+        #     interactive=False,
+        #     out_file=f"{figures_dir}/snap_peak_heatmap.pdf"
+        # )
 
-        logging.info("Plotting SnapATAC motif heatmap...")
-        motifs = snap.tl.motif_enrichment(
-            motifs=snap.datasets.cis_bp(unique=True),
-            regions=anndata_peak,
-            genome_fasta=(
-                snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
-            )
-        )
-        snap.pl.motif_enrichment(
-            motifs,
-            max_fdr=0.0001,
-            height=1600,
-            interactive=False,
-            out_file=f"{figures_dir}/motif_enrichment.pdf"
-        )
+        # logging.info("Plotting SnapATAC motif heatmap...")
+        # motifs = snap.tl.motif_enrichment(
+        #     motifs=snap.datasets.cis_bp(unique=True),
+        #     regions=anndata_peak,
+        #     genome_fasta=(
+        #         snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
+        #     )
+        # )
+        # snap.pl.motif_enrichment(
+        #     motifs,
+        #     max_fdr=0.0001,
+        #     height=1600,
+        #     interactive=False,
+        #     out_file=f"{figures_dir}/motif_enrichment.pdf"
+        # )
 
         peak_mats[group] = anndata_peak
 
@@ -229,43 +229,43 @@ def snap_task(
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
 
 
-@custom_task(cpu=62, memory=975, storage_gib=4949)
-def motif_task(
-    input_dir: LatchDir, genome: utils.Genome, project_name: str
-) -> Tuple[LatchFile, LatchFile]:
-    """Get Anndata object with motifs matrix from cluster peak matrix.  We
-    seperated into a seperate task because of the high memory requirements.
-    """
+# @custom_task(cpu=62, memory=975, storage_gib=4949)
+# def motif_task(
+#     input_dir: LatchDir, genome: utils.Genome, project_name: str
+# ) -> Tuple[LatchFile, LatchFile]:
+#     """Get Anndata object with motifs matrix from cluster peak matrix.  We
+#     seperated into a seperate task because of the high memory requirements.
+#     """
 
-    logging.info("Downloading data from previous step...")
-    anndata_path = f"{input_dir.local_path}/cluster_peaks.h5ad"
-    cluster_peaks = anndata.read_h5ad(anndata_path)
+#     logging.info("Downloading data from previous step...")
+#     anndata_path = f"{input_dir.local_path}/cluster_peaks.h5ad"
+#     cluster_peaks = anndata.read_h5ad(anndata_path)
 
-    logging.info("Downloading reference genome for motifs...")
-    genome = genome.value  # Convert to str
-    fasta = utils.get_genome_fasta(genome)
+#     logging.info("Downloading reference genome for motifs...")
+#     genome = genome.value  # Convert to str
+#     fasta = utils.get_genome_fasta(genome)
 
-    logging.info("Preparing peak matrix for motifs...")
-    cluster_peaks = ft.get_motifs(cluster_peaks, fasta.local_path)
-    cluster_peaks.write("cluster_peaks.h5ad")
+#     logging.info("Preparing peak matrix for motifs...")
+#     cluster_peaks = ft.get_motifs(cluster_peaks, fasta.local_path)
+#     cluster_peaks.write("cluster_peaks.h5ad")
 
-    # Have to convert X to float64 for pc.compute_deviations
-    cluster_peaks.X = cluster_peaks.X.astype(np.float64)
+#     # Have to convert X to float64 for pc.compute_deviations
+#     cluster_peaks.X = cluster_peaks.X.astype(np.float64)
 
-    logging.info("Computing motif deviation matrix...")
-    adata_motif = pc.compute_deviations(cluster_peaks, n_jobs=90)
-    adata_motif.write("combined_motifs.h5ad")
+#     logging.info("Computing motif deviation matrix...")
+#     adata_motif = pc.compute_deviations(cluster_peaks, n_jobs=90)
+#     adata_motif.write("combined_motifs.h5ad")
 
-    return (
-        LatchFile(
-            "cluster_peaks.h5ad",
-            f"latch:///snap_outs/{project_name}/cluster_peaks.h5ad"
-        ),
-        LatchFile(
-            "combined_motifs.h5ad",
-            f"latch:///snap_outs/{project_name}/combined_motifs.h5ad"
-        )
-    )
+#     return (
+#         LatchFile(
+#             "cluster_peaks.h5ad",
+#             f"latch:///snap_outs/{project_name}/cluster_peaks.h5ad"
+#         ),
+#         LatchFile(
+#             "combined_motifs.h5ad",
+#             f"latch:///snap_outs/{project_name}/combined_motifs.h5ad"
+#         )
+#     )
 
 
 if __name__ == "__main__":
