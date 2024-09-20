@@ -230,8 +230,37 @@ def motif_task(
 
 
 if __name__ == "__main__":
-    motif_task(
-        cluster_peaks=anndata.read_h5ad("cluster_peaks.h5ad"),
-        genome=utils.Genome.hg38,
-        project_name="latch_dev"
+
+    logging.info("Plotting SnapATAC peak heatmap...")
+    # Perform SnapATAC marker peaks and heatmap
+
+    anndata_peak = anndata.read_h5ad("cluster_peaks.h5ad")
+    group = "cluster"
+    genome = "hg38"
+
+    marker_peaks = snap.tl.marker_regions(
+        anndata_peak, groupby=group, pvalue=0.05
+    )
+    snap.pl.regions(
+        anndata_peak,
+        groupby=group,
+        peaks=marker_peaks,
+        interactive=False,
+        out_file="snap_peak_heatmap.pdf"
+    )
+
+    logging.info("Plotting SnapATAC motif heatmap...")
+    motifs = snap.tl.motif_enrichment(
+        motifs=snap.datasets.cis_bp(unique=True),
+        regions=anndata_peak,
+        genome_fasta=(
+            snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
+        )
+    )
+    snap.pl.motif_enrichment(
+        motifs,
+        max_fdr=0.0001,
+        height=1600,
+        interactive=False,
+        out_file="motaf_enrichment.pdf"
     )
