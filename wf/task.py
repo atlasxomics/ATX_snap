@@ -269,7 +269,7 @@ def snap_task(
 
 
 if __name__ == "__main__":
-
+    print("hey")
     logging.info("Plotting SnapATAC peak heatmap...")
     # Perform SnapATAC marker peaks and heatmap
 
@@ -296,6 +296,8 @@ if __name__ == "__main__":
             snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
         )
     )
+    import pdb
+    pdb.set_trace()
     snap.pl.motif_enrichment(
         motifs,
         max_fdr=0.0001,
