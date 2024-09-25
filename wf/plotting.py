@@ -24,7 +24,7 @@ def plot_umaps(
             color=group,
             ax=axs[i],
             show=False,
-            title=f"UMAP: colored by {groups[0]}"
+            title=f"UMAP: colored by {group}"
         )
 
     # Ensure empty plots are not displayed

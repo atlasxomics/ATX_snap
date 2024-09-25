@@ -90,7 +90,9 @@ def snap_task(
         f"Selecting features with {n_features} features and \
         {clustering_iters} clustering iteration(s)"
     )
-    snap.pp.select_features(adata, n_features=n_features)
+    snap.pp.select_features(
+        adata, n_features=n_features, max_iter=clustering_iters
+    )
 
     logging.info("Performing dimensionality reduction...")
     adata = pp.add_clusters(adata, resolution, leiden_iters, min_cluster_size)
