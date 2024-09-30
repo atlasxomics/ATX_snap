@@ -8,7 +8,7 @@ from latch.types import LatchFile, LatchDir
 # Map DBiT channels to plot point sizes for various spatial plots
 pt_sizes = {
     50: {"dim": 75, "qc": 25},
-    96: {"dim": 5, "qc": 1},
+    96: {"dim": 10, "qc": 5},
     210: {"dim": 5, "qc": 0.5},
     220: {"dim": 5, "qc": 0.5}
 }
