@@ -127,7 +127,8 @@ def snap_task(
             adata_gene,
             groupby=group,
             method="t-test",
-            key_added=f"{group}_genes"
+            key_added=f"{group}_genes",
+            use_raw=False
         )
 
         # Write marker genes to csv
