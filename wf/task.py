@@ -218,6 +218,11 @@ def motif_task(
 
     logging.info("Computing motif deviation matrix...")
     adata_motif = pc.compute_deviations(cluster_peaks, n_jobs=90)
+
+    # Copy over cell data
+    adata_motif.obs = cluster_peaks.obs
+    adata_motif.obsm = cluster_peaks.obsm
+
     adata_motif.write("combined_motifs.h5ad")
 
     return (

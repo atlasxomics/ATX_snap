@@ -59,6 +59,10 @@ def make_peakmatrix(
 
     adata_p = snap.pp.make_peak_matrix(adata, use_rep=merged_peaks["Peaks"])
 
+    # Copy over cell data
+    adata_p.obs = adata.obs
+    adata_p.obsm = adata.obsm
+
     if log_norm:
         sc.pp.log1p(adata_p)
 
