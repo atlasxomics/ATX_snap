@@ -1,5 +1,4 @@
 import anndata
-import squidpy as sq
 
 
 def add_spatial(
