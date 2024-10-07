@@ -117,9 +117,8 @@ def make_geneadata(
     sc.pp.normalize_total(adata_ge)
     sc.pp.log1p(adata_ge)
 
-    if "X_spectral_harmony" in adata.obsm:  # batch correction if >1 sample
-        logging.info("Batch correction with MAGIC...")
-        sc.external.pp.magic(adata_ge, solver="approximate")
+    logging.info("Batch correction with MAGIC...")
+    sc.external.pp.magic(adata_ge, solver="approximate")
 
     sc.pp.calculate_qc_metrics(
         adata_ge, qc_vars="mt", inplace=True, log1p=True
