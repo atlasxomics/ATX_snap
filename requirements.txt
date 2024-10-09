@@ -30,6 +30,7 @@ scikit-image==0.24.0
 scikit-learn==1.5.1
 scipy==1.13.1
 seaborn==0.13.2
+setuptools==61.0.0
 snapatac2==2.7.0
 spatial_image==1.1.0
 spatialdata==0.2.2
