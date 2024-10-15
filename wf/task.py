@@ -179,17 +179,21 @@ def snap_task(
             peak_mats[group], groupby=group, method="wilcoxon"
         )
 
+        logging.info("Writing peak matrix ...")
         anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData
 
+        logging.info("Writing marker peaks to .csv ...")
         sc.get.rank_genes_groups_df(  # Save as csv
             peak_mats[group], group=None, pval_cutoff=0.05, log2fc_min=0.1
         ).to_csv(f"{out_dir}/marker_peaks_per_{group}.csv", index=False)
 
+    logging.info("Writing combined anndata with peaks ...")
     adata.write(f"{out_dir}/combined.h5ad")
 
     # Move scanpy plots
     subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
 
+    logging.info("Uploading data to Latch ...")
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
 
 
