@@ -6,6 +6,7 @@ import scanpy as sc
 import snapatac2 as snap
 
 from pyjaspar import jaspardb
+from typing import List, Optional
 
 
 logging.basicConfig(
@@ -137,3 +138,38 @@ def make_motifmatrix(
         adata.X = adata.X.astype(np.float64)
 
     return pc.compute_deviations(adata, n_jobs=n_jobs)
+
+
+def rank_features(
+    adata: anndata.AnnData,
+    groups: List[str],
+    feature_type: str,
+    save: Optional[str],
+    use_raw: bool = False,
+    pval_cutoff: float = 0.05,
+    log2fc_min: float = 0.1
+):
+    """For each metadata cell grouping provided, add gene ranking information;
+    if 'save' is a string, a csv of the rank data is saved to a directory
+    specified by the string.
+    """
+
+    for group in groups:
+
+        logging.info(f"Finding marker genes for {group}s...")
+        sc.tl.rank_genes_groups(
+            adata,
+            groupby=group,
+            method="t-test",
+            key_added=f"{group}_{feature_type}",
+            use_raw=use_raw
+        )
+
+        # Write marker genes to csv
+        sc.get.rank_genes_groups_df(
+            adata,
+            group=None,
+            key=f"{group}_{feature_type}",
+            pval_cutoff=pval_cutoff,
+            log2fc_min=log2fc_min
+        ).to_csv(f"{save}/marker_{feature_type}_per_{group}.csv", index=False)

@@ -1,6 +1,8 @@
+import json
+
 from dataclasses import dataclass
 from enum import Enum
-import json
+from typing import List
 
 from latch.types import LatchFile, LatchDir
 
@@ -54,3 +56,18 @@ def get_genome_fasta(genome: str) -> LatchFile:
     }
 
     return LatchFile(fasta_paths[genome])
+
+
+def get_groups(runs: List[Run]):
+    """Set 'groups' list for differential analysis"""
+
+    samples = [run.run_id for run in runs]
+    conditions = list({run.condition for run in runs})
+
+    groups = ["cluster"]
+    if len(samples) > 1:
+        groups.append("sample")
+    if len(conditions) > 1:
+        groups.append("condition")
+
+    return groups

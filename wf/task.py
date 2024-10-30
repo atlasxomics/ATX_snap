@@ -42,17 +42,11 @@ def snap_task(
 ) -> LatchDir:
 
     samples = [run.run_id for run in runs]
-    conditions = list({run.condition for run in runs})
 
     # Get channels for specifying plot point size, use max for now...
     channels = max({utils.get_channels(run) for run in runs})
 
-    # Set 'groups' list for differential analysis
-    groups = ["cluster"]
-    if len(samples) > 1:
-        groups.append("sample")
-    if len(conditions) > 1:
-        groups.append("condition")
+    groups = utils.get_groups(runs)
     logging.info(f"Comparing features amoung groups {groups}.")
 
     qc_metrics = ["n_fragment", "log10_frags", "tsse"]
@@ -120,25 +114,9 @@ def snap_task(
     adata_gene = ft.make_geneadata(adata, genome)
     adata_gene.obs.to_csv("gene_metadata.csv")
 
-    for group in groups:
-
-        logging.info(f"Finding marker genes for {group}s...")
-        sc.tl.rank_genes_groups(
-            adata_gene,
-            groupby=group,
-            method="t-test",
-            key_added=f"{group}_genes",
-            use_raw=False
-        )
-
-        # Write marker genes to csv
-        sc.get.rank_genes_groups_df(
-            adata_gene,
-            group=None,
-            key=f"{group}_genes",
-            pval_cutoff=0.05,
-            log2fc_min=0.1
-        ).to_csv(f"{out_dir}/marker_genes_per_{group}.csv", index=False)
+    ft.rank_features(
+        adata_gene, groups=groups, feature_type="genes", save=out_dir
+    )
 
     # Plot heatmap for genes
     sc.pl.rank_genes_groups_matrixplot(
@@ -199,8 +177,11 @@ def snap_task(
 
 @custom_task(cpu=62, memory=975, storage_gib=4949)
 def motif_task(
-    input_dir: LatchDir, genome: utils.Genome, project_name: str
-) -> Tuple[LatchFile, LatchFile]:
+    input_dir: LatchDir,
+    runs: List[utils.Run],
+    genome: utils.Genome,
+    project_name: str
+) -> Tuple[LatchFile, LatchDir]:
     """Get Anndata object with motifs matrix from cluster peak matrix.  We
     seperated into a seperate task because of the high memory requirements.
     """
@@ -208,6 +189,14 @@ def motif_task(
     logging.info("Downloading data from previous step...")
     anndata_path = f"{input_dir.local_path}/cluster_peaks.h5ad"
     cluster_peaks = anndata.read_h5ad(anndata_path)
+
+    groups = utils.get_groups(runs)
+
+    out_dir = "/root/motifs"
+    os.makedirs(out_dir, exist_ok=True)
+
+    figures_dir = f"{out_dir}/figures"
+    os.makedirs(figures_dir, exist_ok=True)
 
     logging.info("Downloading reference genome for motifs...")
     genome = genome.value  # Convert to str
@@ -227,16 +216,35 @@ def motif_task(
     adata_motif.obs = cluster_peaks.obs
     adata_motif.obsm = cluster_peaks.obsm
 
-    adata_motif.write("combined_motifs.h5ad")
+    ft.rank_features(
+        adata_motif, groups=groups, feature_type="motifs", save=out_dir
+    )
 
+    # Plot heatmap for motifs
+    sc.pl.rank_genes_groups_matrixplot(
+        adata_motif,
+        n_genes=5,
+        groupby="cluster",
+        values_to_plot="scores",
+        key="cluster_motifs",
+        min_logfoldchange=0.1,
+        save="motifs"
+    )
+
+    # Move scanpy plots
+    subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
+
+    adata_motif.write(f"{out_dir}/combined_motifs.h5ad")
+
+    logging.info("Uploading motif data to Latch ...")
     return (
         LatchFile(
             "cluster_peaks.h5ad",
             f"latch:///snap_outs/{project_name}/cluster_peaks.h5ad"
         ),
-        LatchFile(
-            "combined_motifs.h5ad",
-            f"latch:///snap_outs/{project_name}/combined_motifs.h5ad"
+        LatchDir(
+            out_dir,
+            f"latch:///snap_outs/{project_name}/motifs"
         )
     )
 
