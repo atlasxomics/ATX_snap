@@ -145,3 +145,4 @@ def make_motifmatrix(
         adata.X = adata.X.astype(np.float64)
 
     return pc.compute_deviations(adata, n_jobs=n_jobs)
+
