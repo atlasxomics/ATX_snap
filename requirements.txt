@@ -2,7 +2,7 @@ anndata==0.10.8
 episcanpy==0.4.0
 h5py==3.11.0
 harmonypy==0.0.10
-MACS2==2.2.6
+MACS2==2.2.9.1
 MACS3==3.0.1
 magic-impute==3.0.0
 matplotlib==3.8.3

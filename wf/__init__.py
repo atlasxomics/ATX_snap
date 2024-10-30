@@ -137,9 +137,15 @@ def snap_workflow(
         clustering_iters=clustering_iters
     )
 
+    cluster_peaks, motifs = motif_task(
+        input_dir=results,
+        genome=genome,
+        project_name=project_name
+    )
+    
     return results
 
 
 if __name__ == "__main__":
     import anndata
-
+    

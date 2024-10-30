@@ -24,13 +24,9 @@ class Genome(Enum):
 class Run:
     run_id: str
     fragments_file: LatchFile
-    condition: str = "None"
-    spatial_dir: LatchDir = LatchDir(
-        "latch:///spatials/demo/spatial/"
-    )
-    positions_file: LatchFile = LatchFile(
-        "latch:///spatials/demo/spatial/tissue_positions_list.csv"
-    )
+    condition: str
+    spatial_dir: LatchDir
+    positions_file: LatchFile
 
 
 def get_channels(run: Run):

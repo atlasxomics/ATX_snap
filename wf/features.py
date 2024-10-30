@@ -5,6 +5,7 @@ import pychromvar as pc
 import scanpy as sc
 import snapatac2 as snap
 
+
 from pyjaspar import jaspardb
 
 
@@ -64,7 +65,9 @@ def make_peakmatrix(
     adata_p.obsm = adata.obsm
 
     if log_norm:
-        sc.pp.log1p(adata_p)
+        rsc.get.anndata_to_GPU(adata_p)
+        rsc.pp.log1p(adata_p)
+        rsc.get.anndata_to_CPU(adata_p)
 
     return adata_p
 
@@ -110,21 +113,25 @@ def make_geneadata(
     adata_ge = adata_ge[:, ~adata_ge.var["mt"]].copy()
     print(f"post-filtering shape: {adata_ge.shape}")
 
-    sc.pp.filter_genes(adata_ge, min_counts=min_counts)
-    sc.pp.filter_genes(adata_ge, min_cells=min_cells)
+    rsc.get.anndata_to_GPU(adata_ge)
+    rsc.pp.filter_genes(adata_ge, min_counts=min_counts)
 
     logging.info("Normalizing matrix and computing log...")
-    sc.pp.normalize_total(adata_ge)
-    sc.pp.log1p(adata_ge)
-
+    rsc.pp.normalize_total(adata_ge)
+    rsc.pp.log1p(adata_ge)
+    
+    rsc.get.anndata_to_CPU(adata_gene)
+    sc.pp.filter_genes(adata_ge, min_cells=min_cells)
+    
     if "X_spectral_harmony" in adata.obsm:  # batch correction if >1 sample
         logging.info("Batch correction with MAGIC...")
         sc.external.pp.magic(adata_ge, solver="approximate")
 
-    sc.pp.calculate_qc_metrics(
-        adata_ge, qc_vars="mt", inplace=True, log1p=True
+    rsc.get.anndata_to_GPU(adata_ge)
+    rsc.pp.calculate_qc_metrics(
+        adata_ge, qc_vars="mt", log1p=True
     )
-
+    rsc.get.anndata_to_CPU(adata_gene)
     return adata_ge
 
 
