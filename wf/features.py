@@ -146,8 +146,7 @@ def rank_features(
     feature_type: str,
     save: Optional[str],
     use_raw: bool = False,
-    pval_cutoff: float = 0.05,
-    log2fc_min: float = 0.1
+    pval_cutoff: float = 0.05
 ):
     """For each metadata cell grouping provided, add gene ranking information;
     if 'save' is a string, a csv of the rank data is saved to a directory
@@ -171,5 +170,4 @@ def rank_features(
             group=None,
             key=f"{group}_{feature_type}",
             pval_cutoff=pval_cutoff,
-            log2fc_min=log2fc_min
         ).to_csv(f"{save}/marker_{feature_type}_per_{group}.csv", index=False)
