@@ -117,11 +117,9 @@ def snap_task(
 
     # Genes ------------------------------------------------------------------
     logging.info("Making gene matrix...")
-    adata_gene = ft.make_geneadata(adata, genome)
+    adata_gene = ft.make_geneadata(rsc, adata, genome)
     adata_gene.obs.to_csv("gene_metadata.csv")
-    print(adata_gene)
     rsc.get.anndata_to_GPU(adata_gene)
-    print(adata_gene)
     for group in groups:
 
         print(group)
@@ -172,7 +170,7 @@ def snap_task(
 
         logging.info("Making peak matrix AnnData...")
         anndata_peak = ft.make_peakmatrix(
-            adata, genome, f"{group}_peaks", log_norm=True
+            rsc, adata, genome, f"{group}_peaks", log_norm=True
         )
 
         peak_mats[group] = anndata_peak

@@ -5,7 +5,6 @@ import pychromvar as pc
 import scanpy as sc
 import snapatac2 as snap
 
-
 from pyjaspar import jaspardb
 
 
@@ -40,6 +39,7 @@ def get_motifs(
 
 
 def make_peakmatrix(
+    rsc,
     adata: anndata.AnnData,
     genome: str,
     key: str,
@@ -65,6 +65,8 @@ def make_peakmatrix(
     adata_p.obsm = adata.obsm
 
     if log_norm:
+        if adata_p.X.dtype not in [np.bool_, np.float32, np.float64, np.complex64, np.complex128]:
+            adata_p.X = adata_p.X.astype(np.float64)
         rsc.get.anndata_to_GPU(adata_p)
         rsc.pp.log1p(adata_p)
         rsc.get.anndata_to_CPU(adata_p)
@@ -73,13 +75,14 @@ def make_peakmatrix(
 
 
 def make_geneadata(
+    rsc,
     adata: anndata.AnnData,
     genome: str,
     min_counts: int = 1,
     min_cells: int = 1,
 ) -> anndata.AnnData:
     """Create an AnnData object where X is a Gene Expression Matrix; .obs is
-    inherited from input AnnData; filter genes with low cells, counts.
+    inherited from input AnnData;
     Parameters recapitulate ArchR defaults.
     """
 
@@ -112,26 +115,26 @@ def make_geneadata(
     adata_ge.var["mt"] = adata_ge.var_names.str.startswith("MT-")
     adata_ge = adata_ge[:, ~adata_ge.var["mt"]].copy()
     print(f"post-filtering shape: {adata_ge.shape}")
-
+    
+    sc.pp.filter_genes(adata_ge, min_cells=min_cells)
+    if adata_ge.X.dtype not in [np.bool_, np.float32, np.float64, np.complex64, np.complex128]:
+        adata_ge.X = adata_ge.X.astype(np.float64)
     rsc.get.anndata_to_GPU(adata_ge)
-    rsc.pp.filter_genes(adata_ge, min_counts=min_counts)
-
+    rsc.pp.filter_genes(adata_ge, min_count=min_counts)
     logging.info("Normalizing matrix and computing log...")
     rsc.pp.normalize_total(adata_ge)
     rsc.pp.log1p(adata_ge)
     
-    rsc.get.anndata_to_CPU(adata_gene)
-    sc.pp.filter_genes(adata_ge, min_cells=min_cells)
-    
-    if "X_spectral_harmony" in adata.obsm:  # batch correction if >1 sample
+    if "X_spectral_harmony" in adata.obsm:  # batch correction if > 1 sample
+        rsc.get.anndata_to_CPU(adata_ge)
         logging.info("Batch correction with MAGIC...")
         sc.external.pp.magic(adata_ge, solver="approximate")
+        rsc.get.anndata_to_GPU(adata_ge)
 
-    rsc.get.anndata_to_GPU(adata_ge)
     rsc.pp.calculate_qc_metrics(
         adata_ge, qc_vars="mt", log1p=True
     )
-    rsc.get.anndata_to_CPU(adata_gene)
+    rsc.get.anndata_to_CPU(adata_ge)
     return adata_ge
 
 

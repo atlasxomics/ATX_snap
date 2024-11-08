@@ -4,7 +4,6 @@ import math
 import numpy as np
 import pandas as pd
 import snapatac2 as snap
-import rapids_singlecell as rsc
 
 from scipy.sparse import vstack
 from typing import List
@@ -37,24 +36,24 @@ def add_clusters(
             f"Exception {e}: Please add metadata to combined AnnData."
         )
 
-    rsc.get.anndata_to_GPU(adata, convert_all=True)
     if n_runs > 1:
         logging.info("Performing batch correction with Harmony...")
-        rsc.pp.harmony(adata, "sample", max_iter_harmony=20)
+        snap.pp.harmony(adata, batch="sample", max_iter_harmony=20)
         rep = "X_spectral_harmony"
     else:
         rep = "X_spectral"
 
     # Add umap, nearest neightbors, clusters to .obs
-    rsc.tl.umap(adata)
-    rsc.pp.bbknn(adata, use_rep=rep)
-    rsc.tl.leiden(
+    snap.tl.umap(adata, use_rep=rep)
+    snap.pp.knn(adata, use_rep=rep)
+    snap.tl.leiden(
         adata,
         resolution=resolution,
         n_iterations=leiden_iters,
+        min_cluster_size=min_cluster_size,
         key_added="cluster"
     )
-    rsc.get.anndata_to_CPU(adata)
+
     return adata
 
 
