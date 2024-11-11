@@ -26,7 +26,7 @@ logging.basicConfig(
 )
 
 
-@custom_task(cpu=62, memory=975, storage_gib=4949)
+@custom_task(cpu=8, memory=975, storage_gib=4949)
 def motif_task(
     input_dir: LatchDir,
     runs: List[utils.Run],
