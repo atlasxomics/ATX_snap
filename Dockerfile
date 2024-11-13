@@ -19,16 +19,18 @@ ENV LANG='en_US.UTF-8'
 ARG DEBIAN_FRONTEND=noninteractive
 
 # Install base packages
-RUN apt-get install libz-dev wget
+RUN apt-get update -y && apt-get install -y libz-dev wget git
 
 # Latch SDK
 # DO NOT REMOVE
 RUN pip install latch==2.52.2
 RUN mkdir /opt/latch
 
-# Install pip dependencies from `requirements.txt`
+# Install specific version of numpy, pychromvar with chunks
 RUN pip install numpy==1.25.2
+RUN pip install --no-cache-dir git+https://github.com/pinellolab/pychromVAR.git@7fc47cb02ed36e0ce4c53c5c08bfe17b1ee626a7
 
+# Install pip dependencies from `requirements.txt`
 COPY requirements.txt /opt/latch/requirements.txt
 RUN pip install --requirement /opt/latch/requirements.txt
 

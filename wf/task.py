@@ -175,7 +175,7 @@ def snap_task(
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
 
 
-@custom_task(cpu=62, memory=975, storage_gib=4949)
+@custom_task(cpu=32, memory=128, storage_gib=4949)
 def motif_task(
     input_dir: LatchDir,
     runs: List[utils.Run],
@@ -210,7 +210,9 @@ def motif_task(
     cluster_peaks.X = cluster_peaks.X.astype(np.float64)
 
     logging.info("Computing motif deviation matrix...")
-    adata_motif = pc.compute_deviations(cluster_peaks, n_jobs=90)
+    adata_motif = pc.compute_deviations(
+        cluster_peaks, n_jobs=1, chunk_size=10000
+    )
 
     # Copy over cell data
     adata_motif.obs = cluster_peaks.obs
