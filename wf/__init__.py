@@ -1,11 +1,12 @@
 from typing import List
 
 from latch.resources.workflow import workflow
+from latch.types import LatchDir
 from latch.types.metadata import (
     LatchAuthor, LatchMetadata, LatchParameter, LatchRule
 )
 
-from wf.task import snap_task
+from wf.task import motif_task, snap_task
 from wf.utils import Run, Genome
 
 
@@ -136,26 +137,21 @@ def snap_workflow(
         clustering_iters=clustering_iters
     )
 
-    return results
+    motifs = motif_task(
+        input_dir=results,
+        runs=runs,
+        genome=genome,
+        project_name=project_name
+    )
 
-    # motifs = motif_task(
-    #     input_dir=results,
-    #     runs=runs,
-    #     genome=genome,
-    #     project_name=project_name
-    # )
-
-    # return motifs
+    return motifs
 
 
 if __name__ == "__main__":
-    from latch.types import LatchFile
+    import anndata
 
-    snap_task(
-        runs=[Run(
-            run_id="demo",
-            fragments_file=LatchFile("latch://13502.account/atac_outs/ds_D01033_NG01681/outs/ds_D01033_NG01681_fragments.tsv")
-        )],
-        genome="hg38",
-        project_name="dev—backed"
+    motif_task(
+        cluster_peaks=anndata.read_h5ad("cluster_peaks.h5ad"),
+        genome=Genome.hg38,
+        project_name="latch_dev"
     )
