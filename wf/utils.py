@@ -1,6 +1,8 @@
+import json
+
 from dataclasses import dataclass
 from enum import Enum
-import json
+from typing import List
 
 from latch.types import LatchFile, LatchDir
 
@@ -24,9 +26,13 @@ class Genome(Enum):
 class Run:
     run_id: str
     fragments_file: LatchFile
-    condition: str
-    spatial_dir: LatchDir
-    positions_file: LatchFile
+    condition: str = "None"
+    spatial_dir: LatchDir = LatchDir(
+        "latch:///spatials/demo/spatial/"
+    )
+    positions_file: LatchFile = LatchFile(
+        "latch:///spatials/demo/spatial/tissue_positions_list.csv"
+    )
 
 
 def get_channels(run: Run):
@@ -50,3 +56,18 @@ def get_genome_fasta(genome: str) -> LatchFile:
     }
 
     return LatchFile(fasta_paths[genome])
+
+
+def get_groups(runs: List[Run]):
+    """Set 'groups' list for differential analysis"""
+
+    samples = [run.run_id for run in runs]
+    conditions = list({run.condition for run in runs})
+
+    groups = ["cluster"]
+    if len(samples) > 1:
+        groups.append("sample")
+    if len(conditions) > 1:
+        groups.append("condition")
+
+    return groups
