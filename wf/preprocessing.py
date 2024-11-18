@@ -69,7 +69,7 @@ def add_metadata(run: Run, adata: anndata.AnnData) -> anndata.AnnData:
     positions["barcode"] = positions["barcode"] + "-1"
 
     # Merge fragments file with Anndata.obs
-    adata.obs["barcode"] = adata.obs.index
+    adata.obs["barcode"] = adata.obs_names
     adata.obs = adata.obs.merge(positions, on="barcode", how="left")
 
     # Set run_id, condition
@@ -96,18 +96,12 @@ def combine_anndata(
     AnnData.
     """
 
-    # Input AnnData must be backend for AnnDataSet, not in-memory.
-    logging.info("Converting AnnData objects to backend...")
-    adatas_be = [
-        convert_tobackend(adata, f"{name}") for
-        adata, name in zip(adatas, names)
-    ]
+    obs = adatas[0].to_memory().obs.columns # This is how we have to get obs :/
+    print(f"obs: {obs}")
 
-    # Convert to AnnDataSet; this is what tutorial does, can we just combine
-    # in-memory AnnData objects and bypass this read/write crap?
     logging.info("Creating AnnDataSet...")
     adataset = snap.AnnDataSet(
-        adatas=[(name, adata) for name, adata in zip(names, adatas_be)],
+        adatas=[(name, adata) for name, adata in zip(names, adatas)],
         filename=f"{filename}.h5ad"
     )
     logging.info(f"AnnDataSet created with shape {adataset.shape}")
@@ -116,24 +110,22 @@ def combine_anndata(
     if len(adataset.var_names) == 0:
         adataset.var_names = [str(i) for i in range(len(adatas[0].var_names))]
 
-    # Convert back to AnnData so we can add metadata :/
-    combined_adata = adataset.to_adata()
-
     # AnnDataSet does inherit .obs; add manually :/
-    combined_adata.obs = pd.concat([adata.obs for adata in adatas])
+    # adataset.obs = pd.concat([adata.obs for adata in adatas])
+    for ob in obs:
+        adataset.obs[ob] = adataset.adatas.obs[ob]
 
     # Ensure obs_names unique
-    combined_adata.obs_names = [
+    adataset.obs_names = [
         run_id + "#" + bc for
-        run_id, bc in
-        zip(combined_adata.obs["sample"], combined_adata.obs["barcode"])
+        run_id, bc in zip(adataset.obs["sample"], adataset.obs["barcode"])
     ]
 
     # AnnDataSet does not inherit .obsm; add manually :/
     frags = vstack([adata.obsm["fragment_paired"] for adata in adatas])
-    combined_adata.obsm["fragment_paired"] = frags
+    adataset.obsm["fragment_paired"] = frags
 
-    return combined_adata
+    return adataset
 
 
 def convert_tobackend(
@@ -196,7 +188,8 @@ def make_anndatas(
         [run.fragments_file.local_path for run in runs],
         chrom_sizes=genome_ref,
         min_num_fragments=min_frags,
-        sorted_by_barcode=False
+        sorted_by_barcode=False,
+        file=[f"{run.run_id}.h5ad" for run in runs]
     )
 
     # Add run_id, condition, spatial info to .obs, TSS enrichment
