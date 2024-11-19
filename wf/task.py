@@ -115,7 +115,7 @@ def snap_task(
     adata_gene.obs.to_csv("gene_metadata.csv")
     
     ft.rank_features(
-        adata_gene, groups=groups, feature_type="genes", save=out_dir, rsc
+        rsc, adata_gene, groups=groups, feature_type="genes", save=out_dir
     )
 
     # Plot heatmap for genes

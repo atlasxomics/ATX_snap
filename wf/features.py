@@ -4,6 +4,7 @@ import numpy as np
 import pychromvar as pc
 import scanpy as sc
 import snapatac2 as snap
+from typing import List, Optional
 
 from pyjaspar import jaspardb
 
@@ -184,7 +185,7 @@ def rank_features(
                 key_added=f"{group}_{feature_type}",
                 use_raw=use_raw
             )
-            rsc.get.anndata_to_CPU(adata_gene)
+            rsc.get.anndata_to_CPU(adata)
             
         # Write marker genes to csv
         sc.get.rank_genes_groups_df(

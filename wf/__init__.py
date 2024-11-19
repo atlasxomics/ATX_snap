@@ -121,7 +121,7 @@ def snap_workflow(
     tile_size: int = 5000,
     n_features: int = 25000,
     clustering_iters: int = 1
-) -> LatchDir:
+) -> None:
 
     results = snap_task(
         runs=runs,
@@ -137,15 +137,21 @@ def snap_workflow(
         clustering_iters=clustering_iters
     )
 
-    cluster_peaks, motifs = motif_task(
+    motifs = motif_task(
         input_dir=results,
+        runs=runs,
         genome=genome,
         project_name=project_name
     )
-    
-    return results
+
+    return motifs
 
 
 if __name__ == "__main__":
     import anndata
-    
+
+    motif_task(
+        cluster_peaks=anndata.read_h5ad("cluster_peaks.h5ad"),
+        genome=Genome.hg38,
+        project_name="latch_dev"
+    )
