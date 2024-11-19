@@ -152,10 +152,20 @@ if __name__ == "__main__":
     from latch.types import LatchFile
 
     snap_task(
-        runs=[Run(
-            run_id="demo",
-            fragments_file=LatchFile("latch://13502.account/atac_outs/ds_D01033_NG01681/outs/ds_D01033_NG01681_fragments.tsv")
-        )],
-        genome="hg38",
-        project_name="dev—backed"
+        runs=[
+            Run(
+                run_id="demo",
+                fragments_file=LatchFile("latch://13502.account/atac_outs/ds_D01033_NG01681/outs/ds_D01033_NG01681_fragments.tsv")
+            )
+        ],
+        genome=Genome.hg38,
+        project_name="dev—backed",
+        resolution=1.0,
+        leiden_iters=-1,
+        min_cluster_size=20,
+        min_tss=2.0,
+        min_frags=10,
+        tile_size=5000,
+        n_features=25000,
+        clustering_iters=1
     )

@@ -182,7 +182,7 @@ def make_anndatas(
 
     # Can't use a dict because of flyte
     genome_ref = snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
-
+    print("import")
     # As 'in_memory' so we can add metadata to .obs
     adatas = snap.pp.import_data(
         [run.fragments_file.local_path for run in runs],
@@ -191,7 +191,7 @@ def make_anndatas(
         sorted_by_barcode=False,
         file=[f"{run.run_id}.h5ad" for run in runs]
     )
-
+    print("metadata")
     # Add run_id, condition, spatial info to .obs, TSS enrichment
     adatas = [add_metadata(run, adata) for run, adata in zip(runs, adatas)]
 
