@@ -69,45 +69,45 @@ def snap_task(
     # Preprocessing -----------------------------------------------------------
     logging.info("Creating AnnData objects...")
     adatas = pp.make_anndatas(runs, genome, min_frags=min_frags)
+
     adatas = pp.filter_adatas(adatas, min_tss=min_tss)
 
     logging.info("Adding tile matrix to objects...")
     snap.pp.add_tile_matrix(adatas, bin_size=tile_size)
 
-    # if len(samples) > 1:
-    #     logging.info("Combining objects...")
-    #     adata = pp.combine_anndata(adatas, samples, filename="combined")
-    # else:
-    #     adata = adatas[0]
+    logging.info("Combining objects...")
+    adata = pp.combine_anndata(adatas, samples, filename="combined")
 
-    # logging.info(
-    #     f"Selecting features with {n_features} features and \
-    #     {clustering_iters} clustering iteration(s)"
-    # )
-    # snap.pp.select_features(
-    #     adata, n_features=n_features, max_iter=clustering_iters
-    # )
+    logging.info(
+        f"Selecting features with {n_features} features and \
+        {clustering_iters} clustering iteration(s)"
+    )
 
-    # logging.info("Performing dimensionality reduction...")
-    # adata = pp.add_clusters(adata, resolution, leiden_iters, min_cluster_size)
-    # adata = sp.add_spatial(adata)  # Add spatial coordinates to tixels
+    snap.pp.select_features(
+        adata, n_features=n_features, max_iter=clustering_iters
+    )
 
-    # # Plotting --
-    # pl.plot_umaps(adata, groups, f"{figures_dir}/umap.pdf")
-    # pl.plot_spatial(
-    #     adata,
-    #     samples,
-    #     "cluster",
-    #     f"{figures_dir}/spatial_dim.pdf",
-    #     pt_size=utils.pt_sizes[channels]["dim"]
-    # )
-    # pl.plot_spatial_qc(
-    #     adata,
-    #     samples,
-    #     qc_metrics,
-    #     f"{figures_dir}/spatial_qc.pdf",
-    #     pt_size=utils.pt_sizes[channels]["qc"]
-    # )
+    logging.info("Performing dimensionality reduction...")
+    adata = pp.add_clusters(adata, resolution, leiden_iters, min_cluster_size)
+    adata = sp.add_spatial(adata)  # Add spatial coordinates to tixels
+
+    # Plotting --
+    print(adata)
+    pl.plot_umaps(adata, groups, f"{figures_dir}/umap.pdf")
+    pl.plot_spatial(
+        adata,
+        samples,
+        "cluster",
+        f"{figures_dir}/spatial_dim.pdf",
+        pt_size=utils.pt_sizes[channels]["dim"]
+    )
+    pl.plot_spatial_qc(
+        adata,
+        samples,
+        qc_metrics,
+        f"{figures_dir}/spatial_qc.pdf",
+        pt_size=utils.pt_sizes[channels]["qc"]
+    )
 
     # # Genes ------------------------------------------------------------------
     # logging.info("Making gene matrix...")
@@ -131,7 +131,7 @@ def snap_task(
 
     # adata_gene.write(f"{out_dir}/combined_ge.h5ad")
 
-    # # Peaks ------------------------------------------------------------------
+    # # Peaks -----------------------------------------------------------------
     # peak_mats = {}
     # for group in groups:
 
@@ -166,7 +166,7 @@ def snap_task(
     #     ).to_csv(f"{out_dir}/marker_peaks_per_{group}.csv", index=False)
 
     logging.info("Writing combined anndata with peaks ...")
-    adatas.write(f"{out_dir}/combined.h5ad")
+    adata.close()
 
     # # Move scanpy plots
     # subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)

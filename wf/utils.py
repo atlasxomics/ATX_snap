@@ -1,4 +1,6 @@
+import anndata
 import json
+import snapatac2 as snap
 
 from dataclasses import dataclass
 from enum import Enum
@@ -26,13 +28,9 @@ class Genome(Enum):
 class Run:
     run_id: str
     fragments_file: LatchFile
+    spatial_dir: LatchDir
+    positions_file: LatchFile
     condition: str = "None"
-    spatial_dir: LatchDir = LatchDir(
-        "latch:///spatials/demo/spatial/"
-    )
-    positions_file: LatchFile = LatchFile(
-        "latch:///spatials/demo/spatial/tissue_positions_list.csv"
-    )
 
 
 def get_channels(run: Run):
@@ -71,3 +69,14 @@ def get_groups(runs: List[Run]):
         groups.append("condition")
 
     return groups
+
+
+def refresh_adata(adata: anndata.AnnData, file_name: str) -> anndata.AnnData:
+    """Running with snapATAC2 backend results in .h5ad files frequently being
+    closed, necessitating that they be regularly reopened with r+ permissions
+    in order to be modified.  Here, we ensure the object is closed and then
+    reopen with r+.
+    """
+    adata = adata.close()
+    adata = snap.read(f"{file_name}.h5ad", "r+")
+    return adata

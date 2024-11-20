@@ -149,13 +149,15 @@ def snap_workflow(
 
 
 if __name__ == "__main__":
-    from latch.types import LatchFile
+    from latch.types import LatchDir, LatchFile
 
     snap_task(
         runs=[
             Run(
                 run_id="demo",
-                fragments_file=LatchFile("latch://13502.account/atac_outs/ds_D01033_NG01681/outs/ds_D01033_NG01681_fragments.tsv")
+                fragments_file=LatchFile("latch://13502.account/atac_outs/ds_D01033_NG01681/outs/ds_D01033_NG01681_fragments.tsv"),
+                spatial_dir=LatchDir("latch:///spatials/demo/spatial_50x/"),
+                positions_file=LatchFile("latch:///spatials/demo/spatial_50x/tissue_positions_list.csv")
             )
         ],
         genome=Genome.hg38,

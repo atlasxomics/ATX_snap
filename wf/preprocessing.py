@@ -8,7 +8,7 @@ import snapatac2 as snap
 from scipy.sparse import vstack
 from typing import List
 
-from wf.utils import Genome, Run
+from wf.utils import Genome, Run, refresh_adata
 
 
 logging.basicConfig(
@@ -67,14 +67,18 @@ def add_metadata(run: Run, adata: anndata.AnnData) -> anndata.AnnData:
 
     # Match barcodes in adata/fragments_file
     positions["barcode"] = positions["barcode"] + "-1"
+    positions.set_index("barcode", inplace=True)
 
     # Merge fragments file with Anndata.obs
     adata.obs["barcode"] = adata.obs_names
-    adata.obs = adata.obs.merge(positions, on="barcode", how="left")
+
+    obs_names_series = pd.Series(adata.obs_names, index=adata.obs_names)
+    for col in positions.columns:
+        adata.obs[col] = obs_names_series.map(positions[col])
 
     # Set run_id, condition
-    adata.obs["sample"] = run.run_id
-    adata.obs["condition"] = run.condition
+    adata.obs["sample"] = [run.run_id] * len(adata.obs_names)
+    adata.obs["condition"] = [run.condition] * len(adata.obs_names)
 
     # Ensure obs_names unique
     adata.obs_names = [
@@ -96,8 +100,9 @@ def combine_anndata(
     AnnData.
     """
 
-    obs = adatas[0].to_memory().obs.columns # This is how we have to get obs :/
-    print(f"obs: {obs}")
+    # obs/obsm not inherited automatically, need to be set at beginning
+    obs = adatas[0].to_memory().obs.columns
+    frags = vstack([adata.obsm["fragment_paired"] for adata in adatas])
 
     logging.info("Creating AnnDataSet...")
     adataset = snap.AnnDataSet(
@@ -111,7 +116,6 @@ def combine_anndata(
         adataset.var_names = [str(i) for i in range(len(adatas[0].var_names))]
 
     # AnnDataSet does inherit .obs; add manually :/
-    # adataset.obs = pd.concat([adata.obs for adata in adatas])
     for ob in obs:
         adataset.obs[ob] = adataset.adatas.obs[ob]
 
@@ -121,31 +125,9 @@ def combine_anndata(
         run_id, bc in zip(adataset.obs["sample"], adataset.obs["barcode"])
     ]
 
-    # AnnDataSet does not inherit .obsm; add manually :/
-    frags = vstack([adata.obsm["fragment_paired"] for adata in adatas])
     adataset.obsm["fragment_paired"] = frags
 
     return adataset
-
-
-def convert_tobackend(
-    adata: anndata.AnnData, filename: str
-) -> anndata.AnnData:
-    """Create a new backend AnnData object; necessary for creating AnnDataSet;
-    saves each AnnData object to disk as .h5ad.
-    """
-
-    adata_backend = snap.AnnData(
-        filename=f"{filename}_backend.h5ad",
-        X=adata.X,
-        obs=adata.obs,
-        var=adata.var,
-        uns=adata.uns,
-        obsm=dict(adata.obsm)
-    )
-    adata_backend.obs_names = adata.obs_names
-
-    return adata_backend
 
 
 def filter_adatas(
@@ -155,12 +137,16 @@ def filter_adatas(
     """
 
     # Filter 'off tissue' tixels
-    try:
-        adatas = [adata[adata.obs["on_off"] == 1] for adata in adatas]
-    except KeyError as e:
-        logging.warning(
-            f"Exception {e}: no positions data found in AnnData.obs"
-        )
+    print("filtering")
+    for adata in adatas:
+        if "on_off" in adata.obs:
+            try:
+                obs_indices = (adata.obs["on_off"] == 1).to_numpy().nonzero()[0]
+                adata.subset(obs_indices=obs_indices)
+            except Exception as e:
+                logging.warning(f"Exception {e}: Error while subsetting AnnData.")
+        else:
+            logging.warning("No 'on_off' data found in AnnData.obs.")
 
     # Filter cells by tss, max_counts
     snap.pp.filter_cells(
@@ -182,8 +168,7 @@ def make_anndatas(
 
     # Can't use a dict because of flyte
     genome_ref = snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
-    print("import")
-    # As 'in_memory' so we can add metadata to .obs
+
     adatas = snap.pp.import_data(
         [run.fragments_file.local_path for run in runs],
         chrom_sizes=genome_ref,
@@ -191,21 +176,30 @@ def make_anndatas(
         sorted_by_barcode=False,
         file=[f"{run.run_id}.h5ad" for run in runs]
     )
-    print("metadata")
+
+    # Read back into memory to ensure write access, it's dumb
+    adatas = [
+        refresh_adata(adata, run.run_id) for adata, run in zip(adatas, runs)
+    ]
+
     # Add run_id, condition, spatial info to .obs, TSS enrichment
     adatas = [add_metadata(run, adata) for run, adata in zip(runs, adatas)]
 
     # Add addtional QCs
     snap.metrics.tsse(adatas, genome_ref)
 
+    adatas = [
+        refresh_adata(adata, run.run_id) for adata, run in zip(adatas, runs)
+    ]
+
     for adata in adatas:
 
         if min_frags == 0:  # Convert 0 to NA
             logging.warning("Converting 0's to NA in .obs['n_fragment']")
-            adata.obs["n_fragment"] = adata.obs["n_fragment"].apply(
+            adata.obs["n_fragment"] = pd.Series(adata.obs["n_fragment"]).apply(
                 lambda x: np.nan if x <= 0 else x
             )
 
-        adata.obs["log10_frags"] = adata.obs["n_fragment"].apply(math.log10)
+        adata.obs["log10_frags"] = pd.Series(adata.obs["n_fragment"]).apply(math.log10)
 
     return adatas
