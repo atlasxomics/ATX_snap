@@ -182,9 +182,9 @@ def rank_features(
             rsc.tl.rank_genes_groups_logreg(
                 adata,
                 groupby=group,
-                key_added=f"{group}_{feature_type}",
                 use_raw=use_raw
             )
+            adata.uns[f"{group}_{feature_type}"] = adata.uns.pop('rank_genes_groups')
             rsc.get.anndata_to_CPU(adata)
             
         # Write marker genes to csv
