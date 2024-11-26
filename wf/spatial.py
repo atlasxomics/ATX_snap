@@ -1,4 +1,5 @@
 import anndata
+import squidpy as sq
 
 
 def add_spatial(
@@ -7,5 +8,16 @@ def add_spatial(
     """Add move x and y coordinates from .obs to .obsm["spatial"] for squidpy.
     """
     adata.obsm["spatial"] = adata.obs[[y_key, x_key]].values
+
+    return adata
+
+
+def neighbrohood_analysis(
+    adata: anndata.AnnData, cluster_key: str = "cluster"
+) -> anndata.Anndata:
+    """Perform squidpy Neighbors enrichment analysis
+    """
+    sq.gr.spatial_neighbors(adata, coord_type="grid", n_neighs=4, n_rings=1)
+    sq.gr.nhood_enrichment(adata, cluster_key=cluster_key)
 
     return adata
