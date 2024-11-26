@@ -28,9 +28,11 @@ RUN mkdir /opt/latch
 RUN pip3 uninstall -y awscli boto3 botocore s3transfer
 RUN pip3 install awscli
 
-# Install pip dependencies from `requirements.txt`
+# Install specific version of numpy, pychromvar with chunks
 RUN pip install numpy==1.25.2
+RUN pip install --no-cache-dir git+https://github.com/pinellolab/pychromVAR.git@7fc47cb02ed36e0ce4c53c5c08bfe17b1ee626a7
 
+# Install pip dependencies from `requirements.txt`
 COPY requirements.txt /opt/latch/requirements.txt
 RUN pip install --requirement /opt/latch/requirements.txt
 RUN pip install 'rapids-singlecell[rapids12]' --extra-index-url=https://pypi.nvidia.com

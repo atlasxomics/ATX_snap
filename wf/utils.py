@@ -67,3 +67,4 @@ def get_groups(runs: List[Run]):
         groups.append("condition")
 
     return groups
+

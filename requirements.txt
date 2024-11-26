@@ -15,7 +15,6 @@ pandas==2.1.1
 plotly==5.23.0
 polars==1.6.0
 pyarrow==17.0.0
-pychromvar==0.0.4
 PyGSP==0.5.1
 pyjaspar==3.0.0
 PyJWT==2.8.0

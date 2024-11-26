@@ -7,6 +7,7 @@ import snapatac2 as snap
 from typing import List, Optional
 
 from pyjaspar import jaspardb
+from typing import List, Optional
 
 
 logging.basicConfig(
@@ -121,16 +122,17 @@ def make_geneadata(
     if adata_ge.X.dtype not in [np.bool_, np.float32, np.float64, np.complex64, np.complex128]:
         adata_ge.X = adata_ge.X.astype(np.float64)
     rsc.get.anndata_to_GPU(adata_ge)
+    
     rsc.pp.filter_genes(adata_ge, min_count=min_counts)
+    
     logging.info("Normalizing matrix and computing log...")
     rsc.pp.normalize_total(adata_ge)
     rsc.pp.log1p(adata_ge)
     
-    if "X_spectral_harmony" in adata.obsm:  # batch correction if > 1 sample
-        rsc.get.anndata_to_CPU(adata_ge)
-        logging.info("Batch correction with MAGIC...")
-        sc.external.pp.magic(adata_ge, solver="approximate")
-        rsc.get.anndata_to_GPU(adata_ge)
+    logging.info("Batch correction with MAGIC...")
+    rsc.get.anndata_to_CPU(adata_ge)
+    sc.external.pp.magic(adata_ge, solver="approximate")
+    rsc.get.anndata_to_GPU(adata_ge)
 
     rsc.pp.calculate_qc_metrics(
         adata_ge, qc_vars="mt", log1p=True
@@ -168,7 +170,7 @@ def rank_features(
     for group in groups:
 
         logging.info(f"Finding marker genes for {group}s...")
-        
+
         if adata.obs[group].cat.categories.size <= 2:
             sc.tl.rank_genes_groups(
                 adata,
@@ -194,4 +196,4 @@ def rank_features(
             key=f"{group}_{feature_type}",
             pval_cutoff=pval_cutoff,
         ).to_csv(f"{save}/marker_{feature_type}_per_{group}.csv", index=False)
-        
+
