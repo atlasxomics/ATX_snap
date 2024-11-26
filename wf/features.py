@@ -4,6 +4,7 @@ import numpy as np
 import pychromvar as pc
 import scanpy as sc
 import snapatac2 as snap
+from typing import List, Optional
 
 from pyjaspar import jaspardb
 from typing import List, Optional
@@ -40,6 +41,7 @@ def get_motifs(
 
 
 def make_peakmatrix(
+    rsc,
     adata: anndata.AnnData,
     genome: str,
     key: str,
@@ -65,19 +67,24 @@ def make_peakmatrix(
     adata_p.obsm = adata.obsm
 
     if log_norm:
-        sc.pp.log1p(adata_p)
+        if adata_p.X.dtype not in [np.bool_, np.float32, np.float64, np.complex64, np.complex128]:
+            adata_p.X = adata_p.X.astype(np.float64)
+        rsc.get.anndata_to_GPU(adata_p)
+        rsc.pp.log1p(adata_p)
+        rsc.get.anndata_to_CPU(adata_p)
 
     return adata_p
 
 
 def make_geneadata(
+    rsc,
     adata: anndata.AnnData,
     genome: str,
     min_counts: int = 1,
     min_cells: int = 1,
 ) -> anndata.AnnData:
     """Create an AnnData object where X is a Gene Expression Matrix; .obs is
-    inherited from input AnnData; filter genes with low cells, counts.
+    inherited from input AnnData;
     Parameters recapitulate ArchR defaults.
     """
 
@@ -110,21 +117,27 @@ def make_geneadata(
     adata_ge.var["mt"] = adata_ge.var_names.str.startswith("MT-")
     adata_ge = adata_ge[:, ~adata_ge.var["mt"]].copy()
     print(f"post-filtering shape: {adata_ge.shape}")
-
-    sc.pp.filter_genes(adata_ge, min_counts=min_counts)
+    
     sc.pp.filter_genes(adata_ge, min_cells=min_cells)
-
+    if adata_ge.X.dtype not in [np.bool_, np.float32, np.float64, np.complex64, np.complex128]:
+        adata_ge.X = adata_ge.X.astype(np.float64)
+    rsc.get.anndata_to_GPU(adata_ge)
+    
+    rsc.pp.filter_genes(adata_ge, min_count=min_counts)
+    
     logging.info("Normalizing matrix and computing log...")
-    sc.pp.normalize_total(adata_ge)
-    sc.pp.log1p(adata_ge)
-
+    rsc.pp.normalize_total(adata_ge)
+    rsc.pp.log1p(adata_ge)
+    
     logging.info("Batch correction with MAGIC...")
+    rsc.get.anndata_to_CPU(adata_ge)
     sc.external.pp.magic(adata_ge, solver="approximate")
+    rsc.get.anndata_to_GPU(adata_ge)
 
-    sc.pp.calculate_qc_metrics(
-        adata_ge, qc_vars="mt", inplace=True, log1p=True
+    rsc.pp.calculate_qc_metrics(
+        adata_ge, qc_vars="mt", log1p=True
     )
-
+    rsc.get.anndata_to_CPU(adata_ge)
     return adata_ge
 
 
@@ -141,6 +154,7 @@ def make_motifmatrix(
 
 
 def rank_features(
+    rsc,
     adata: anndata.AnnData,
     groups: List[str],
     feature_type: str,
@@ -156,14 +170,25 @@ def rank_features(
     for group in groups:
 
         logging.info(f"Finding marker genes for {group}s...")
-        sc.tl.rank_genes_groups(
-            adata,
-            groupby=group,
-            method="t-test",
-            key_added=f"{group}_{feature_type}",
-            use_raw=use_raw
-        )
 
+        if adata.obs[group].cat.categories.size <= 2:
+            sc.tl.rank_genes_groups(
+                adata,
+                groupby=group,
+                method="t-test",
+                key_added=f"{group}_{feature_type}",
+                use_raw=use_raw
+            )
+        else:
+            rsc.get.anndata_to_GPU(adata)
+            rsc.tl.rank_genes_groups_logreg(
+                adata,
+                groupby=group,
+                use_raw=use_raw
+            )
+            adata.uns[f"{group}_{feature_type}"] = adata.uns.pop('rank_genes_groups')
+            rsc.get.anndata_to_CPU(adata)
+            
         # Write marker genes to csv
         sc.get.rank_genes_groups_df(
             adata,
@@ -171,3 +196,4 @@ def rank_features(
             key=f"{group}_{feature_type}",
             pval_cutoff=pval_cutoff,
         ).to_csv(f"{save}/marker_{feature_type}_per_{group}.csv", index=False)
+

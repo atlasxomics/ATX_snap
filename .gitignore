@@ -7,4 +7,4 @@ venv/
 
 .latch
 
-**/*.h5ad
+# **/*.h5ad
