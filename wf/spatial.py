@@ -14,7 +14,7 @@ def add_spatial(
 
 def neighbrohood_analysis(
     adata: anndata.AnnData, cluster_key: str = "cluster"
-) -> anndata.Anndata:
+) -> anndata.AnnData:
     """Perform squidpy Neighbors enrichment analysis
     """
     sq.gr.spatial_neighbors(adata, coord_type="grid", n_neighs=4, n_rings=1)
