@@ -5,6 +5,7 @@ import os
 import pychromvar as pc
 import scanpy as sc
 import snapatac2 as snap
+import squidpy as sq
 import subprocess
 
 from typing import List, Tuple
@@ -107,6 +108,18 @@ def snap_task(
         qc_metrics,
         f"{figures_dir}/spatial_qc.pdf",
         pt_size=utils.pt_sizes[channels]["qc"]
+    )
+
+    # Neighbrohood enrichment plot
+    adata = sp.neighbrohood_analysis(adata)
+    sq.pl.nhood_enrichment(
+        adata,
+        cluster_key="cluster",
+        method="single",
+        cmap="inferno",
+        vmin=-50,
+        vmax=100,
+        save="neighborhood_enrichemnt.pdf"
     )
 
     # Genes ------------------------------------------------------------------
