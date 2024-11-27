@@ -94,6 +94,8 @@ def snap_task(
     # Plotting --
     print(adata)
     pl.plot_umaps(adata, groups, f"{figures_dir}/umap.pdf")
+    import pdb
+    pdb.set_trace()
     pl.plot_spatial(
         adata,
         samples,

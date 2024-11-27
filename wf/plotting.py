@@ -61,38 +61,56 @@ def plot_spatial(
     output_path: str,
     pt_size: int = 75
 ) -> None:
-    """Plot cells spatially, color by metadata stored in .obs. The function
-    creates a plot for each run and saves to a .pdf, with four runs per page.
     """
+    Plot spatial projections, color by metadata stored in .obs.
+    Creates a plot for each batch of samples and saves to a PDF using Plotly.
+    """
+    # Create a Plotly PDF writer
+    pdf_pages = []
 
-    with PdfPages(output_path) as pdf:
-        for i in range(0, len(samples), 4):
+    for i in range(0, len(samples), 4):
+        sample_batch = samples[i:i + 4]
 
-            sample_batch = samples[i:i + 4]
-            fig, axs = plt.subplots(2, 2, figsize=(10, 10))
-            axs = axs.flatten()
+        # Create a 2x2 grid layout for the samples in the batch
+        fig = make_subplots(
+            rows=2,
+            cols=2,
+            subplot_titles=[f"{sample}: {color_by}" for sample in sample_batch]
+        )
 
-            for i, sample in enumerate(sample_batch):
+        for j, sample in enumerate(sample_batch):
+            # Subset the data for the current sample
+            obs_indices = (adata.obs["sample"] == sample).to_numpy().nonzero()[0]
+            adata_sub = adata.subset(obs_indices=obs_indices, out=sample)[0]
 
-                sq.pl.spatial_scatter(
-                    adata[adata.obs["sample"] == sample],
-                    color=color_by,
-                    size=pt_size,
-                    shape=None,
-                    library_id=sample,
-                    ax=axs[i],
-                    title=f"{sample}: {color_by}"
-                )
-                axs[i].axis("off")
+            # Generate the spatial plot using snapatac2
+            umap_fig = snap.pl.umap(
+                adata_sub,
+                color=color_by,
+                use_rep="spatial",
+                marker_size=pt_size,
+                show=False  # Ensure it returns a Plotly figure
+            )
 
-            # Ensure empty plots are not displayed
-            for j in range(len(sample_batch), 4):
-                axs[j].axis("off")
+            # Add each trace from the UMAP Plotly figure to the subplot
+            row, col = divmod(j, 2)
+            for trace in umap_fig.data:
+                fig.add_trace(trace, row=row + 1, col=col + 1)
 
-        plt.tight_layout()
+        # Adjust layout for better aesthetics
+        fig.update_layout(
+            height=800,
+            width=800,
+            showlegend=False,
+            title=f"Spatial Plots: {color_by}"
+        )
 
-        pdf.savefig(fig)
-        plt.close(fig)
+        # Save the current figure to the list of PDF pages
+        pdf_pages.append(fig)
+
+    # Save all figures to a PDF file
+    with open(output_path, "wb") as f:
+        pio.write_image(pdf_pages, file=f)
 
 
 def plot_spatial_qc(
