@@ -1,39 +1,57 @@
 import anndata
 import matplotlib.pyplot as plt
+import plotly.io as pio
 import scanpy as sc
+import snapatac2 as snap
 import squidpy as sq
 
 from matplotlib.backends.backend_pdf import PdfPages
+from plotly.subplots import make_subplots
 from typing import List
 
 
 def plot_umaps(
     adata: anndata.AnnData, groups: List[str], output_path: str
 ) -> None:
-    """Create a figure with UMAPs colored categorical metadata.
+    """Create a figure with UMAPs colored by categorical metadata using
+    snapatac2.pl.umap.
     """
+    # Create a 2x2 grid for subplots
+    rows = 2
+    cols = 2
+    fig = make_subplots(
+        rows=rows,
+        cols=cols,
+        subplot_titles=[f"UMAP: colored by {group}" for group in groups]
+    )
 
-    _, axs = plt.subplots(2, 2, figsize=(10, 10))
-    axs = axs.flatten()
+    # Iterate over groups and generate UMAP plots
+    for idx, group in enumerate(groups):
+        row = idx // cols + 1
+        col = idx % cols + 1
 
-    for i in range(len(groups)):
-        group = groups[i]
-        sc.pl.umap(
+        umap_plot = snap.pl.umap(
             adata,
-            s=10,
             color=group,
-            ax=axs[i],
             show=False,
-            title=f"UMAP: colored by {group}"
+            interactive=False
         )
 
-    # Ensure empty plots are not displayed
-    for j in range(len(axs)):
-        axs[j].axis("off")
+        # Add the trace from the UMAP plot to the subplot
+        for trace in umap_plot.data:
+            fig.add_trace(trace, row=row, col=col)
 
-    plt.tight_layout()
+    # Update the layout
+    fig.update_layout(
+        height=800,
+        width=800,
+        title="UMAPs Colored by Groups",
+        showlegend=False,
+        plot_bgcolor="rgba(0,0,0,0)"
+    )
 
-    plt.savefig(output_path)
+    # Save the figure
+    pio.write_image(fig, output_path)
 
 
 def plot_spatial(
