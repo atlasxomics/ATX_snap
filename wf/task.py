@@ -121,8 +121,8 @@ def snap_task(
         pt_size=utils.pt_sizes[channels]["qc"]
     )
 
-    # Neighbrohood enrichment plot
-    adata = sp.neighbrohood_analysis(adata)
+    # Neighbrohood enrichment plot, Ripley's plot
+    adata = sp.squidpy_analysis(adata)
     sq.pl.nhood_enrichment(
         adata,
         cluster_key="cluster",
@@ -130,8 +130,9 @@ def snap_task(
         cmap="inferno",
         vmin=-50,
         vmax=100,
-        save="neighborhood_enrichemnt.pdf"
+        save="neighborhood_enrichemnt.pdf",
     )
+    sq.pl.ripley(adata, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
 
     # Genes ------------------------------------------------------------------
     logging.info("Making gene matrix...")
