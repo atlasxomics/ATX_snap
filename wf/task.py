@@ -92,10 +92,10 @@ def snap_task(
     adata = sp.add_spatial(adata)  # Add spatial coordinates to tixels
 
     # Plotting --
-    print(adata)
-    pl.plot_umaps(adata, groups, f"{figures_dir}/umap.pdf")
     import pdb
     pdb.set_trace()
+    adata_mem = adata.to_adata()
+    pl.plot_umaps(adata, groups, f"{figures_dir}/umap.pdf")
     pl.plot_spatial(
         adata,
         samples,

@@ -1,57 +1,39 @@
 import anndata
 import matplotlib.pyplot as plt
-import plotly.io as pio
 import scanpy as sc
-import snapatac2 as snap
 import squidpy as sq
 
 from matplotlib.backends.backend_pdf import PdfPages
-from plotly.subplots import make_subplots
 from typing import List
 
 
 def plot_umaps(
     adata: anndata.AnnData, groups: List[str], output_path: str
 ) -> None:
-    """Create a figure with UMAPs colored by categorical metadata using
-    snapatac2.pl.umap.
+    """Create a figure with UMAPs colored categorical metadata.
     """
-    # Create a 2x2 grid for subplots
-    rows = 2
-    cols = 2
-    fig = make_subplots(
-        rows=rows,
-        cols=cols,
-        subplot_titles=[f"UMAP: colored by {group}" for group in groups]
-    )
 
-    # Iterate over groups and generate UMAP plots
-    for idx, group in enumerate(groups):
-        row = idx // cols + 1
-        col = idx % cols + 1
+    _, axs = plt.subplots(2, 2, figsize=(10, 10))
+    axs = axs.flatten()
 
-        umap_plot = snap.pl.umap(
+    for i in range(len(groups)):
+        group = groups[i]
+        sc.pl.umap(
             adata,
+            s=10,
             color=group,
+            ax=axs[i],
             show=False,
-            interactive=False
+            title=f"UMAP: colored by {group}"
         )
 
-        # Add the trace from the UMAP plot to the subplot
-        for trace in umap_plot.data:
-            fig.add_trace(trace, row=row, col=col)
+    # Ensure empty plots are not displayed
+    for j in range(len(axs)):
+        axs[j].axis("off")
 
-    # Update the layout
-    fig.update_layout(
-        height=800,
-        width=800,
-        title="UMAPs Colored by Groups",
-        showlegend=False,
-        plot_bgcolor="rgba(0,0,0,0)"
-    )
+    plt.tight_layout()
 
-    # Save the figure
-    pio.write_image(fig, output_path)
+    plt.savefig(output_path)
 
 
 def plot_spatial(
@@ -61,56 +43,38 @@ def plot_spatial(
     output_path: str,
     pt_size: int = 75
 ) -> None:
+    """Plot cells spatially, color by metadata stored in .obs. The function
+    creates a plot for each run and saves to a .pdf, with four runs per page.
     """
-    Plot spatial projections, color by metadata stored in .obs.
-    Creates a plot for each batch of samples and saves to a PDF using Plotly.
-    """
-    # Create a Plotly PDF writer
-    pdf_pages = []
 
-    for i in range(0, len(samples), 4):
-        sample_batch = samples[i:i + 4]
+    with PdfPages(output_path) as pdf:
+        for i in range(0, len(samples), 4):
 
-        # Create a 2x2 grid layout for the samples in the batch
-        fig = make_subplots(
-            rows=2,
-            cols=2,
-            subplot_titles=[f"{sample}: {color_by}" for sample in sample_batch]
-        )
+            sample_batch = samples[i:i + 4]
+            fig, axs = plt.subplots(2, 2, figsize=(10, 10))
+            axs = axs.flatten()
 
-        for j, sample in enumerate(sample_batch):
-            # Subset the data for the current sample
-            obs_indices = (adata.obs["sample"] == sample).to_numpy().nonzero()[0]
-            adata_sub = adata.subset(obs_indices=obs_indices, out=sample)[0]
+            for i, sample in enumerate(sample_batch):
 
-            # Generate the spatial plot using snapatac2
-            umap_fig = snap.pl.umap(
-                adata_sub,
-                color=color_by,
-                use_rep="spatial",
-                marker_size=pt_size,
-                show=False  # Ensure it returns a Plotly figure
-            )
+                sc.pl.umap(adata, s=10, color="cluster", show=False)
+                sc.pl.umap(
+                    adata[adata.obs["sample"] == sample],
+                    s=10,
+                    color=color_by,
+                    ax=axs[i],
+                    show=False,
+                    title=f"{sample}: {color_by}"
+                )
+                axs[i].axis("off")
 
-            # Add each trace from the UMAP Plotly figure to the subplot
-            row, col = divmod(j, 2)
-            for trace in umap_fig.data:
-                fig.add_trace(trace, row=row + 1, col=col + 1)
+            # Ensure empty plots are not displayed
+            for j in range(len(sample_batch), 4):
+                axs[j].axis("off")
 
-        # Adjust layout for better aesthetics
-        fig.update_layout(
-            height=800,
-            width=800,
-            showlegend=False,
-            title=f"Spatial Plots: {color_by}"
-        )
+        plt.tight_layout()
 
-        # Save the current figure to the list of PDF pages
-        pdf_pages.append(fig)
-
-    # Save all figures to a PDF file
-    with open(output_path, "wb") as f:
-        pio.write_image(pdf_pages, file=f)
+        pdf.savefig(fig)
+        plt.close(fig)
 
 
 def plot_spatial_qc(

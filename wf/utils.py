@@ -4,7 +4,7 @@ import snapatac2 as snap
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import List
+from typing import List, Optional
 
 from latch.types import LatchFile, LatchDir
 
@@ -31,6 +31,20 @@ class Run:
     spatial_dir: LatchDir
     positions_file: LatchFile
     condition: str = "None"
+
+
+def copy_adata(
+    adata: anndata.AnnData,
+    obs: Optional[List[str]] = ["sample", "n_fragment", "frac_dup", "frac_mito", "barcode", "on_off", "row", "col", "xcor", "ycor", "condition", "tsse", "log10_frags", "cluster"],
+    var: Optional[List[str]] = None,
+    uns: Optional[List[str]] = None,
+    obsm: Optional[List[str]] = ["spatial", "X_umap"],
+    obsp: Optional[List[str]] = None,
+) -> anndata.AnnData:
+    """From AnnData backend, make a lightweight copy for plotting.
+    """
+    new
+
 
 
 def get_channels(run: Run):
