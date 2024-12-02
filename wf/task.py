@@ -1,4 +1,5 @@
 import anndata
+import glob
 import logging
 import numpy as np
 import os
@@ -92,6 +93,16 @@ def snap_task(
     logging.info("Performing dimensionality reduction...")
     adata = pp.add_clusters(adata, resolution, leiden_iters, min_cluster_size)
     adata = sp.add_spatial(adata)  # Add spatial coordinates to tixels
+
+    # bedgraphs --
+    for group in groups:
+        coverage_dir = f"{out_dir}/{group}_coverages"
+        os.makedirs(coverage_dir, exist_ok=True)
+        snap.ex.export_coverage(
+            adata, groupby=group, suffix=f"{group}.bedgraph.gz"
+        )
+        bgs = glob.glob("*.bedgraph.gz")
+        subprocess.run(["mv"] + bgs + [coverage_dir])
 
     # Plotting --
     pl.plot_umaps(adata, groups, f"{figures_dir}/umap.pdf")
