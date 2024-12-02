@@ -12,12 +12,11 @@ def add_spatial(
     return adata
 
 
-def neighbrohood_analysis(
+def squidpy_analysis(
     adata: anndata.AnnData, cluster_key: str = "cluster"
-) -> anndata.AnnData:
-    """Perform squidpy Neighbors enrichment analysis
+) -> None:
+    """Perform squidpy Neighbors enrichment analysis.
     """
     sq.gr.spatial_neighbors(adata, coord_type="grid", n_neighs=4, n_rings=1)
     sq.gr.nhood_enrichment(adata, cluster_key=cluster_key)
-
-    return adata
+    sq.gr.ripley(adata, cluster_key="cluster", mode="L", max_dist=500)
