@@ -92,19 +92,19 @@ def snap_task(
     adata = sp.add_spatial(adata)  # Add spatial coordinates to tixels
 
     # Plotting --
-    import pdb
-    pdb.set_trace()
-    adata_mem = adata.to_adata()
-    pl.plot_umaps(adata, groups, f"{figures_dir}/umap.pdf")
+    # Make a lightweight copy of obs, obsm for plotting
+    adata_plot = utils.copy_adata(adata, groups)
+
+    pl.plot_umaps(adata_plot, groups, f"{figures_dir}/umap.pdf")
     pl.plot_spatial(
-        adata,
+        adata_plot,
         samples,
         "cluster",
         f"{figures_dir}/spatial_dim.pdf",
         pt_size=utils.pt_sizes[channels]["dim"]
     )
     pl.plot_spatial_qc(
-        adata,
+        adata_plot,
         samples,
         qc_metrics,
         f"{figures_dir}/spatial_qc.pdf",
@@ -133,45 +133,45 @@ def snap_task(
 
     # adata_gene.write(f"{out_dir}/combined_ge.h5ad")
 
-    # # Peaks -----------------------------------------------------------------
-    # peak_mats = {}
-    # for group in groups:
+    # Peaks -----------------------------------------------------------------
+    peak_mats = {}
+    for group in groups:
 
-    #     logging.info(f"Calling peaks for {group}s...")
-    #     snap.tl.macs3(
-    #         adata,
-    #         groupby=group,
-    #         shift=-75,
-    #         extsize=150,
-    #         qvalue=0.1,
-    #         key_added=f"{group}_peaks"
-    #     )
+        logging.info(f"Calling peaks for {group}s...")
+        snap.tl.macs3(
+            adata,
+            groupby=group,
+            shift=-75,
+            extsize=150,
+            qvalue=0.1,
+            key_added=f"{group}_peaks"
+        )
 
-    #     logging.info("Making peak matrix AnnData...")
-    #     anndata_peak = ft.make_peakmatrix(
-    #         adata, genome, f"{group}_peaks", log_norm=True
-    #     )
+        logging.info("Making peak matrix AnnData...")
+        anndata_peak = ft.make_peakmatrix(
+            adata, genome, f"{group}_peaks", log_norm=True
+        )
 
-    #     peak_mats[group] = anndata_peak
+        peak_mats[group] = anndata_peak
 
-    #     logging.info("Finded marker peaks ...")
-    #     sc.tl.rank_genes_groups(
-    #         peak_mats[group], groupby=group, method="wilcoxon"
-    #     )
+        logging.info("Finded marker peaks ...")
+        sc.tl.rank_genes_groups(
+            peak_mats[group], groupby=group, method="wilcoxon"
+        )
 
-    #     logging.info("Writing peak matrix ...")
-    #     anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData
+        logging.info("Writing peak matrix ...")
+        anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData
 
-    #     logging.info("Writing marker peaks to .csv ...")
-    #     sc.get.rank_genes_groups_df(  # Save as csv
-    #         peak_mats[group], group=None, pval_cutoff=0.05, log2fc_min=0.1
-    #     ).to_csv(f"{out_dir}/marker_peaks_per_{group}.csv", index=False)
+        logging.info("Writing marker peaks to .csv ...")
+        sc.get.rank_genes_groups_df(  # Save as csv
+            peak_mats[group], group=None, pval_cutoff=0.05, log2fc_min=0.1
+        ).to_csv(f"{out_dir}/marker_peaks_per_{group}.csv", index=False)
 
     logging.info("Writing combined anndata with peaks ...")
     adata.close()
 
     # # Move scanpy plots
-    # subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
+    subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
 
     logging.info("Uploading data to Latch ...")
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")

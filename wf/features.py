@@ -43,7 +43,9 @@ def make_peakmatrix(
     adata: anndata.AnnData,
     genome: str,
     key: str,
-    log_norm: bool = True
+    log_norm: bool = True,
+    obs: Optional[List[str]] = ["n_fragment", "tsse", "log10_frags"],
+    obsm: Optional[List[str]] = ["spatial", "X_umap"]
 ) -> anndata.AnnData:
     """Given an AnnData object with macs2 peak calls stored in .uns[key],
     returns a new AnnData object with X a peak count matrix.
@@ -61,8 +63,12 @@ def make_peakmatrix(
     adata_p = snap.pp.make_peak_matrix(adata, use_rep=merged_peaks["Peaks"])
 
     # Copy over cell data
-    adata_p.obs = adata.obs
-    adata_p.obsm = adata.obsm
+    for ob in obs:
+        adata_p.obs[ob] = adata.obs[ob]
+    for ob in obsm:
+        adata_p.obsm[ob] = adata.obsm[ob]
+        if type(adata_p.obsm[ob]) is not np.ndarray:
+            adata_p.obsm[ob] = adata_p.obsm[ob].to_numpy()
 
     if log_norm:
         sc.pp.log1p(adata_p)
