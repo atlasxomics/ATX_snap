@@ -6,7 +6,7 @@ from latch.types.metadata import (
     LatchAuthor, LatchMetadata, LatchParameter, LatchRule
 )
 
-from wf.task import motif_task, snap_task
+from wf.task import snap_task
 from wf.utils import Run, Genome
 
 
@@ -136,22 +136,38 @@ def snap_workflow(
         n_features=n_features,
         clustering_iters=clustering_iters
     )
+    return results
 
-    motifs = motif_task(
-        input_dir=results,
-        runs=runs,
-        genome=genome,
-        project_name=project_name
-    )
+    # motifs = motif_task(
+    #     input_dir=results,
+    #     runs=runs,
+    #     genome=genome,
+    #     project_name=project_name
+    # )
 
-    return motifs
+    # return motifs
 
 
 if __name__ == "__main__":
-    import anndata
+    from latch.types import LatchDir, LatchFile
 
-    motif_task(
-        cluster_peaks=anndata.read_h5ad("cluster_peaks.h5ad"),
+    snap_task(
+        runs=[
+            Run(
+                run_id="demo",
+                fragments_file=LatchFile("latch://13502.account/atac_outs/ds_D01033_NG01681/outs/ds_D01033_NG01681_fragments.tsv"),
+                spatial_dir=LatchDir("latch:///spatials/demo/spatial_50x/"),
+                positions_file=LatchFile("latch:///spatials/demo/spatial_50x/tissue_positions_list.csv")
+            )
+        ],
         genome=Genome.hg38,
-        project_name="latch_dev"
+        project_name="dev—backed",
+        resolution=1.0,
+        leiden_iters=-1,
+        min_cluster_size=20,
+        min_tss=2.0,
+        min_frags=10,
+        tile_size=5000,
+        n_features=25000,
+        clustering_iters=1
     )
