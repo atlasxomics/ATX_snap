@@ -1,8 +1,11 @@
+import anndata
 import json
+import numpy as np
+import snapatac2 as snap
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import List
+from typing import List, Optional
 
 from latch.types import LatchFile, LatchDir
 
@@ -29,6 +32,32 @@ class Run:
     spatial_dir: LatchDir
     positions_file: LatchFile
     condition: str = "None"
+
+
+def copy_adata(
+    adata: anndata.AnnData,
+    groups: List[str],
+    obs: Optional[List[str]] = ["n_fragment", "tsse", "log10_frags", "sample", "cluster"],
+    obsm: Optional[List[str]] = ["spatial", "X_umap"]
+) -> anndata.AnnData:
+    """From SnapATAC2 backend, make a lightweight AnnData copy for plotting.
+    """
+    new_adata = anndata.AnnData()
+
+    if "condition" in groups:
+        obs.append("condition")
+
+    for ob in obs:
+        new_adata.obs[ob] = adata.obs[ob]
+
+    for ob in obsm:
+        new_adata.obsm[ob] = adata.obsm[ob]
+        if type(new_adata.obsm[ob]) is not np.ndarray:
+            new_adata.obsm[ob] = new_adata.obsm[ob].to_numpy()
+
+    new_adata.obs_names = adata.obs_names
+
+    return new_adata
 
 
 def get_channels(run: Run):
@@ -68,3 +97,13 @@ def get_groups(runs: List[Run]):
 
     return groups
 
+
+def refresh_adata(adata: anndata.AnnData, file_name: str) -> anndata.AnnData:
+    """Running with snapATAC2 backend results in .h5ad files frequently being
+    closed, necessitating that they be regularly reopened with r+ permissions
+    in order to be modified.  Here, we ensure the object is closed and then
+    reopen with r+.
+    """
+    adata = adata.close()
+    adata = snap.read(f"{file_name}.h5ad", "r+")
+    return adata

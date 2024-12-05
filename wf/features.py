@@ -39,43 +39,7 @@ def get_motifs(
 
     return adata
 
-
-def make_peakmatrix(
-    rsc,
-    adata: anndata.AnnData,
-    genome: str,
-    key: str,
-    log_norm: bool = True
-) -> anndata.AnnData:
-    """Given an AnnData object with macs2 peak calls stored in .uns[key],
-    returns a new AnnData object with X a peak count matrix.
-    """
-
-    peaks = adata.uns[key]
-
-    if not isinstance(peaks, dict):  # Convert to dict for merge_peaks()
-        peaks = {"0": adata.uns[key]}
-
-    # Can't use a dict because of flyte
-    genome_ref = snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
-    merged_peaks = snap.tl.merge_peaks(peaks, genome_ref)
-
-    adata_p = snap.pp.make_peak_matrix(adata, use_rep=merged_peaks["Peaks"])
-
-    # Copy over cell data
-    adata_p.obs = adata.obs
-    adata_p.obsm = adata.obsm
-
-    if log_norm:
-        if adata_p.X.dtype not in [np.bool_, np.float32, np.float64, np.complex64, np.complex128]:
-            adata_p.X = adata_p.X.astype(np.float64)
-        rsc.get.anndata_to_GPU(adata_p)
-        rsc.pp.log1p(adata_p)
-        rsc.get.anndata_to_CPU(adata_p)
-
-    return adata_p
-
-
+  
 def make_geneadata(
     rsc,
     adata: anndata.AnnData,
@@ -98,13 +62,16 @@ def make_geneadata(
         gene_anno=genome_ref,
         upstream=5000,  # ArchR default
         downstream=0,  # ArchR default
-        include_gene_body=True  # Use genebody, not TSS, per ArchR
+        include_gene_body=True,  # Use genebody, not TSS, per ArchR
+        counting_strategy="paired-insertion"  # Not ArchR, but better?
     )
 
     # Copy adata .obsm
     for obsm in ["X_umap", "X_spectral_harmony", "spatial"]:
         try:
             adata_ge.obsm[obsm] = adata.obsm[obsm]
+            if type(adata_ge.obsm[obsm]) is not np.ndarray:
+                adata_ge.obsm[obsm] = adata_ge.obsm[obsm].to_numpy()
         except Exception as e:
             logging.warning(
                 f"Exception {e}: no annotation {obsm} found for observations."
@@ -153,6 +120,45 @@ def make_motifmatrix(
     return pc.compute_deviations(adata, n_jobs=n_jobs)
 
 
+def make_peakmatrix(
+    adata: anndata.AnnData,
+    genome: str,
+    key: str,
+    log_norm: bool = True,
+    obs: Optional[List[str]] = ["n_fragment", "tsse", "log10_frags"],
+    obsm: Optional[List[str]] = ["spatial", "X_umap"]
+) -> anndata.AnnData:
+    """Given an AnnData object with macs2 peak calls stored in .uns[key],
+    returns a new AnnData object with X a peak count matrix.
+    """
+
+    peaks = adata.uns[key]
+
+    if not isinstance(peaks, dict):  # Convert to dict for merge_peaks()
+        peaks = {"0": adata.uns[key]}
+
+    # Can't use a dict because of flyte
+    genome_ref = snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
+    merged_peaks = snap.tl.merge_peaks(peaks, genome_ref)
+
+    adata_p = snap.pp.make_peak_matrix(
+        adata, use_rep=merged_peaks["Peaks"]
+    )
+
+    # Copy over cell data
+    for ob in obs:
+        adata_p.obs[ob] = adata.obs[ob]
+    for ob in obsm:
+        adata_p.obsm[ob] = adata.obsm[ob]
+        if type(adata_p.obsm[ob]) is not np.ndarray:
+            adata_p.obsm[ob] = adata_p.obsm[ob].to_numpy()
+
+    if log_norm:
+        sc.pp.log1p(adata_p)
+
+    return adata_p
+
+
 def rank_features(
     rsc,
     adata: anndata.AnnData,
@@ -190,10 +196,12 @@ def rank_features(
             rsc.get.anndata_to_CPU(adata)
             
         # Write marker genes to csv
-        sc.get.rank_genes_groups_df(
-            adata,
-            group=None,
-            key=f"{group}_{feature_type}",
-            pval_cutoff=pval_cutoff,
-        ).to_csv(f"{save}/marker_{feature_type}_per_{group}.csv", index=False)
-
+        if save:
+            sc.get.rank_genes_groups_df(
+                adata,
+                group=None,
+                key=f"{group}_{feature_type}",
+                pval_cutoff=pval_cutoff,
+            ).to_csv(
+                f"{save}/marker_{feature_type}_per_{group}.csv", index=False
+            )

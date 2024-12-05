@@ -1,4 +1,5 @@
 import anndata
+import pandas as pd
 import squidpy as sq
 
 
@@ -7,7 +8,11 @@ def add_spatial(
 ) -> anndata.AnnData:
     """Add move x and y coordinates from .obs to .obsm["spatial"] for squidpy.
     """
-    adata.obsm["spatial"] = adata.obs[[y_key, x_key]].values
+    xcor = adata.obs[x_key]
+    ycor = adata.obs[y_key]
+
+    spatial_df = pd.DataFrame({xcor.name: xcor, ycor.name: ycor})
+    adata.obsm["spatial"] = spatial_df
 
     return adata
 
