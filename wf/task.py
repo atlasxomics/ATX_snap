@@ -28,7 +28,7 @@ logging.basicConfig(
 )
 
 
-@custom_task(cpu=62, memory=384, storage_gib=4949)
+@custom_task(cpu=62, memory=300, storage_gib=4949)
 def snap_task(
     runs: List[utils.Run],
     genome: utils.Genome,
@@ -71,10 +71,12 @@ def snap_task(
     # Preprocessing -----------------------------------------------------------
     logging.info("Creating AnnData objects...")
     adatas = pp.make_anndatas(runs, genome, min_frags=min_frags)
+    
+    logging.info("Filtering AnnData objects...")
     adatas = pp.filter_adatas(adatas, min_tss=min_tss)
 
     logging.info("Adding tile matrix to objects...")
-    snap.pp.add_tile_matrix(adatas, bin_size=tile_size)
+    snap.pp.add_tile_matrix(adatas, bin_size=tile_size, n_jobs=len(adatas))
 
     if len(samples) > 1:
         logging.info("Combining objects...")
@@ -105,16 +107,19 @@ def snap_task(
         subprocess.run(["mv"] + bgs + [coverage_dir])
 
     # Plotting --
-    pl.plot_umaps(adata, groups, f"{figures_dir}/umap.pdf")
+    # Make a lightweight copy of obs, obsm for plotting
+    adata_plot = utils.copy_adata(adata, groups)
+
+    pl.plot_umaps(adata_plot, groups, f"{figures_dir}/umap.pdf")
     pl.plot_spatial(
-        adata,
+        adata_plot,
         samples,
         "cluster",
         f"{figures_dir}/spatial_dim.pdf",
         pt_size=utils.pt_sizes[channels]["dim"]
     )
     pl.plot_spatial_qc(
-        adata,
+        adata_plot,
         samples,
         qc_metrics,
         f"{figures_dir}/spatial_qc.pdf",
@@ -122,9 +127,9 @@ def snap_task(
     )
 
     # Neighbrohood enrichment plot, Ripley's plot
-    adata = sp.squidpy_analysis(adata)
+    adata = sp.squidpy_analysis(adata_plot)
     sq.pl.nhood_enrichment(
-        adata,
+        adata_plot,
         cluster_key="cluster",
         method="single",
         cmap="inferno",
@@ -132,7 +137,9 @@ def snap_task(
         vmax=100,
         save="neighborhood_enrichemnt.pdf",
     )
-    sq.pl.ripley(adata, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
+    sq.pl.ripley(
+        adata_plot, cluster_key="cluster", mode="L", save="ripleys_L.pdf"
+    )
 
     # Genes ------------------------------------------------------------------
     logging.info("Making gene matrix...")
@@ -160,6 +167,8 @@ def snap_task(
     peak_mats = {}
     for group in groups:
 
+        n_jobs = len(adata.obs[group].unique())
+
         logging.info(f"Calling peaks for {group}s...")
         snap.tl.macs3(
             adata,
@@ -167,7 +176,8 @@ def snap_task(
             shift=-75,
             extsize=150,
             qvalue=0.1,
-            key_added=f"{group}_peaks"
+            key_added=f"{group}_peaks",
+            n_jobs=n_jobs
         )
 
         logging.info("Making peak matrix AnnData...")
@@ -191,7 +201,7 @@ def snap_task(
         ).to_csv(f"{out_dir}/marker_peaks_per_{group}.csv", index=False)
 
     logging.info("Writing combined anndata with peaks ...")
-    adata.write(f"{out_dir}/combined.h5ad")
+    adata.close()
 
     # Move scanpy plots
     subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
