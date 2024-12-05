@@ -86,8 +86,6 @@ def snap_task(
         {clustering_iters} clustering iteration(s)"
     )
 
-    adata = utils.refresh_adata(adata, "combined")
-
     snap.pp.select_features(
         adata, n_features=n_features, max_iter=clustering_iters
     )
@@ -127,7 +125,7 @@ def snap_task(
     )
 
     # Neighbrohood enrichment plot, Ripley's plot
-    adata = sp.squidpy_analysis(adata_plot)
+    adata_plot = sp.squidpy_analysis(adata_plot)
     sq.pl.nhood_enrichment(
         adata_plot,
         cluster_key="cluster",
