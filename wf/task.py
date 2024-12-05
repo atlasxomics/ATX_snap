@@ -71,23 +71,23 @@ def snap_task(
     # Preprocessing -----------------------------------------------------------
     logging.info("Creating AnnData objects...")
     adatas = pp.make_anndatas(runs, genome, min_frags=min_frags)
-    
+
     logging.info("Filtering AnnData objects...")
     adatas = pp.filter_adatas(adatas, min_tss=min_tss)
 
     logging.info("Adding tile matrix to objects...")
     snap.pp.add_tile_matrix(adatas, bin_size=tile_size, n_jobs=len(adatas))
 
-    if len(samples) > 1:
-        logging.info("Combining objects...")
-        adata = pp.combine_anndata(adatas, samples, filename="combined")
-    else:
-        adata = adatas[0]
+    logging.info("Combining objects...")
+    adata = pp.combine_anndata(adatas, samples, filename="combined.h5ad")
 
     logging.info(
         f"Selecting features with {n_features} features and \
         {clustering_iters} clustering iteration(s)"
     )
+
+    adata = utils.refresh_adata(adata, "combined")
+
     snap.pp.select_features(
         adata, n_features=n_features, max_iter=clustering_iters
     )
