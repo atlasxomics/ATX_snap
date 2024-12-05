@@ -1,10 +1,12 @@
 import anndata
+import glob
 import logging
 import numpy as np
 import os
 import pychromvar as pc
 import scanpy as sc
 import snapatac2 as snap
+import squidpy as sq
 import subprocess
 
 from typing import List, Tuple
@@ -92,6 +94,16 @@ def snap_task(
     adata = pp.add_clusters(adata, resolution, leiden_iters, min_cluster_size)
     adata = sp.add_spatial(adata)  # Add spatial coordinates to tixels
 
+    # bedgraphs --
+    for group in groups:
+        coverage_dir = f"{out_dir}/{group}_coverages"
+        os.makedirs(coverage_dir, exist_ok=True)
+        snap.ex.export_coverage(
+            adata, groupby=group, suffix=f"{group}.bedgraph.gz"
+        )
+        bgs = glob.glob("*.bedgraph.gz")
+        subprocess.run(["mv"] + bgs + [coverage_dir])
+
     # Plotting --
     pl.plot_umaps(adata, groups, f"{figures_dir}/umap.pdf")
     pl.plot_spatial(
@@ -108,6 +120,19 @@ def snap_task(
         f"{figures_dir}/spatial_qc.pdf",
         pt_size=utils.pt_sizes[channels]["qc"]
     )
+
+    # Neighbrohood enrichment plot, Ripley's plot
+    adata = sp.squidpy_analysis(adata)
+    sq.pl.nhood_enrichment(
+        adata,
+        cluster_key="cluster",
+        method="single",
+        cmap="inferno",
+        vmin=-50,
+        vmax=100,
+        save="neighborhood_enrichemnt.pdf",
+    )
+    sq.pl.ripley(adata, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
 
     # Genes ------------------------------------------------------------------
     logging.info("Making gene matrix...")
