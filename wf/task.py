@@ -12,7 +12,7 @@ import subprocess
 from typing import List, Tuple
 
 from latch import message
-from latch.resources.tasks import custom_task
+from latch.resources.tasks import custom_task, small_gpu_task, large_gpu_task
 from latch.types import LatchDir, LatchFile
 
 import wf.features as ft
@@ -21,14 +21,14 @@ import wf.preprocessing as pp
 import wf.spatial as sp
 import wf.utils as utils
 
-
+import rapids_singlecell as rsc
 logging.basicConfig(
     format="%(levelname)s - %(asctime)s - %(message)s",
     level=logging.INFO
 )
 
 
-@custom_task(cpu=62, memory=300, storage_gib=4949)
+@large_gpu_task()
 def snap_task(
     runs: List[utils.Run],
     genome: utils.Genome,
@@ -141,11 +141,10 @@ def snap_task(
 
     # Genes ------------------------------------------------------------------
     logging.info("Making gene matrix...")
-    adata_gene = ft.make_geneadata(adata, genome)
+    adata_gene = ft.make_geneadata(rsc, adata, genome)
     adata_gene.obs.to_csv("gene_metadata.csv")
-
     ft.rank_features(
-        adata_gene, groups=groups, feature_type="genes", save=out_dir
+        rsc, adata_gene, groups=groups, feature_type="genes", save=out_dir
     )
 
     # Plot heatmap for genes
@@ -180,16 +179,18 @@ def snap_task(
 
         logging.info("Making peak matrix AnnData...")
         anndata_peak = ft.make_peakmatrix(
-            adata, genome, f"{group}_peaks", log_norm=True
+            rsc, adata, genome, f"{group}_peaks", log_norm=True
         )
 
         peak_mats[group] = anndata_peak
-
         logging.info("Finded marker peaks ...")
-        sc.tl.rank_genes_groups(
+        
+        rsc.get.anndata_to_GPU(anndata_peak)
+        rsc.tl.rank_genes_groups_logreg(
             peak_mats[group], groupby=group, method="wilcoxon"
         )
-
+        rsc.get.anndata_to_CPU(anndata_peak)
+        
         logging.info("Writing peak matrix ...")
         anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData
 
@@ -282,6 +283,7 @@ def motif_task(
             f"latch:///snap_outs/{project_name}/motifs"
         )
     )
+
 
 
 if __name__ == "__main__":
