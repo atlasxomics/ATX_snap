@@ -4,6 +4,7 @@ import math
 import numpy as np
 import pandas as pd
 import snapatac2 as snap
+import time
 
 from scipy.sparse import vstack
 from typing import List
@@ -27,7 +28,9 @@ def add_clusters(
     """
 
     # Dimensionality reduction
-    snap.tl.spectral(adata)
+    t1 = time.time()
+    snap.tl.spectral(adata, chunk_size=200000)
+    print("spectral", t1 - time.time())
 
     try:
         n_runs = len(adata.obs["sample"].unique())
@@ -92,12 +95,9 @@ def add_metadata(run: Run, adata: anndata.AnnData) -> anndata.AnnData:
 def combine_anndata(
     adatas: List[anndata.AnnData],
     names: List[str],
-    filename: str = "combined"
+    filename: str
 ) -> anndata.AnnData:
     """Combines a list of AnnData objects into a combined AnnData object.
-    Converts in-memory AnnData to backend, saving to disk as .h5ad.
-    Combines as AnnDataSet (object written to disk as .h5ad), then back to
-    AnnData.
     """
 
     # obs/obsm not inherited automatically, need to be set at beginning
@@ -107,7 +107,7 @@ def combine_anndata(
     logging.info("Creating AnnDataSet...")
     adataset = snap.AnnDataSet(
         adatas=[(name, adata) for name, adata in zip(names, adatas)],
-        filename=f"{filename}.h5ad"
+        filename=filename
     )
     logging.info(f"AnnDataSet created with shape {adataset.shape}")
 
@@ -137,7 +137,6 @@ def filter_adatas(
     """
 
     # Filter 'off tissue' tixels
-    print("filtering")
     for adata in adatas:
         if "on_off" in adata.obs:
             try:
@@ -150,7 +149,11 @@ def filter_adatas(
 
     # Filter cells by tss, max_counts
     snap.pp.filter_cells(
-        adatas, min_tsse=min_tss, min_counts=None, max_counts=1e7
+        adatas,
+        min_tsse=min_tss,
+        min_counts=None,
+        max_counts=1e7,
+        n_jobs=len(adatas)
     )
 
     return adatas
@@ -168,14 +171,19 @@ def make_anndatas(
 
     # Can't use a dict because of flyte
     genome_ref = snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
+    n_jobs = len(runs)  # Ensure thread for each run
 
+    t1 = time.time()
     adatas = snap.pp.import_data(
         [run.fragments_file.local_path for run in runs],
         chrom_sizes=genome_ref,
         min_num_fragments=min_frags,
         sorted_by_barcode=False,
-        file=[f"{run.run_id}.h5ad" for run in runs]
+        file=[f"{run.run_id}.h5ad" for run in runs],
+        chunk_size=20000,
+        n_jobs=n_jobs
     )
+    print("Time!", time.time()-t1)
 
     # Read back into memory to ensure write access, it's dumb
     adatas = [
@@ -186,7 +194,7 @@ def make_anndatas(
     adatas = [add_metadata(run, adata) for run, adata in zip(runs, adatas)]
 
     # Add addtional QCs
-    snap.metrics.tsse(adatas, genome_ref)
+    snap.metrics.tsse(adatas, genome_ref, n_jobs=n_jobs)
 
     adatas = [
         refresh_adata(adata, run.run_id) for adata, run in zip(adatas, runs)

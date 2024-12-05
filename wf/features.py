@@ -4,6 +4,7 @@ import numpy as np
 import pychromvar as pc
 import scanpy as sc
 import snapatac2 as snap
+import time
 
 from pyjaspar import jaspardb
 from typing import List, Optional
@@ -37,43 +38,6 @@ def get_motifs(
     pc.match_motif(adata, motifs=motifs)
 
     return adata
-
-
-def make_peakmatrix(
-    adata: anndata.AnnData,
-    genome: str,
-    key: str,
-    log_norm: bool = True,
-    obs: Optional[List[str]] = ["n_fragment", "tsse", "log10_frags"],
-    obsm: Optional[List[str]] = ["spatial", "X_umap"]
-) -> anndata.AnnData:
-    """Given an AnnData object with macs2 peak calls stored in .uns[key],
-    returns a new AnnData object with X a peak count matrix.
-    """
-
-    peaks = adata.uns[key]
-
-    if not isinstance(peaks, dict):  # Convert to dict for merge_peaks()
-        peaks = {"0": adata.uns[key]}
-
-    # Can't use a dict because of flyte
-    genome_ref = snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
-    merged_peaks = snap.tl.merge_peaks(peaks, genome_ref)
-
-    adata_p = snap.pp.make_peak_matrix(adata, use_rep=merged_peaks["Peaks"])
-
-    # Copy over cell data
-    for ob in obs:
-        adata_p.obs[ob] = adata.obs[ob]
-    for ob in obsm:
-        adata_p.obsm[ob] = adata.obsm[ob]
-        if type(adata_p.obsm[ob]) is not np.ndarray:
-            adata_p.obsm[ob] = adata_p.obsm[ob].to_numpy()
-
-    if log_norm:
-        sc.pp.log1p(adata_p)
-
-    return adata_p
 
 
 def make_geneadata(
@@ -144,6 +108,47 @@ def make_motifmatrix(
         adata.X = adata.X.astype(np.float64)
 
     return pc.compute_deviations(adata, n_jobs=n_jobs)
+
+
+def make_peakmatrix(
+    adata: anndata.AnnData,
+    genome: str,
+    key: str,
+    log_norm: bool = True,
+    obs: Optional[List[str]] = ["n_fragment", "tsse", "log10_frags"],
+    obsm: Optional[List[str]] = ["spatial", "X_umap"]
+) -> anndata.AnnData:
+    """Given an AnnData object with macs2 peak calls stored in .uns[key],
+    returns a new AnnData object with X a peak count matrix.
+    """
+
+    peaks = adata.uns[key]
+
+    if not isinstance(peaks, dict):  # Convert to dict for merge_peaks()
+        peaks = {"0": adata.uns[key]}
+
+    # Can't use a dict because of flyte
+    genome_ref = snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
+    merged_peaks = snap.tl.merge_peaks(peaks, genome_ref)
+
+    t1 = time.time()
+    adata_p = snap.pp.make_peak_matrix(
+        adata, use_rep=merged_peaks["Peaks"], chunk_size=5000
+    )
+    print(t1 - time.time())
+
+    # Copy over cell data
+    for ob in obs:
+        adata_p.obs[ob] = adata.obs[ob]
+    for ob in obsm:
+        adata_p.obsm[ob] = adata.obsm[ob]
+        if type(adata_p.obsm[ob]) is not np.ndarray:
+            adata_p.obsm[ob] = adata_p.obsm[ob].to_numpy()
+
+    if log_norm:
+        sc.pp.log1p(adata_p)
+
+    return adata_p
 
 
 def rank_features(

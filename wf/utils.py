@@ -37,19 +37,15 @@ class Run:
 def copy_adata(
     adata: anndata.AnnData,
     groups: List[str],
-    obs: Optional[List[str]] = ["n_fragment", "tsse", "log10_frags"],
+    obs: Optional[List[str]] = ["n_fragment", "tsse", "log10_frags", "sample", "cluster"],
     obsm: Optional[List[str]] = ["spatial", "X_umap"]
 ) -> anndata.AnnData:
     """From SnapATAC2 backend, make a lightweight AnnData copy for plotting.
     """
-    if "sample" not in groups:
-        groups.append("sample")
     new_adata = anndata.AnnData()
 
-    for group in groups:
-        new_adata.obs[group] = adata.obs[group]
-
-    new_adata.obs_names = adata.obs_names
+    if "condition" in groups:
+        obs.append("condition")
 
     for ob in obs:
         new_adata.obs[ob] = adata.obs[ob]
@@ -58,6 +54,8 @@ def copy_adata(
         new_adata.obsm[ob] = adata.obsm[ob]
         if type(new_adata.obsm[ob]) is not np.ndarray:
             new_adata.obsm[ob] = new_adata.obsm[ob].to_numpy()
+
+    new_adata.obs_names = adata.obs_names
 
     return new_adata
 

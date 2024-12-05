@@ -6,6 +6,7 @@ import pychromvar as pc
 import scanpy as sc
 import snapatac2 as snap
 import subprocess
+import time
 
 from typing import List, Tuple
 
@@ -70,13 +71,18 @@ def snap_task(
     logging.info("Creating AnnData objects...")
     adatas = pp.make_anndatas(runs, genome, min_frags=min_frags)
 
+    logging.info("Filtering AnnData objects...")
     adatas = pp.filter_adatas(adatas, min_tss=min_tss)
 
     logging.info("Adding tile matrix to objects...")
-    snap.pp.add_tile_matrix(adatas, bin_size=tile_size)
+    t1 = time.time()
+    snap.pp.add_tile_matrix(
+        adatas, bin_size=tile_size, n_jobs=len(adatas), chunk_size=5000
+    )
+    print("tile", t1 - time.time())
 
     logging.info("Combining objects...")
-    adata = pp.combine_anndata(adatas, samples, filename="combined")
+    adata = pp.combine_anndata(adatas, samples, f"{out_dir}/combined.h5ad")
 
     logging.info(
         f"Selecting features with {n_features} features and \
@@ -137,6 +143,8 @@ def snap_task(
     peak_mats = {}
     for group in groups:
 
+        n_jobs = len(adata.obs[group].unique())
+
         logging.info(f"Calling peaks for {group}s...")
         snap.tl.macs3(
             adata,
@@ -144,7 +152,8 @@ def snap_task(
             shift=-75,
             extsize=150,
             qvalue=0.1,
-            key_added=f"{group}_peaks"
+            key_added=f"{group}_peaks",
+            n_jobs=n_jobs
         )
 
         logging.info("Making peak matrix AnnData...")
@@ -154,7 +163,7 @@ def snap_task(
 
         peak_mats[group] = anndata_peak
 
-        logging.info("Finded marker peaks ...")
+        logging.info("Finding marker peaks ...")
         sc.tl.rank_genes_groups(
             peak_mats[group], groupby=group, method="wilcoxon"
         )
@@ -170,7 +179,7 @@ def snap_task(
     logging.info("Writing combined anndata with peaks ...")
     adata.close()
 
-    # # Move scanpy plots
+    # Move scanpy plots
     subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
 
     logging.info("Uploading data to Latch ...")
