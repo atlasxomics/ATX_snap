@@ -5,7 +5,7 @@ from latch.types.metadata import (
     LatchAuthor, LatchMetadata, LatchParameter, LatchRule
 )
 
-from wf.task import snap_task
+from wf.task import motif_task, snap_task
 from wf.utils import Run, Genome
 
 
@@ -136,16 +136,14 @@ def snap_workflow(
         clustering_iters=clustering_iters
     )
 
-    return results
+    motifs = motif_task(
+        input_dir=results,
+        runs=runs,
+        genome=genome,
+        project_name=project_name
+    )
 
-    # motifs = motif_task(
-    #     input_dir=results,
-    #     runs=runs,
-    #     genome=genome,
-    #     project_name=project_name
-    # )
-
-    # return motifs
+    return motifs
 
 
 if __name__ == "__main__":

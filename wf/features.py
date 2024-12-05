@@ -4,7 +4,6 @@ import numpy as np
 import pychromvar as pc
 import scanpy as sc
 import snapatac2 as snap
-import time
 
 from pyjaspar import jaspardb
 from typing import List, Optional
@@ -61,13 +60,16 @@ def make_geneadata(
         gene_anno=genome_ref,
         upstream=5000,  # ArchR default
         downstream=0,  # ArchR default
-        include_gene_body=True  # Use genebody, not TSS, per ArchR
+        include_gene_body=True,  # Use genebody, not TSS, per ArchR
+        counting_strategy="paired-insertion"  # Not ArchR, but better?
     )
 
     # Copy adata .obsm
     for obsm in ["X_umap", "X_spectral_harmony", "spatial"]:
         try:
             adata_ge.obsm[obsm] = adata.obsm[obsm]
+            if type(adata_ge.obsm[obsm]) is not np.ndarray:
+                adata_ge.obsm[obsm] = adata_ge.obsm[obsm].to_numpy()
         except Exception as e:
             logging.warning(
                 f"Exception {e}: no annotation {obsm} found for observations."
@@ -131,11 +133,9 @@ def make_peakmatrix(
     genome_ref = snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
     merged_peaks = snap.tl.merge_peaks(peaks, genome_ref)
 
-    t1 = time.time()
     adata_p = snap.pp.make_peak_matrix(
-        adata, use_rep=merged_peaks["Peaks"], chunk_size=5000
+        adata, use_rep=merged_peaks["Peaks"]
     )
-    print(t1 - time.time())
 
     # Copy over cell data
     for ob in obs:
@@ -176,9 +176,12 @@ def rank_features(
         )
 
         # Write marker genes to csv
-        sc.get.rank_genes_groups_df(
-            adata,
-            group=None,
-            key=f"{group}_{feature_type}",
-            pval_cutoff=pval_cutoff,
-        ).to_csv(f"{save}/marker_{feature_type}_per_{group}.csv", index=False)
+        if save:
+            sc.get.rank_genes_groups_df(
+                adata,
+                group=None,
+                key=f"{group}_{feature_type}",
+                pval_cutoff=pval_cutoff,
+            ).to_csv(
+                f"{save}/marker_{feature_type}_per_{group}.csv", index=False
+            )

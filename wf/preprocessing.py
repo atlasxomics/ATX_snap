@@ -4,7 +4,6 @@ import math
 import numpy as np
 import pandas as pd
 import snapatac2 as snap
-import time
 
 from scipy.sparse import vstack
 from typing import List
@@ -28,9 +27,7 @@ def add_clusters(
     """
 
     # Dimensionality reduction
-    t1 = time.time()
-    snap.tl.spectral(adata, chunk_size=200000)
-    print("spectral", t1 - time.time())
+    snap.tl.spectral(adata)
 
     try:
         n_runs = len(adata.obs["sample"].unique())
@@ -173,17 +170,14 @@ def make_anndatas(
     genome_ref = snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
     n_jobs = len(runs)  # Ensure thread for each run
 
-    t1 = time.time()
     adatas = snap.pp.import_data(
         [run.fragments_file.local_path for run in runs],
         chrom_sizes=genome_ref,
         min_num_fragments=min_frags,
         sorted_by_barcode=False,
         file=[f"{run.run_id}.h5ad" for run in runs],
-        chunk_size=20000,
         n_jobs=n_jobs
     )
-    print("Time!", time.time()-t1)
 
     # Read back into memory to ensure write access, it's dumb
     adatas = [
