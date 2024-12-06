@@ -184,13 +184,13 @@ def snap_task(
 
         peak_mats[group] = anndata_peak
         logging.info("Finded marker peaks ...")
-        
+
         rsc.get.anndata_to_GPU(anndata_peak)
         rsc.tl.rank_genes_groups_logreg(
             peak_mats[group], groupby=group, method="wilcoxon"
         )
         rsc.get.anndata_to_CPU(anndata_peak)
-        
+
         logging.info("Writing peak matrix ...")
         anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData
 
@@ -209,7 +209,7 @@ def snap_task(
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
 
 
-@custom_task(cpu=32, memory=128, storage_gib=4949)
+@large_gpu_task
 def motif_task(
     input_dir: LatchDir,
     runs: List[utils.Run],
@@ -253,7 +253,7 @@ def motif_task(
     adata_motif.obsm = cluster_peaks.obsm
 
     ft.rank_features(
-        adata_motif, groups=groups, feature_type="motifs", save=out_dir
+        rsc, adata_motif, groups=groups, feature_type="motifs", save=out_dir
     )
 
     # Plot heatmap for motifs
@@ -283,7 +283,6 @@ def motif_task(
             f"latch:///snap_outs/{project_name}/motifs"
         )
     )
-
 
 
 if __name__ == "__main__":

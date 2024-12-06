@@ -39,7 +39,7 @@ def get_motifs(
 
     return adata
 
-  
+
 def make_geneadata(
     rsc,
     adata: anndata.AnnData,
@@ -84,18 +84,18 @@ def make_geneadata(
     adata_ge.var["mt"] = adata_ge.var_names.str.startswith("MT-")
     adata_ge = adata_ge[:, ~adata_ge.var["mt"]].copy()
     print(f"post-filtering shape: {adata_ge.shape}")
-    
+
     sc.pp.filter_genes(adata_ge, min_cells=min_cells)
     if adata_ge.X.dtype not in [np.bool_, np.float32, np.float64, np.complex64, np.complex128]:
         adata_ge.X = adata_ge.X.astype(np.float64)
     rsc.get.anndata_to_GPU(adata_ge)
-    
+
     rsc.pp.filter_genes(adata_ge, min_count=min_counts)
-    
+
     logging.info("Normalizing matrix and computing log...")
     rsc.pp.normalize_total(adata_ge)
     rsc.pp.log1p(adata_ge)
-    
+
     logging.info("Batch correction with MAGIC...")
     rsc.get.anndata_to_CPU(adata_ge)
     sc.external.pp.magic(adata_ge, solver="approximate")
@@ -195,7 +195,7 @@ def rank_features(
             )
             adata.uns[f"{group}_{feature_type}"] = adata.uns.pop('rank_genes_groups')
             rsc.get.anndata_to_CPU(adata)
-            
+
         # Write marker genes to csv
         if save:
             sc.get.rank_genes_groups_df(
