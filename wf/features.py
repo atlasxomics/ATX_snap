@@ -121,6 +121,7 @@ def make_motifmatrix(
 
 
 def make_peakmatrix(
+    rsc,
     adata: anndata.AnnData,
     genome: str,
     key: str,
