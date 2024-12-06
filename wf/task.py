@@ -207,7 +207,7 @@ def snap_task(
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
 
 
-@large_gpu_task
+@custom_task(cpu=32, memory=128, storage_gib=4949)
 def motif_task(
     input_dir: LatchDir,
     runs: List[utils.Run],
