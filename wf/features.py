@@ -121,7 +121,6 @@ def make_motifmatrix(
 
 
 def make_peakmatrix(
-    rsc,
     adata: anndata.AnnData,
     genome: str,
     key: str,
@@ -161,7 +160,6 @@ def make_peakmatrix(
 
 
 def rank_features(
-    rsc,
     adata: anndata.AnnData,
     groups: List[str],
     feature_type: str,
@@ -178,23 +176,13 @@ def rank_features(
 
         logging.info(f"Finding marker genes for {group}s...")
 
-        if len(adata.obs[group].unique()) <= 2:
-            sc.tl.rank_genes_groups(
-                adata,
-                groupby=group,
-                method="t-test",
-                key_added=f"{group}_{feature_type}",
-                use_raw=use_raw
-            )
-        else:
-            rsc.get.anndata_to_GPU(adata)
-            rsc.tl.rank_genes_groups_logreg(
-                adata,
-                groupby=group,
-                use_raw=use_raw
-            )
-            adata.uns[f"{group}_{feature_type}"] = adata.uns.pop('rank_genes_groups')
-            rsc.get.anndata_to_CPU(adata)
+        sc.tl.rank_genes_groups(
+            adata,
+            groupby=group,
+            method="t-test",
+            key_added=f"{group}_{feature_type}",
+            use_raw=use_raw
+        )
 
         # Write marker genes to csv
         if save:

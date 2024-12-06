@@ -144,7 +144,7 @@ def snap_task(
     adata_gene = ft.make_geneadata(rsc, adata, genome)
     adata_gene.obs.to_csv("gene_metadata.csv")
     ft.rank_features(
-        rsc, adata_gene, groups=groups, feature_type="genes", save=out_dir
+        adata_gene, groups=groups, feature_type="genes", save=out_dir
     )
 
     # Plot heatmap for genes
@@ -183,13 +183,11 @@ def snap_task(
         )
 
         peak_mats[group] = anndata_peak
-        logging.info("Finded marker peaks ...")
 
-        rsc.get.anndata_to_GPU(anndata_peak)
-        rsc.tl.rank_genes_groups_logreg(
+        logging.info("Finding marker peaks ...")
+        sc.tl.rank_genes_groups(
             peak_mats[group], groupby=group, method="wilcoxon"
         )
-        rsc.get.anndata_to_CPU(anndata_peak)
 
         logging.info("Writing peak matrix ...")
         anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData
@@ -253,7 +251,7 @@ def motif_task(
     adata_motif.obsm = cluster_peaks.obsm
 
     ft.rank_features(
-        rsc, adata_motif, groups=groups, feature_type="motifs", save=out_dir
+        adata_motif, groups=groups, feature_type="motifs", save=out_dir
     )
 
     # Plot heatmap for motifs
