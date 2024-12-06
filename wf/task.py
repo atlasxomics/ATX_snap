@@ -12,7 +12,7 @@ import subprocess
 from typing import List, Tuple
 
 from latch import message
-from latch.resources.tasks import custom_task, small_gpu_task, large_gpu_task
+from latch.resources.tasks import custom_task, large_gpu_task
 from latch.types import LatchDir, LatchFile
 
 import wf.features as ft
