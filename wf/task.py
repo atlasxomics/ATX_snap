@@ -9,11 +9,11 @@ import snapatac2 as snap
 import squidpy as sq
 import subprocess
 
-from typing import List, Tuple
+from typing import List
 
 from latch import message
 from latch.resources.tasks import custom_task
-from latch.types import LatchDir, LatchFile
+from latch.types import LatchDir
 
 import wf.features as ft
 import wf.plotting as pl
@@ -190,10 +190,10 @@ def snap_task(
             peak_mats[group], group=None, pval_cutoff=0.05, log2fc_min=0.1
         ).to_csv(f"{out_dir}/marker_peaks_per_{group}.csv", index=False)
 
-    # Finalize ----------------------------------------------------------------
-
     logging.info("Writing combined anndata with peaks ...")
     adata.write(f"{out_dir}/combined.h5ad")
+    
+    # Medians --------------------------------------------------------------
 
     # Get median qc values and save to csv --
     peaks = list(peak_mats["cluster"].var_names)
@@ -215,44 +215,15 @@ def snap_task(
     }, inplace=True)
 
     medians_df.to_csv(f"{out_dir}/medians.csv", index=False)
-
-    # Move scanpy plots
-    subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
-
-    logging.info("Uploading data to Latch ...")
-    return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
-
-
-@custom_task(cpu=32, memory=128, storage_gib=4949)
-def motif_task(
-    input_dir: LatchDir,
-    runs: List[utils.Run],
-    genome: utils.Genome,
-    project_name: str
-) -> Tuple[LatchFile, LatchDir]:
-    """Get Anndata object with motifs matrix from cluster peak matrix.  We
-    seperated into a seperate task because of the high memory requirements.
-    """
-
-    logging.info("Downloading data from previous step...")
-    anndata_path = f"{input_dir.local_path}/cluster_peaks.h5ad"
-    cluster_peaks = anndata.read_h5ad(anndata_path)
-
-    groups = utils.get_groups(runs)
-
-    out_dir = "/root/motifs"
-    os.makedirs(out_dir, exist_ok=True)
-
-    figures_dir = f"{out_dir}/figures"
-    os.makedirs(figures_dir, exist_ok=True)
-
-    logging.info("Downloading reference genome for motifs...")
-    genome = genome.value  # Convert to str
-    fasta = utils.get_genome_fasta(genome)
+    
+    # Motifs ------------------------------------------------------------------
+    # Get Anndata object with motifs matrix from cluster peak matrix.
+    cluster_peaks = peak_mats["cluster"]
 
     logging.info("Preparing peak matrix for motifs...")
+    fasta = utils.get_genome_fasta(genome)
     cluster_peaks = ft.get_motifs(cluster_peaks, fasta.local_path)
-    cluster_peaks.write("cluster_peaks.h5ad")
+    cluster_peaks.write(f"{out_dir}/cluster_peaks.h5ad")
 
     # Have to convert X to float64 for pc.compute_deviations
     cluster_peaks.X = cluster_peaks.X.astype(np.float64)
@@ -281,22 +252,15 @@ def motif_task(
         save="motifs"
     )
 
+    adata_motif.write(f"{out_dir}/combined_motifs.h5ad")
+    
+    # Upload data -----------------------------------------------------------
+
+    logging.info("Uploading data to Latch ...")
+    
     # Move scanpy plots
     subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
-
-    adata_motif.write(f"{out_dir}/combined_motifs.h5ad")
-
-    logging.info("Uploading motif data to Latch ...")
-    return (
-        LatchFile(
-            "cluster_peaks.h5ad",
-            f"latch:///snap_outs/{project_name}/cluster_peaks.h5ad"
-        ),
-        LatchDir(
-            out_dir,
-            f"latch:///snap_outs/{project_name}/motifs"
-        )
-    )
+    return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
 
 
 if __name__ == "__main__":
