@@ -195,14 +195,12 @@ def snap_task(
     logging.info("Writing combined anndata with peaks ...")
     adata.write(f"{out_dir}/combined.h5ad")
 
-    # Get median qc values and save to csv.
+    # Get median qc values and save to csv --
     peaks = list(peak_mats["cluster"].var_names)
     snap.metrics.frip(adata, {"cluster_peaks": peaks})
 
-    # Group the AnnData object by the 'sample' column
+    # Calculate the medians for each sample, create a DataFrame
     grouped = adata.obs.groupby("sample")
-
-    # Calculate the medians for each group and create a DataFrame
     medians_df = grouped.agg({
         "n_fragment": "median",
         "tsse": "median",
