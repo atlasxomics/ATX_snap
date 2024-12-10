@@ -192,15 +192,38 @@ def snap_task(
 
     logging.info("Writing combined anndata with peaks ...")
     adata.write(f"{out_dir}/combined.h5ad")
+    
+    # Medians --------------------------------------------------------------
 
+    # Get median qc values and save to csv --
+    peaks = list(peak_mats["cluster"].var_names)
+    snap.metrics.frip(adata, {"cluster_peaks": peaks})
+
+    # Calculate the medians for each sample, create a DataFrame
+    grouped = adata.obs.groupby("sample")
+    medians_df = grouped.agg({
+        "n_fragment": "median",
+        "tsse": "median",
+        "cluster_peaks": "median"
+    }).reset_index()
+
+    # Rename columns to match the desired output
+    medians_df.rename(columns={
+        "sample": "run_id",
+        "tsse": "tss",
+        "cluster_peaks": "frip"
+    }, inplace=True)
+
+    medians_df.to_csv(f"{out_dir}/medians.csv", index=False)
+    
     # Motifs ------------------------------------------------------------------
     # Get Anndata object with motifs matrix from cluster peak matrix.
-    cluster_peaks = peak_mats[group]
+    cluster_peaks = peak_mats["cluster"]
 
     logging.info("Preparing peak matrix for motifs...")
     fasta = utils.get_genome_fasta(genome)
     cluster_peaks = ft.get_motifs(cluster_peaks, fasta.local_path)
-    cluster_peaks.write("cluster_peaks.h5ad")
+    cluster_peaks.write(f"{out_dir}/cluster_peaks.h5ad")
 
     # Have to convert X to float64 for pc.compute_deviations
     cluster_peaks.X = cluster_peaks.X.astype(np.float64)
@@ -230,12 +253,13 @@ def snap_task(
     )
 
     adata_motif.write(f"{out_dir}/combined_motifs.h5ad")
+    
+    # Upload data -----------------------------------------------------------
 
     logging.info("Uploading data to Latch ...")
     
     # Move scanpy plots
     subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
-
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
 
 
