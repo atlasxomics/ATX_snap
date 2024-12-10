@@ -190,8 +190,31 @@ def snap_task(
             peak_mats[group], group=None, pval_cutoff=0.05, log2fc_min=0.1
         ).to_csv(f"{out_dir}/marker_peaks_per_{group}.csv", index=False)
 
+    # Finalize ----------------------------------------------------------------
+
     logging.info("Writing combined anndata with peaks ...")
     adata.write(f"{out_dir}/combined.h5ad")
+
+    # Get median qc values and save to csv --
+    peaks = list(peak_mats["cluster"].var_names)
+    snap.metrics.frip(adata, {"cluster_peaks": peaks})
+
+    # Calculate the medians for each sample, create a DataFrame
+    grouped = adata.obs.groupby("sample")
+    medians_df = grouped.agg({
+        "n_fragment": "median",
+        "tsse": "median",
+        "cluster_peaks": "median"
+    }).reset_index()
+
+    # Rename columns to match the desired output
+    medians_df.rename(columns={
+        "sample": "run_id",
+        "tsse": "tss",
+        "cluster_peaks": "frip"
+    }, inplace=True)
+
+    medians_df.to_csv(f"{out_dir}/medians.csv", index=False)
 
     # Move scanpy plots
     subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
