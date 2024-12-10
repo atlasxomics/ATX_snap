@@ -3,6 +3,7 @@ import glob
 import logging
 import numpy as np
 import os
+import pandas as pd
 import pychromvar as pc
 import scanpy as sc
 import snapatac2 as snap
@@ -60,6 +61,25 @@ def snap_task(
 
     figures_dir = f"{out_dir}/figures"
     os.makedirs(figures_dir, exist_ok=True)
+
+    # Save input parameters to csv
+    parameters = [
+        ["project name", project_name],
+        ["genome", genome],
+        ["tile size", tile_size],
+        ["number features", n_features],
+        ["leiden iterations", leiden_iters],
+        ["minimum cluster size", min_cluster_size],
+        ["minimum TSS", min_tss],
+        ["minimum fragments", min_frags],
+        ["clustering_resolution", resolution],
+        ["clustering iterations", clustering_iters]
+    ]
+
+    pd.DataFrame(
+        parameters,
+        columns=["parameter", "value"]
+    ).to_csv(f"{out_dir}/metadata.csv", index=False)
 
     if min_frags == 0:
         logging.warning("Minimum fragments set to 0.")
@@ -192,7 +212,7 @@ def snap_task(
 
     logging.info("Writing combined anndata with peaks ...")
     adata.write(f"{out_dir}/combined.h5ad")
-    
+
     # Medians --------------------------------------------------------------
 
     # Get median qc values and save to csv --
@@ -215,7 +235,7 @@ def snap_task(
     }, inplace=True)
 
     medians_df.to_csv(f"{out_dir}/medians.csv", index=False)
-    
+
     # Motifs ------------------------------------------------------------------
     # Get Anndata object with motifs matrix from cluster peak matrix.
     cluster_peaks = peak_mats["cluster"]
@@ -253,11 +273,11 @@ def snap_task(
     )
 
     adata_motif.write(f"{out_dir}/combined_motifs.h5ad")
-    
+
     # Upload data -----------------------------------------------------------
 
     logging.info("Uploading data to Latch ...")
-    
+
     # Move scanpy plots
     subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")

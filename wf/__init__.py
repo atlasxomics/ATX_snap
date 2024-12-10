@@ -137,3 +137,28 @@ def snap_workflow(
     )
 
     return results
+
+
+if __name__ == "__main__":
+    from latch.types import LatchDir, LatchFile
+
+    snap_task(
+        runs=[
+            Run(
+                run_id="demo",
+                fragments_file=LatchFile("latch://13502.account/atac_outs/ds_D01033_NG01681/outs/ds_D01033_NG01681_fragments.tsv"),
+                spatial_dir=LatchDir("latch:///spatials/demo/spatial_50x/"),
+                positions_file=LatchFile("latch:///spatials/demo/spatial_50x/tissue_positions_list.csv")
+            )
+        ],
+        genome=Genome.hg38,
+        project_name="dev—backed",
+        resolution=1.0,
+        leiden_iters=-1,
+        min_cluster_size=20,
+        min_tss=2.0,
+        min_frags=10,
+        tile_size=5000,
+        n_features=25000,
+        clustering_iters=1
+    )
