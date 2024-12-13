@@ -108,6 +108,8 @@ def combine_anndata(
     )
     logging.info(f"AnnDataSet created with shape {adataset.shape}")
 
+    adataset = adataset.to_adata()
+
     # We have seen the dataset lose var_names, ensure them here.
     if len(adataset.var_names) == 0:
         adataset.var_names = [str(i) for i in range(len(adatas[0].var_names))]
@@ -179,7 +181,7 @@ def make_anndatas(
         n_jobs=n_jobs
     )
 
-    # Read back into memory to ensure write access, it's dumb
+    # # Read back into memory to ensure write access, it's dumb
     adatas = [
         refresh_adata(adata, run.run_id) for adata, run in zip(adatas, runs)
     ]
