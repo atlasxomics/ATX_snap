@@ -22,6 +22,7 @@ import wf.spatial as sp
 import wf.utils as utils
 
 import rapids_singlecell as rsc
+import rmm
 logging.basicConfig(
     format="%(levelname)s - %(asctime)s - %(message)s",
     level=logging.INFO
@@ -141,6 +142,7 @@ def snap_task(
 
     # Genes ------------------------------------------------------------------
     logging.info("Making gene matrix...")
+    rmm.reinitialize(managed_memory=True,pool_allocator=False,)
     adata_gene = ft.make_geneadata(rsc, adata, genome)
     adata_gene.obs.to_csv("gene_metadata.csv")
     ft.rank_features(
@@ -179,10 +181,12 @@ def snap_task(
 
         logging.info("Making peak matrix AnnData...")
         anndata_peak = ft.make_peakmatrix(
-            rsc, adata, genome, f"{group}_peaks", log_norm=True
+            adata, genome, f"{group}_peaks", log_norm=True
         )
 
         peak_mats[group] = anndata_peak
+        if str(peak_mats[group].obs[group].dtype.name) != 'category':
+            peak_mats[group].obs[group] = peak_mats[group].obs[group].astype('category')
         logging.info("Finded marker peaks ...")
         
         rsc.get.anndata_to_GPU(anndata_peak)

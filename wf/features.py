@@ -174,10 +174,13 @@ def rank_features(
     """
 
     for group in groups:
-
+        
+        if str(adata.obs[group].dtype.name) != 'category':
+            adata.obs[group] = adata.obs[group].astype('category')
+            
         logging.info(f"Finding marker genes for {group}s...")
 
-        if adata.obs[group].cat.categories.size <= 2:
+        if adata.obs[group].unique().size:
             sc.tl.rank_genes_groups(
                 adata,
                 groupby=group,
