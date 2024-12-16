@@ -1,30 +1,24 @@
-import anndata
 import glob
 import logging
-import numpy as np
 import os
-import pychromvar as pc
-import scanpy as sc
-import snapatac2 as snap
-import squidpy as sq
 import subprocess
-
 from typing import List, Tuple
 
+import anndata
+import numpy as np
 from latch import message
-from latch.resources.tasks import custom_task, small_gpu_task, large_gpu_task
+from latch.resources.tasks import custom_task, large_gpu_task, small_gpu_task
 from latch.types import LatchDir, LatchFile
 
 import wf.features as ft
+import wf.peaks as peaks
 import wf.plotting as pl
 import wf.preprocessing as pp
 import wf.spatial as sp
 import wf.utils as utils
 
-import rapids_singlecell as rsc
 logging.basicConfig(
-    format="%(levelname)s - %(asctime)s - %(message)s",
-    level=logging.INFO
+    format="%(levelname)s - %(asctime)s - %(message)s", level=logging.INFO
 )
 
 
@@ -40,8 +34,13 @@ def snap_task(
     tile_size: int,
     n_features: int,
     clustering_iters: int,
-    project_name: str
+    project_name: str,
 ) -> LatchDir:
+    import pychromvar as pc
+    import rapids_singlecell as rsc
+    import scanpy as sc
+    import snapatac2 as snap
+    import squidpy as sq
 
     samples = [run.run_id for run in runs]
 
@@ -65,7 +64,7 @@ def snap_task(
         logging.warning("Minimum fragments set to 0.")
         message(
             typ="warning",
-            data={"title": "min_frags", "body": "Minimum fragments set to 0."}
+            data={"title": "min_frags", "body": "Minimum fragments set to 0."},
         )
 
     # Preprocessing -----------------------------------------------------------
@@ -86,9 +85,7 @@ def snap_task(
         {clustering_iters} clustering iteration(s)"
     )
 
-    snap.pp.select_features(
-        adata, n_features=n_features, max_iter=clustering_iters
-    )
+    snap.pp.select_features(adata, n_features=n_features, max_iter=clustering_iters)
 
     logging.info("Performing dimensionality reduction...")
     adata = pp.add_clusters(adata, resolution, leiden_iters, min_cluster_size)
@@ -98,9 +95,7 @@ def snap_task(
     for group in groups:
         coverage_dir = f"{out_dir}/{group}_coverages"
         os.makedirs(coverage_dir, exist_ok=True)
-        snap.ex.export_coverage(
-            adata, groupby=group, suffix=f"{group}.bedgraph.gz"
-        )
+        snap.ex.export_coverage(adata, groupby=group, suffix=f"{group}.bedgraph.gz")
         bgs = glob.glob("*.bedgraph.gz")
         subprocess.run(["mv"] + bgs + [coverage_dir])
 
@@ -114,14 +109,14 @@ def snap_task(
         samples,
         "cluster",
         f"{figures_dir}/spatial_dim.pdf",
-        pt_size=utils.pt_sizes[channels]["dim"]
+        pt_size=utils.pt_sizes[channels]["dim"],
     )
     pl.plot_spatial_qc(
         adata_plot,
         samples,
         qc_metrics,
         f"{figures_dir}/spatial_qc.pdf",
-        pt_size=utils.pt_sizes[channels]["qc"]
+        pt_size=utils.pt_sizes[channels]["qc"],
     )
 
     # Neighbrohood enrichment plot, Ripley's plot
@@ -135,17 +130,13 @@ def snap_task(
         vmax=100,
         save="neighborhood_enrichemnt.pdf",
     )
-    sq.pl.ripley(
-        adata_plot, cluster_key="cluster", mode="L", save="ripleys_L.pdf"
-    )
+    sq.pl.ripley(adata_plot, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
 
     # Genes ------------------------------------------------------------------
     logging.info("Making gene matrix...")
     adata_gene = ft.make_geneadata(rsc, adata, genome)
     adata_gene.obs.to_csv("gene_metadata.csv")
-    ft.rank_features(
-        rsc, adata_gene, groups=groups, feature_type="genes", save=out_dir
-    )
+    ft.rank_features(rsc, adata_gene, groups=groups, feature_type="genes", save=out_dir)
 
     # Plot heatmap for genes
     sc.pl.rank_genes_groups_matrixplot(
@@ -155,7 +146,7 @@ def snap_task(
         values_to_plot="scores",
         key="cluster_genes",
         min_logfoldchange=0.1,
-        save="genes"
+        save="genes",
     )
 
     adata_gene.write(f"{out_dir}/combined_ge.h5ad")
@@ -163,18 +154,29 @@ def snap_task(
     # Peaks ------------------------------------------------------------------
     peak_mats = {}
     for group in groups:
-
         n_jobs = len(adata.obs[group].unique())
 
         logging.info(f"Calling peaks for {group}s...")
-        snap.tl.macs3(
-            adata,
+        # snap.tl.macs3(
+        #     adata,
+        #     groupby=group,
+        #     shift=-75,
+        #     extsize=150,
+        #     qvalue=0.1,
+        #     key_added=f"{group}_peaks",
+        #     n_jobs=n_jobs,
+        # )
+
+        ### Replace with MACS3_GPU
+
+        adata = peaks.call_peaks_macs3_gpu(
+            adata=adata,
             groupby=group,
-            shift=-75,
-            extsize=150,
-            qvalue=0.1,
-            key_added=f"{group}_peaks",
-            n_jobs=n_jobs
+            d_treat=150,
+            d_ctrl=10000,
+            max_gap=30,
+            peak_amp=150,
+            q_thresh=0.1,
         )
 
         logging.info("Making peak matrix AnnData...")
@@ -184,13 +186,13 @@ def snap_task(
 
         peak_mats[group] = anndata_peak
         logging.info("Finded marker peaks ...")
-        
+
         rsc.get.anndata_to_GPU(anndata_peak)
         rsc.tl.rank_genes_groups_logreg(
             peak_mats[group], groupby=group, method="wilcoxon"
         )
         rsc.get.anndata_to_CPU(anndata_peak)
-        
+
         logging.info("Writing peak matrix ...")
         anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData
 
@@ -211,11 +213,13 @@ def snap_task(
 
 @custom_task(cpu=32, memory=128, storage_gib=4949)
 def motif_task(
-    input_dir: LatchDir,
-    runs: List[utils.Run],
-    genome: utils.Genome,
-    project_name: str
+    input_dir: LatchDir, runs: List[utils.Run], genome: utils.Genome, project_name: str
 ) -> Tuple[LatchFile, LatchDir]:
+    import pychromvar as pc
+    import scanpy as sc
+    import snapatac2 as snap
+    import squidpy as sq
+
     """Get Anndata object with motifs matrix from cluster peak matrix.  We
     seperated into a seperate task because of the high memory requirements.
     """
@@ -244,17 +248,13 @@ def motif_task(
     cluster_peaks.X = cluster_peaks.X.astype(np.float64)
 
     logging.info("Computing motif deviation matrix...")
-    adata_motif = pc.compute_deviations(
-        cluster_peaks, n_jobs=1, chunk_size=10000
-    )
+    adata_motif = pc.compute_deviations(cluster_peaks, n_jobs=1, chunk_size=10000)
 
     # Copy over cell data
     adata_motif.obs = cluster_peaks.obs
     adata_motif.obsm = cluster_peaks.obsm
 
-    ft.rank_features(
-        adata_motif, groups=groups, feature_type="motifs", save=out_dir
-    )
+    ft.rank_features(adata_motif, groups=groups, feature_type="motifs", save=out_dir)
 
     # Plot heatmap for motifs
     sc.pl.rank_genes_groups_matrixplot(
@@ -264,7 +264,7 @@ def motif_task(
         values_to_plot="scores",
         key="cluster_motifs",
         min_logfoldchange=0.1,
-        save="motifs"
+        save="motifs",
     )
 
     # Move scanpy plots
@@ -276,18 +276,13 @@ def motif_task(
     return (
         LatchFile(
             "cluster_peaks.h5ad",
-            f"latch:///snap_outs/{project_name}/cluster_peaks.h5ad"
+            f"latch:///snap_outs/{project_name}/cluster_peaks.h5ad",
         ),
-        LatchDir(
-            out_dir,
-            f"latch:///snap_outs/{project_name}/motifs"
-        )
+        LatchDir(out_dir, f"latch:///snap_outs/{project_name}/motifs"),
     )
 
 
-
 if __name__ == "__main__":
-
     logging.info("Plotting SnapATAC peak heatmap...")
     # Perform SnapATAC marker peaks and heatmap
 
@@ -295,29 +290,25 @@ if __name__ == "__main__":
     group = "cluster"
     genome = "hg38"
 
-    marker_peaks = snap.tl.marker_regions(
-        anndata_peak, groupby=group, pvalue=0.05
-    )
+    marker_peaks = snap.tl.marker_regions(anndata_peak, groupby=group, pvalue=0.05)
     snap.pl.regions(
         anndata_peak,
         groupby=group,
         peaks=marker_peaks,
         interactive=False,
-        out_file="snap_peak_heatmap.pdf"
+        out_file="snap_peak_heatmap.pdf",
     )
 
     logging.info("Plotting SnapATAC motif heatmap...")
     motifs = snap.tl.motif_enrichment(
         motifs=snap.datasets.cis_bp(unique=True),
         regions=anndata_peak,
-        genome_fasta=(
-            snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
-        )
+        genome_fasta=(snap.genome.mm10 if genome == "mm10" else snap.genome.hg38),
     )
     snap.pl.motif_enrichment(
         motifs,
         max_fdr=0.0001,
         height=1600,
         interactive=False,
-        out_file="motaf_enrichment.pdf"
+        out_file="motaf_enrichment.pdf",
     )
