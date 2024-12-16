@@ -13,7 +13,7 @@ from latch.resources.tasks import large_gpu_task
 from latch.types import LatchDir
 
 import wf.features as ft
-import wf.peaks as peaks
+import wf.peaks as pk
 import wf.plotting as pl
 import wf.preprocessing as pp
 import wf.spatial as sp
@@ -183,9 +183,9 @@ def snap_task(
     for group in groups:
 
         logging.info(f"Calling peaks for {group}s...")
-        adata = peaks.call_peaks_macs3_gpu(
+        adata = pk.call_peaks_macs3_gpu(
                 adata=adata,
-                groupby=group,
+                groupby_key=group,
                 d_treat=150,
                 d_ctrl=10000,
                 max_gap=30,
