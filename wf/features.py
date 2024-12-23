@@ -1,6 +1,7 @@
 import anndata
 import logging
 import numpy as np
+import pandas as pd
 import pychromvar as pc
 import scanpy as sc
 import snapatac2 as snap
@@ -146,7 +147,8 @@ def rank_features(
     feature_type: str,
     save: Optional[str],
     use_raw: bool = False,
-    pval_cutoff: float = 0.05
+    pval_cutoff: float = 0.05,
+    logfoldchange_cutoff: float = 0.1
 ):
     """For each metadata cell grouping provided, add gene ranking information;
     if 'save' is a string, a csv of the rank data is saved to a directory
@@ -163,11 +165,28 @@ def rank_features(
             key_added=f"{group}_{feature_type}",
             use_raw=use_raw
         )
-
-        # Write marker genes to csv
-        sc.get.rank_genes_groups_df(
+        df = sc.get.rank_genes_groups_df(
             adata,
             group=None,
-            key=f"{group}_{feature_type}",
-            pval_cutoff=pval_cutoff,
-        ).to_csv(f"{save}/marker_{feature_type}_per_{group}.csv", index=False)
+            key=f"{group}_{feature_type}"
+        )
+
+        # Write ranked features to csv
+        df.to_csv(f"{save}/ranked_{feature_type}_per_{group}.csv", index=False)
+
+        # Filter and summarize marker features
+        df = df[df["pvals_adj"] <= pval_cutoff]
+        df = df[abs(df["logfoldchanges"]) > logfoldchange_cutoff]
+
+        counts = df.groupby("group").agg("count")["names"]
+        counts["total"] = counts.sum()
+        counts = pd.DataFrame(counts).reset_index()
+
+        counts.rename(columns={
+            "group": f"{group}",
+            "names": f"number differential {feature_type}"
+        }, inplace=True)
+        counts.to_csv(
+            f"{save}/differential_{feature_type}_per_{group}_counts.csv",
+            index=False
+        )
