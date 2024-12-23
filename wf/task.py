@@ -32,6 +32,7 @@ def snap_task(
     genome: utils.Genome,
     resolution: float,
     leiden_iters: int,
+    n_comps: int,
     min_cluster_size: int,
     min_tss: float,
     min_frags: int,
@@ -74,6 +75,7 @@ def snap_task(
         ["tile size", tile_size],
         ["number features", n_features],
         ["leiden iterations", leiden_iters],
+        ["number of components", n_comps],
         ["minimum cluster size", min_cluster_size],
         ["minimum TSS", min_tss],
         ["minimum fragments", min_frags],
@@ -116,7 +118,9 @@ def snap_task(
     )
 
     logging.info("Performing dimensionality reduction...")
-    adata = pp.add_clusters(adata, resolution, leiden_iters, min_cluster_size)
+    adata = pp.add_clusters(
+        adata, resolution, n_comps, leiden_iters, min_cluster_size
+    )
     adata = sp.add_spatial(adata)  # Add spatial coordinates to tixels
 
     # bedgraphs --

@@ -20,14 +20,15 @@ logging.basicConfig(
 def add_clusters(
     adata: anndata.AnnData,
     resolution: float,
+    n_comps: int,
     leiden_iters: int,
     min_cluster_size: int
 ) -> anndata.AnnData:
     """Perform dimensionality reduction, batch correction, umap, clustering.
     """
 
-    # Dimensionality reduction
-    snap.tl.spectral(adata)
+    # First reduce to n_comps demensions
+    snap.tl.spectral(adata, n_comps=n_comps, features="selected")
 
     try:
         n_runs = len(adata.obs["sample"].unique())

@@ -92,6 +92,12 @@ metadata = LatchMetadata(
                 accessible' in tile matrix.",
             batch_table_column=True
         ),
+        "n_comps": LatchParameter(
+            display_name="number of components",
+            description="Number of components/dimensions to keep during \
+                dimensionality reduction with `snap.tl.spectral`.",
+            batch_table_column=True
+        ),
         "project_name": LatchParameter(
             display_name="project name",
             description="Name of output directory in snap_outs/",
@@ -114,6 +120,7 @@ def snap_workflow(
     project_name: str,
     resolution: float = 1.0,
     leiden_iters: int = -1,
+    n_comps: int = 30,
     min_cluster_size: int = 20,
     min_tss: float = 2.0,
     min_frags: int = 10,
@@ -128,6 +135,7 @@ def snap_workflow(
         project_name=project_name,
         resolution=resolution,
         leiden_iters=leiden_iters,
+        n_comps=n_comps,
         min_cluster_size=min_cluster_size,
         min_tss=min_tss,
         min_frags=min_frags,
@@ -155,6 +163,7 @@ if __name__ == "__main__":
         project_name="dev—gpu",
         resolution=1.0,
         leiden_iters=-1,
+        n_comps=30,
         min_cluster_size=20,
         min_tss=2.0,
         min_frags=10,
