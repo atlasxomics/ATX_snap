@@ -64,6 +64,9 @@ def snap_task(
     figures_dir = f"{out_dir}/figures"
     os.makedirs(figures_dir, exist_ok=True)
 
+    tables_dir = f"{out_dir}/tables"
+    os.makedirs(tables_dir, exist_ok=True)
+
     # Save input parameters to csv
     parameters = [
         ["project name", project_name],
@@ -81,7 +84,7 @@ def snap_task(
     pd.DataFrame(
         parameters,
         columns=["parameter", "value"]
-    ).to_csv(f"{out_dir}/metadata.csv", index=False)
+    ).to_csv(f"{tables_dir}/metadata.csv", index=False)
 
     if min_frags == 0:
         logging.warning("Minimum fragments set to 0.")
@@ -159,10 +162,10 @@ def snap_task(
     # Genes ------------------------------------------------------------------
     logging.info("Making gene matrix...")
     adata_gene = ft.make_geneadata(adata, genome)
-    adata_gene.obs.to_csv("gene_metadata.csv")
+    adata_gene.obs.to_csv(f"{tables_dir}/gene_metadata.csv")
 
     ft.rank_features(
-        adata_gene, groups=groups, feature_type="genes", save=out_dir
+        adata_gene, groups=groups, feature_type="genes", save=tables_dir
     )
 
     # Plot heatmap for genes
@@ -211,7 +214,7 @@ def snap_task(
         logging.info("Writing marker peaks to .csv ...")
         sc.get.rank_genes_groups_df(  # Save as csv
             peak_mats[group], group=None, pval_cutoff=0.05, log2fc_min=0.1
-        ).to_csv(f"{out_dir}/marker_peaks_per_{group}.csv", index=False)
+        ).to_csv(f"{tables_dir}/marker_peaks_per_{group}.csv", index=False)
 
     logging.info("Writing combined anndata with peaks ...")
     adata.write(f"{out_dir}/combined.h5ad")
@@ -237,7 +240,7 @@ def snap_task(
         "cluster_peaks": "frip"
     }, inplace=True)
 
-    medians_df.to_csv(f"{out_dir}/medians.csv", index=False)
+    medians_df.to_csv(f"{tables_dir}/medians.csv", index=False)
 
     # Motifs ------------------------------------------------------------------
     # Get Anndata object with motifs matrix from cluster peak matrix.
@@ -261,7 +264,7 @@ def snap_task(
     adata_motif.obsm = cluster_peaks.obsm
 
     ft.rank_features(
-        adata_motif, groups=groups, feature_type="motifs", save=out_dir
+        adata_motif, groups=groups, feature_type="motifs", save=tables_dir
     )
 
     # Plot heatmap for motifs
