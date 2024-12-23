@@ -152,7 +152,7 @@ if __name__ == "__main__":
             )
         ],
         genome=Genome.hg38,
-        project_name="dev—backed",
+        project_name="dev—difconuts",
         resolution=1.0,
         leiden_iters=-1,
         min_cluster_size=20,
