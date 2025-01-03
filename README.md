@@ -28,7 +28,7 @@ Individual runs are batched in a combined AnnData object with the following glob
   
 * number of components: Number of dimensions to keep after dimensionality reduction via SnapATAC2's spectral embedding algorithm; maps to the n_comps parameter of [`snapatac2.tl.spectral`](https://kzhang.org/SnapATAC2/api/_autosummary/snapatac2.tl.spectral.html).
 
-* number of features: n most accessible tiles to be used for differential analysis; maps to the n_features parameter of [`https://kzhang.org/SnapATAC2/api/_autosummary/snapatac2.pp.select_features.html`](https://kzhang.org/SnapATAC2/api/_autosummary/snapatac2.pp.select_features.html),
+* number of features: n most accessible tiles to be used for differential analysis; maps to the n_features parameter of [`https://kzhang.org/SnapATAC2/api/_autosummary/snapatac2.pp.select_features.html`](https://kzhang.org/SnapATAC2/api/_autosummary/snapatac2.pp.select_features.html).
 
 * clustering iterations: Iterations performed when selecting variable features for tile matrix. 'If greater than 1, this function will perform iterative clustering and feature selection based on variable features found using previous clustering results. This is similar to the procedure implemented in ArchR... Default value is 1, which means no iterative clustering is performed.'  Maps to the n_iterations parameter of [snapatac2.tl.leiden](https://kzhang.org/SnapATAC2/api/_autosummary/snapatac2.tl.umap.html).
 
@@ -59,7 +59,7 @@ The **ATX snap** workflow can be found in the [Workflows](https://wiki.latch.bio
 
 5. Click the 'Launch Workflow' button on the bottom-right of the parameters page.  This will automatically navigate you to the Executions tab of the workflow.
 
-6. From the Executions tab, you can view the status of the launched Workflow.  Once the Workflow has completed running, the status will change to 'Succeeded'; if the workflow has the status 'Failed', please contact an AtlasXomics Support Scientist.  You can click on the workflow execution to view a more granular workflow status and see output logs.
+6. From the Executions tab, you can view the status of the launched Workflow.  Once the Workflow has completed running, the status will change to 'Succeeded'; if the workflow has the status 'Failed', please contact an AtlasXomics Support Scientist.  You can click on the Workflow execution to view a more granular Workflow status and see output logs.
 
 7. Workflow outputs are loaded into the LatchBio [Data module](https://wiki.latch.bio/wiki/data/overview) in the `snap_outs` directory.
 
