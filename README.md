@@ -1,12 +1,12 @@
 # ATX snap
 
-**ATX snap** is a [LatchBio](https://latch.bio/) Workflow for generating Python objects and data for analysis of epigenomic [DBiT-seq](https://www.nature.com/articles/s41586-022-05094-1) experiments.  Provided a fragment file from a single-cell ATAC-seq preprocessing and alignment tool (i.e., [Chromap](https://github.com/haowenz/chromap)) and spatial information, **ATX snap** performs routine processing with [SnapATAC2](https://kzhang.org/SnapATAC2/) and [scanpy](https://scanpy.readthedocs.io/en/stable/), returning files that can be easily input into custom scripts for more neuanced analysis without the need to perform intensive computation.
+**ATX snap** is a [LatchBio](https://latch.bio/) Workflow for generating Python objects and data for analysis of epigenomic [DBiT-seq](https://www.nature.com/articles/s41586-022-05094-1) experiments.  Provided a fragment file from a single-cell ATAC-seq preprocessing and alignment tool (i.e., [Chromap](https://github.com/haowenz/chromap)) and spatial information, **ATX snap** performs routine processing with [SnapATAC2](https://kzhang.org/SnapATAC2/) and [Scanpy](https://scanpy.readthedocs.io/en/stable/), returning files that can be easily input into custom scripts for more neuanced analysis without the need to perform intensive computation.
 
 The Workflow utilizes SnapATAC2 for AnnData object generation, quality control, dimensionality reduction/clustering, peak calling, and gene experssion analysis.  Scanpy is used to identify differential features.  [pychromVAR](https://github.com/pinellolab/pychromVAR) is used to create a motif deviation matrix.  The Workflow can take data from either a single tissue-sample analyzed via DBiT-seq or multiple tissue-samples; in ATX parlance, tissue-samples analyzed via DBIT-seq are termed 'Runs'.  All Runs input to **ATX snap** are merged into a single AnnData object for analysis.  
 
 
 ## Inputs
-All input files for **ATX snap** must be on the LatchBio [file system](https://wiki.latch.bio/wiki/data/overview).  Each run in the workflow takes the following parameters.
+All input files for **ATX snap** must be on the LatchBio [file system](https://wiki.latch.bio/wiki/data/overview).  Each Run in the Workflow takes the following parameters.
 
 * [fragments.tsv.gz file](https://support.10xgenomics.com/single-cell-atac/software/pipelines/latest/output/fragments): A BED-like, tab-delimited file in which each row contains an ATAC-seq fragment.
 
@@ -14,7 +14,7 @@ All input files for **ATX snap** must be on the LatchBio [file system](https://w
 
 * [Spatial folder](https://docs.atlasxomics.com/projects/AtlasXbrowser/en/latest/SpatialFolder.html): A directory containing tissue images and experiment metadata.
 
-* Run ID: An identifier for the run.
+* Run ID: An identifier for the Run.
 
 * Condition (_optional_):  An experimental Condition descriptor (i.e., 'control', 'diseased').
 
