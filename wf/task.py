@@ -4,16 +4,19 @@ import logging
 import numpy as np
 import os
 import pandas as pd
+import pychromvar as pc
+import scanpy as sc
+import snapatac2 as snap
+import squidpy as sq
 import subprocess
 
 from typing import List
 
 from latch import message
-from latch.resources.tasks import large_gpu_task
+from latch.resources.tasks import custom_task
 from latch.types import LatchDir
 
 import wf.features as ft
-import wf.peaks as pk
 import wf.plotting as pl
 import wf.preprocessing as pp
 import wf.spatial as sp
@@ -26,7 +29,7 @@ logging.basicConfig(
 )
 
 
-@large_gpu_task()
+@custom_task(cpu=62, memory=768, storage_gib=4949)
 def snap_task(
     runs: List[utils.Run],
     genome: utils.Genome,
@@ -41,11 +44,6 @@ def snap_task(
     clustering_iters: int,
     project_name: str
 ) -> LatchDir:
-
-    import pychromvar as pc
-    import scanpy as sc
-    import snapatac2 as snap
-    import squidpy as sq
 
     samples = [run.run_id for run in runs]
 
@@ -190,15 +188,14 @@ def snap_task(
     for group in groups:
 
         logging.info(f"Calling peaks for {group}s...")
-        adata = pk.call_peaks_macs3_gpu(
-                adata=adata,
-                groupby_key=group,
-                d_treat=150,
-                d_ctrl=10000,
-                max_gap=30,
-                peak_amp=150,
-                q_thresh=0.1,
-            )
+        snap.tl.macs3(
+            adata,
+            groupby=group,
+            shift=-75,
+            extsize=150,
+            qvalue=0.1,
+            key_added=f"{group}_peaks"
+        )
 
         logging.info("Making peak matrix AnnData...")
         anndata_peak = ft.make_peakmatrix(
