@@ -71,10 +71,10 @@ def plot_spatial(
             for j in range(len(sample_batch), 4):
                 axs[j].axis("off")
 
-        plt.tight_layout()
+            plt.tight_layout()
 
-        pdf.savefig(fig)
-        plt.close(fig)
+            pdf.savefig(fig)
+            plt.close(fig)
 
 
 def plot_spatial_qc(
