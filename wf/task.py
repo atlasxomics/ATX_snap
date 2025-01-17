@@ -297,14 +297,22 @@ def registry_task(
 
     tbl = Table(id="761")
 
+    logging.info("Uploading results to Runs Table in Registry...")
+
     for run in runs:
+        logging.info(f"Adding {run.run_id} results to Registry...")
 
         with tbl.update() as updater:
             updater.upsert_record(
                 name=run.run_id,
+                fragments_file=run.fragments_file,
+                spatial_directory=run.spatial_dir,
+                positions_file=run.positions_file,
+                condition=run.condition,
                 atx_snap_outs=results,
             )
 
+    logging.info("Done uploading to Registry.")
     return results
 
 
