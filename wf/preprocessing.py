@@ -190,7 +190,7 @@ def make_anndatas(
     """
 
     # As 'in_memory' so we can add metadata to .obs
-    adatas = snap.pp.import_data(
+    adatas = snap.pp.import_fragments(
         [run.fragments_file.local_path for run in runs],
         chrom_sizes=ref_dict[genome][0],
         min_num_fragments=min_frags,
