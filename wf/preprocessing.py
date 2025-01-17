@@ -1,15 +1,14 @@
-import anndata
 import logging
 import math
-import numpy as np
-import pandas as pd
-import snapatac2 as snap
-
-from scipy.sparse import vstack
 from typing import List
 
-from wf.utils import Genome, Run
+# import pandas as pd
+import anndata
+import numpy as np
+import snapatac2 as snap
+from scipy.sparse import vstack
 
+from wf.utils import Genome, Run
 
 logging.basicConfig(
     format="%(levelname)s - %(asctime)s - %(message)s",
@@ -26,6 +25,7 @@ def add_clusters(
 ) -> anndata.AnnData:
     """Perform dimensionality reduction, batch correction, umap, clustering.
     """
+    import pandas as pd
 
     # First reduce to n_comps demensions
     snap.tl.spectral(adata, n_comps=n_comps, features="selected")
@@ -61,6 +61,7 @@ def add_clusters(
 def add_metadata(run: Run, adata: anndata.AnnData) -> anndata.AnnData:
     """Add metadata and spatial info .obs of AnnData.
     """
+    import pandas as pd
 
     # Read in tissue_positions file from spatial/
     positions = pd.read_csv(run.positions_file, header=None)
@@ -96,6 +97,7 @@ def combine_anndata(
     Combines as AnnDataSet (object written to disk as .h5ad), then back to
     AnnData.
     """
+    import pandas as pd
 
     # Input AnnData must be backend for AnnDataSet, not in-memory.
     logging.info("Converting AnnData objects to backend...")
@@ -143,7 +145,7 @@ def convert_tobackend(
     """Create a new backend AnnData object; necessary for creating AnnDataSet;
     saves each AnnData object to disk as .h5ad.
     """
-
+    import pandas as pd
     adata_backend = snap.AnnData(
         filename=f"{filename}_backend.h5ad",
         X=adata.X,
@@ -162,6 +164,7 @@ def filter_adatas(
 ) -> List[anndata.AnnData]:
     """Filter AnnData by on/off tissue tixels, TSS enrichment, max frag counts.
     """
+    import pandas as pd
 
     # Filter 'off tissue' tixels
     try:
@@ -188,6 +191,7 @@ def make_anndatas(
     files into list of _in memory_ AnnData objects. QCs, metadata and spatial
     data are stored in AnnData.obs.
     """
+    import pandas as pd
 
     # Can't use a dict because of flyte
     genome_ref = snap.genome.mm10 if genome == "mm10" else snap.genome.hg38

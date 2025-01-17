@@ -1,19 +1,19 @@
-import anndata
 import glob
 import logging
-import numpy as np
 import os
-import pandas as pd
+import subprocess
+from typing import List
+
+import anndata
+import numpy as np
+# import pandas as pd
 import pychromvar as pc
 import scanpy as sc
 import snapatac2 as snap
 import squidpy as sq
-import subprocess
-
-from typing import List
-
 from latch import message
-from latch.resources.tasks import custom_task
+from latch.registry.table import Table
+from latch.resources.tasks import custom_task, small_task
 from latch.types import LatchDir
 
 import wf.features as ft
@@ -21,7 +21,6 @@ import wf.plotting as pl
 import wf.preprocessing as pp
 import wf.spatial as sp
 import wf.utils as utils
-
 
 logging.basicConfig(
     format="%(levelname)s - %(asctime)s - %(message)s",
@@ -44,7 +43,7 @@ def snap_task(
     clustering_iters: int,
     project_name: str
 ) -> LatchDir:
-
+    import pandas as pd
     samples = [run.run_id for run in runs]
 
     # Get channels for specifying plot point size, use max for now...
@@ -288,6 +287,25 @@ def snap_task(
     # Move scanpy plots
     subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
+
+
+@small_task(cache=True)
+def registry_task(
+    runs: List[utils.Run],
+    results: LatchDir
+) -> LatchDir:
+
+    tbl = Table(id="761")
+
+    for run in runs:
+
+        with tbl.update() as updater:
+            updater.upsert_record(
+                name=run.run_id,
+                atx_snap_outs=results,
+            )
+
+    return results
 
 
 if __name__ == "__main__":

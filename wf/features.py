@@ -1,14 +1,13 @@
-import anndata
 import logging
+from typing import List, Optional
+
+import anndata
 import numpy as np
-import pandas as pd
+# import pandas as pd
 import pychromvar as pc
 import scanpy as sc
 import snapatac2 as snap
-
 from pyjaspar import jaspardb
-from typing import List, Optional
-
 
 logging.basicConfig(
     format="%(levelname)s - %(asctime)s - %(message)s",
@@ -24,7 +23,7 @@ def get_motifs(
     gc (.var['gc_bias']), background peaks (.varm['bg_peaks']), and motifs
     (varm['motif_match']).
     """
-
+    import pandas as pd
     jdb_obj = jaspardb(release=release)
     motifs = jdb_obj.fetch_motifs(
         collection="CORE",
@@ -49,7 +48,7 @@ def make_peakmatrix(
     """Given an AnnData object with macs2 peak calls stored in .uns[key],
     returns a new AnnData object with X a peak count matrix.
     """
-
+    import pandas as pd
     peaks = adata.uns[key]
 
     if not isinstance(peaks, dict):  # Convert to dict for merge_peaks()
@@ -81,6 +80,7 @@ def make_geneadata(
     inherited from input AnnData; filter genes with low cells, counts.
     Parameters recapitulate ArchR defaults.
     """
+    import pandas as pd
 
     # Can't use a dict because of flyte
     genome_ref = snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
@@ -134,7 +134,7 @@ def make_motifmatrix(
 ) -> anndata.AnnData:
     """Return a AnnData object with X as a motif deviation matrix.
     """
-
+    import pandas as pd
     if adata.X.dtype != 'float64':
         adata.X = adata.X.astype(np.float64)
 
@@ -154,6 +154,7 @@ def rank_features(
     if 'save' is a string, a csv of the rank data is saved to a directory
     specified by the string.
     """
+    import pandas as pd
 
     for group in groups:
 
