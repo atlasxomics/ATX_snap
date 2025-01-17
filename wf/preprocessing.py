@@ -1,15 +1,13 @@
-import anndata
 import logging
 import math
-import numpy as np
-import pandas as pd
-import snapatac2 as snap
-
-from scipy.sparse import vstack
 from typing import List
 
-from wf.utils import ref_dict, Run
+import anndata
+import numpy as np
+import snapatac2 as snap
+from scipy.sparse import vstack
 
+from wf.utils import ref_dict, Run
 
 logging.basicConfig(
     format="%(levelname)s - %(asctime)s - %(message)s",
@@ -61,6 +59,7 @@ def add_clusters(
 def add_metadata(run: Run, adata: anndata.AnnData) -> anndata.AnnData:
     """Add metadata and spatial info .obs of AnnData.
     """
+    import pandas as pd
 
     # Read in tissue_positions file from spatial/
     positions = pd.read_csv(run.positions_file, header=None)
@@ -96,6 +95,7 @@ def combine_anndata(
     Combines as AnnDataSet (object written to disk as .h5ad), then back to
     AnnData.
     """
+    import pandas as pd
 
     # Input AnnData must be backend for AnnDataSet, not in-memory.
     logging.info("Converting AnnData objects to backend...")

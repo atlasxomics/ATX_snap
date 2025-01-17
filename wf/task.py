@@ -1,19 +1,19 @@
-import anndata
 import glob
 import logging
-import numpy as np
 import os
-import pandas as pd
+import subprocess
+from typing import List
+
+import anndata
+import numpy as np
 import pychromvar as pc
 import scanpy as sc
 import snapatac2 as snap
 import squidpy as sq
-import subprocess
-
-from typing import List
 
 from latch import message
-from latch.resources.tasks import custom_task
+from latch.registry.table import Table
+from latch.resources.tasks import custom_task, small_task
 from latch.types import LatchDir
 
 import wf.features as ft
@@ -21,7 +21,6 @@ import wf.plotting as pl
 import wf.preprocessing as pp
 import wf.spatial as sp
 import wf.utils as utils
-
 
 logging.basicConfig(
     format="%(levelname)s - %(asctime)s - %(message)s",
@@ -44,6 +43,8 @@ def snap_task(
     clustering_iters: int,
     project_name: str
 ) -> LatchDir:
+
+    import pandas as pd
 
     samples = [run.run_id for run in runs]
 
@@ -288,6 +289,33 @@ def snap_task(
     # Move scanpy plots
     subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
+
+
+@small_task(cache=True)
+def registry_task(
+    runs: List[utils.Run],
+    results: LatchDir
+) -> LatchDir:
+
+    tbl = Table(id="761")
+
+    logging.info("Uploading results to Runs Table in Registry...")
+
+    for run in runs:
+        logging.info(f"Adding {run.run_id} results to Registry...")
+
+        with tbl.update() as updater:
+            updater.upsert_record(
+                name=run.run_id,
+                fragments_file=run.fragments_file,
+                spatial_directory=run.spatial_dir,
+                positions_file=run.positions_file,
+                condition=run.condition,
+                atx_snap_outs=results,
+            )
+
+    logging.info("Done uploading to Registry.")
+    return results
 
 
 if __name__ == "__main__":

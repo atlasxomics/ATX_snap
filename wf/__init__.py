@@ -1,13 +1,11 @@
 from typing import List
 
 from latch.resources.workflow import workflow
-from latch.types.metadata import (
-    LatchAuthor, LatchMetadata, LatchParameter, LatchRule
-)
+from latch.types.metadata import (LatchAuthor, LatchMetadata, LatchParameter,
+                                  LatchRule)
 
-from wf.task import snap_task
-from wf.utils import Run, Genome
-
+from wf.task import registry_task, snap_task
+from wf.utils import Genome, Run
 
 metadata = LatchMetadata(
     display_name="atx_snap",
@@ -25,7 +23,8 @@ metadata = LatchMetadata(
                 run_id and fragments.tsv file; optional: condition, tissue \
                 position file for filtering on/off tissue. Note that multiple \
                 Conditions must be separted by '_' (i.e., Female-control).",
-            batch_table_column=True
+            batch_table_column=True,
+            samplesheet=True,
         ),
         "genome": LatchParameter(
             display_name="genome",
@@ -133,7 +132,7 @@ def snap_workflow(
 
     **ATX snap** is a [LatchBio](https://latch.bio/) Workflow for generating Python objects and data for analysis of epigenomic [DBiT-seq](https://www.nature.com/articles/s41586-022-05094-1) experiments.  Provided a fragment file from a single-cell ATAC-seq preprocessing and alignment tool (i.e., [Chromap](https://github.com/haowenz/chromap)) and spatial information, **ATX snap** performs routine processing with [SnapATAC2](https://kzhang.org/SnapATAC2/) and [scanpy](https://scanpy.readthedocs.io/en/stable/), returning files that can be easily input into custom scripts for more neuanced analysis without the need to perform intensive computation.
 
-    The Workflow utilizes SnapATAC2 for AnnData object generation, quality control, dimensionality reduction/clustering, peak calling, and gene experssion analysis.  Scanpy is used to identify differential features.  [pychromVAR](https://github.com/pinellolab/pychromVAR) is used to create a motif deviation matrix.  The Workflow can take data from either a single tissue-sample analyzed via DBiT-seq or multiple tissue-samples; in ATX parlance, tissue-samples analyzed via DBIT-seq are termed 'Runs'.  All Runs input to **ATX snap** are merged into a single AnnData object for analysis.  
+    The Workflow utilizes SnapATAC2 for AnnData object generation, quality control, dimensionality reduction/clustering, peak calling, and gene experssion analysis.  Scanpy is used to identify differential features.  [pychromVAR](https://github.com/pinellolab/pychromVAR) is used to create a motif deviation matrix.  The Workflow can take data from either a single tissue-sample analyzed via DBiT-seq or multiple tissue-samples; in ATX parlance, tissue-samples analyzed via DBIT-seq are termed 'Runs'.  All Runs input to **ATX snap** are merged into a single AnnData object for analysis.
 
 
     ## Inputs
@@ -248,7 +247,9 @@ def snap_workflow(
         clustering_iters=clustering_iters
     )
 
-    return results
+    uploaded_results = registry_task(runs=runs, results=results)
+
+    return uploaded_results
 
 
 if __name__ == "__main__":
