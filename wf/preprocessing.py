@@ -2,7 +2,6 @@ import logging
 import math
 from typing import List
 
-# import pandas as pd
 import anndata
 import numpy as np
 import snapatac2 as snap
@@ -25,7 +24,6 @@ def add_clusters(
 ) -> anndata.AnnData:
     """Perform dimensionality reduction, batch correction, umap, clustering.
     """
-    import pandas as pd
 
     # First reduce to n_comps demensions
     snap.tl.spectral(adata, n_comps=n_comps, features="selected")
@@ -145,7 +143,7 @@ def convert_tobackend(
     """Create a new backend AnnData object; necessary for creating AnnDataSet;
     saves each AnnData object to disk as .h5ad.
     """
-    import pandas as pd
+
     adata_backend = snap.AnnData(
         filename=f"{filename}_backend.h5ad",
         X=adata.X,
@@ -164,7 +162,6 @@ def filter_adatas(
 ) -> List[anndata.AnnData]:
     """Filter AnnData by on/off tissue tixels, TSS enrichment, max frag counts.
     """
-    import pandas as pd
 
     # Filter 'off tissue' tixels
     try:
@@ -191,7 +188,6 @@ def make_anndatas(
     files into list of _in memory_ AnnData objects. QCs, metadata and spatial
     data are stored in AnnData.obs.
     """
-    import pandas as pd
 
     # Can't use a dict because of flyte
     genome_ref = snap.genome.mm10 if genome == "mm10" else snap.genome.hg38

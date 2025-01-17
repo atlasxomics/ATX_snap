@@ -6,11 +6,11 @@ from typing import List
 
 import anndata
 import numpy as np
-# import pandas as pd
 import pychromvar as pc
 import scanpy as sc
 import snapatac2 as snap
 import squidpy as sq
+
 from latch import message
 from latch.registry.table import Table
 from latch.resources.tasks import custom_task, small_task
@@ -43,7 +43,9 @@ def snap_task(
     clustering_iters: int,
     project_name: str
 ) -> LatchDir:
+
     import pandas as pd
+
     samples = [run.run_id for run in runs]
 
     # Get channels for specifying plot point size, use max for now...
