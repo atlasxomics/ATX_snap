@@ -11,8 +11,8 @@ from latch.types import LatchFile, LatchDir
 pt_sizes = {
     50: {"dim": 75, "qc": 25},
     96: {"dim": 10, "qc": 5},
-    210: {"dim": 25, "qc": 0.25},
-    220: {"dim": 25, "qc": 0.25}
+    210: {"dim": 0.25, "qc": 0.25},
+    220: {"dim": 0.25, "qc": 0.25}
 }
 
 mm10_chrsizes = {
