@@ -8,6 +8,11 @@ import scanpy as sc
 import snapatac2 as snap
 from pyjaspar import jaspardb
 
+from typing import List, Optional
+
+from wf.utils import ref_dict
+
+
 logging.basicConfig(
     format="%(levelname)s - %(asctime)s - %(message)s",
     level=logging.INFO
@@ -52,8 +57,7 @@ def make_peakmatrix(
         peaks = {"0": adata.uns[key]}
 
     # Can't use a dict because of flyte
-    genome_ref = snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
-    merged_peaks = snap.tl.merge_peaks(peaks, genome_ref)
+    merged_peaks = snap.tl.merge_peaks(peaks, ref_dict[genome][0])
 
     adata_p = snap.pp.make_peak_matrix(adata, use_rep=merged_peaks["Peaks"])
 
@@ -78,14 +82,11 @@ def make_geneadata(
     Parameters recapitulate ArchR defaults.
     """
 
-    # Can't use a dict because of flyte
-    genome_ref = snap.genome.mm10 if genome == "mm10" else snap.genome.hg38
-
     # New AnnData, parameters to match ArchR
     logging.info("Creating gene matrix...")
     adata_ge = snap.pp.make_gene_matrix(
         adata,
-        gene_anno=genome_ref,
+        gene_anno=ref_dict[genome][1],
         upstream=5000,  # ArchR default
         downstream=0,  # ArchR default
         include_gene_body=True  # Use genebody, not TSS, per ArchR

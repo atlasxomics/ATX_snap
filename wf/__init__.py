@@ -265,7 +265,7 @@ if __name__ == "__main__":
             )
         ],
         genome=Genome.hg38,
-        project_name="dev—gpu",
+        project_name="dev—refs",
         resolution=1.0,
         leiden_iters=-1,
         n_comps=30,

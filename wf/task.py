@@ -205,7 +205,7 @@ def snap_task(
 
         peak_mats[group] = anndata_peak
 
-        logging.info("Finded marker peaks ...")
+        logging.info("Finding marker peaks ...")
         sc.tl.rank_genes_groups(
             peak_mats[group], groupby=group, method="wilcoxon"
         )
