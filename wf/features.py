@@ -77,9 +77,13 @@ def make_geneadata(
     min_counts: int = 1,
     min_cells: int = 1,
 ) -> anndata.AnnData:
-    """Create an AnnData object where X is a Gene Expression Matrix; .obs is
-    inherited from input AnnData; filter genes with low cells, counts.
-    Parameters recapitulate ArchR defaults.
+    """Create an AnnData object where X is a Gene Expression Matrix (GEM); .obs
+    is inherited from input AnnData; filter genes with low cells, counts.
+    Parameters recapitulate ArchR defaults.  snap.pp.make_gene_matrix() first
+    creates a GEM of putative raw counts.  This matrix is normalized, log
+    transformed, and imputed with MAGIC.  In the returned AnnData object, .X is
+    the imputated matrix, .raw.X is the log transformed, normalized matrix; raw
+    counts are stored in .layers["raw_counts"].
     """
 
     # New AnnData, parameters to match ArchR
@@ -91,6 +95,9 @@ def make_geneadata(
         downstream=0,  # ArchR default
         include_gene_body=True  # Use genebody, not TSS, per ArchR
     )
+
+    # Save raw counts in layers
+    adata_ge.layers["raw_counts"] = adata_ge.X.copy()
 
     # Copy adata .obsm
     for obsm in ["X_umap", "X_spectral_harmony", "spatial"]:
