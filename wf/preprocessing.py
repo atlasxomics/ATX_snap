@@ -7,11 +7,10 @@ import numpy as np
 import snapatac2 as snap
 from scipy.sparse import vstack
 
-from wf.utils import ref_dict, Run
+from wf.utils import Run, ref_dict
 
 logging.basicConfig(
-    format="%(levelname)s - %(asctime)s - %(message)s",
-    level=logging.INFO
+    format="%(levelname)s - %(asctime)s - %(message)s", level=logging.INFO
 )
 
 
@@ -20,10 +19,9 @@ def add_clusters(
     resolution: float,
     n_comps: int,
     leiden_iters: int,
-    min_cluster_size: int
+    min_cluster_size: int,
 ) -> anndata.AnnData:
-    """Perform dimensionality reduction, batch correction, umap, clustering.
-    """
+    """Perform dimensionality reduction, batch correction, umap, clustering."""
 
     # First reduce to n_comps demensions
     snap.tl.spectral(adata, n_comps=n_comps, features="selected")
@@ -31,9 +29,7 @@ def add_clusters(
     try:
         n_runs = len(adata.obs["sample"].unique())
     except KeyError as e:
-        logging.warning(
-            f"Exception {e}: Please add metadata to combined AnnData."
-        )
+        logging.warning(f"Exception {e}: Please add metadata to combined AnnData.")
 
     if n_runs > 1:
         logging.info("Performing batch correction with Harmony...")
@@ -50,15 +46,14 @@ def add_clusters(
         resolution=resolution,
         n_iterations=leiden_iters,
         min_cluster_size=min_cluster_size,
-        key_added="cluster"
+        key_added="cluster",
     )
 
     return adata
 
 
 def add_metadata(run: Run, adata: anndata.AnnData) -> anndata.AnnData:
-    """Add metadata and spatial info .obs of AnnData.
-    """
+    """Add metadata and spatial info .obs of AnnData."""
     import pandas as pd
 
     # Read in tissue_positions file from spatial/
@@ -78,17 +73,15 @@ def add_metadata(run: Run, adata: anndata.AnnData) -> anndata.AnnData:
 
     # Ensure obs_names unique
     adata.obs_names = [
-        run_id + "#" + bc for
-        run_id, bc in zip(adata.obs["sample"], adata.obs["barcode"])
+        run_id + "#" + bc
+        for run_id, bc in zip(adata.obs["sample"], adata.obs["barcode"])
     ]
 
     return adata
 
 
 def combine_anndata(
-    adatas: List[anndata.AnnData],
-    names: List[str],
-    filename: str = "combined"
+    adatas: List[anndata.AnnData], names: List[str], filename: str = "combined"
 ) -> anndata.AnnData:
     """Combines a list of AnnData objects into a combined AnnData object.
     Converts in-memory AnnData to backend, saving to disk as .h5ad.
@@ -100,8 +93,7 @@ def combine_anndata(
     # Input AnnData must be backend for AnnDataSet, not in-memory.
     logging.info("Converting AnnData objects to backend...")
     adatas_be = [
-        convert_tobackend(adata, f"{name}") for
-        adata, name in zip(adatas, names)
+        convert_tobackend(adata, f"{name}") for adata, name in zip(adatas, names)
     ]
 
     # Convert to AnnDataSet; this is what tutorial does, can we just combine
@@ -109,7 +101,7 @@ def combine_anndata(
     logging.info("Creating AnnDataSet...")
     adataset = snap.AnnDataSet(
         adatas=[(name, adata) for name, adata in zip(names, adatas_be)],
-        filename=f"{filename}.h5ad"
+        filename=f"{filename}.h5ad",
     )
     logging.info(f"AnnDataSet created with shape {adataset.shape}")
 
@@ -125,9 +117,10 @@ def combine_anndata(
 
     # Ensure obs_names unique
     combined_adata.obs_names = [
-        run_id + "#" + bc for
-        run_id, bc in
-        zip(combined_adata.obs["sample"], combined_adata.obs["barcode"])
+        run_id + "#" + bc
+        for run_id, bc in zip(
+            combined_adata.obs["sample"], combined_adata.obs["barcode"]
+        )
     ]
 
     # AnnDataSet does not inherit .obsm; add manually :/
@@ -137,9 +130,7 @@ def combine_anndata(
     return combined_adata
 
 
-def convert_tobackend(
-    adata: anndata.AnnData, filename: str
-) -> anndata.AnnData:
+def convert_tobackend(adata: anndata.AnnData, filename: str) -> anndata.AnnData:
     """Create a new backend AnnData object; necessary for creating AnnDataSet;
     saves each AnnData object to disk as .h5ad.
     """
@@ -150,7 +141,7 @@ def convert_tobackend(
         obs=adata.obs,
         var=adata.var,
         uns=adata.uns,
-        obsm=dict(adata.obsm)
+        obsm=dict(adata.obsm),
     )
     adata_backend.obs_names = adata.obs_names
 
@@ -160,29 +151,22 @@ def convert_tobackend(
 def filter_adatas(
     adatas: List[anndata.AnnData], min_tss: float = 2.0
 ) -> List[anndata.AnnData]:
-    """Filter AnnData by on/off tissue tixels, TSS enrichment, max frag counts.
-    """
+    """Filter AnnData by on/off tissue tixels, TSS enrichment, max frag counts."""
 
     # Filter 'off tissue' tixels
     try:
         adatas = [adata[adata.obs["on_off"] == 1] for adata in adatas]
     except KeyError as e:
-        logging.warning(
-            f"Exception {e}: no positions data found in AnnData.obs"
-        )
+        logging.warning(f"Exception {e}: no positions data found in AnnData.obs")
 
     # Filter cells by tss, max_counts
-    snap.pp.filter_cells(
-        adatas, min_tsse=min_tss, min_counts=None, max_counts=1e7
-    )
+    snap.pp.filter_cells(adatas, min_tsse=min_tss, min_counts=None, max_counts=1e7)
 
     return adatas
 
 
 def make_anndatas(
-    runs: List[Run],
-    genome: str,
-    min_frags: int
+    runs: List[Run], genome: str, min_frags: int
 ) -> List[anndata.AnnData]:
     """Basic preprocessing for snapATAC2 analysis; converts fragement_tsv.gz
     files into list of _in memory_ AnnData objects. QCs, metadata and spatial
@@ -194,7 +178,7 @@ def make_anndatas(
         [run.fragments_file.local_path for run in runs],
         chrom_sizes=ref_dict[genome][0],
         min_num_fragments=min_frags,
-        sorted_by_barcode=False
+        sorted_by_barcode=False,
     )
 
     # Add run_id, condition, spatial info to .obs, TSS enrichment
@@ -204,7 +188,6 @@ def make_anndatas(
     snap.metrics.tsse(adatas, ref_dict[genome][1])
 
     for adata in adatas:
-
         if min_frags == 0:  # Convert 0 to NA
             logging.warning("Converting 0's to NA in .obs['n_fragment']")
             adata.obs["n_fragment"] = adata.obs["n_fragment"].apply(

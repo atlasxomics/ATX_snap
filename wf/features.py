@@ -8,14 +8,10 @@ import scanpy as sc
 import snapatac2 as snap
 from pyjaspar import jaspardb
 
-from typing import List, Optional
-
 from wf.utils import ref_dict
 
-
 logging.basicConfig(
-    format="%(levelname)s - %(asctime)s - %(message)s",
-    level=logging.INFO
+    format="%(levelname)s - %(asctime)s - %(message)s", level=logging.INFO
 )
 
 
@@ -28,10 +24,7 @@ def get_motifs(
     (varm['motif_match']).
     """
     jdb_obj = jaspardb(release=release)
-    motifs = jdb_obj.fetch_motifs(
-        collection="CORE",
-        tax_group=["vertebrates"]
-    )
+    motifs = jdb_obj.fetch_motifs(collection="CORE", tax_group=["vertebrates"])
 
     pc.add_peak_seq(adata, genome_file=fasta_path, delimiter=":|-")
     pc.add_gc_bias(adata)
@@ -43,10 +36,7 @@ def get_motifs(
 
 
 def make_peakmatrix(
-    adata: anndata.AnnData,
-    genome: str,
-    key: str,
-    log_norm: bool = True
+    adata: anndata.AnnData, genome: str, key: str, log_norm: bool = True
 ) -> anndata.AnnData:
     """Given an AnnData object with macs2 peak calls stored in .uns[key],
     returns a new AnnData object with X a peak count matrix.
@@ -77,13 +67,9 @@ def make_geneadata(
     min_counts: int = 1,
     min_cells: int = 1,
 ) -> anndata.AnnData:
-    """Create an AnnData object where X is a Gene Expression Matrix (GEM); .obs
-    is inherited from input AnnData; filter genes with low cells, counts.
-    Parameters recapitulate ArchR defaults.  snap.pp.make_gene_matrix() first
-    creates a GEM of putative raw counts.  This matrix is normalized, log
-    transformed, and imputed with MAGIC.  In the returned AnnData object, .X is
-    the imputated matrix, .raw.X is the log transformed, normalized matrix; raw
-    counts are stored in .layers["raw_counts"].
+    """Create an AnnData object where X is a Gene Expression Matrix; .obs is
+    inherited from input AnnData; filter genes with low cells, counts.
+    Parameters recapitulate ArchR defaults.
     """
 
     # New AnnData, parameters to match ArchR
@@ -93,11 +79,8 @@ def make_geneadata(
         gene_anno=ref_dict[genome][1],
         upstream=5000,  # ArchR default
         downstream=0,  # ArchR default
-        include_gene_body=True  # Use genebody, not TSS, per ArchR
+        include_gene_body=True,  # Use genebody, not TSS, per ArchR
     )
-
-    # Save raw counts in layers
-    adata_ge.layers["raw_counts"] = adata_ge.X.copy()
 
     # Copy adata .obsm
     for obsm in ["X_umap", "X_spectral_harmony", "spatial"]:
@@ -126,19 +109,14 @@ def make_geneadata(
     logging.info("Batch correction with MAGIC...")
     sc.external.pp.magic(adata_ge, solver="approximate")
 
-    sc.pp.calculate_qc_metrics(
-        adata_ge, qc_vars="mt", inplace=True, log1p=True
-    )
-
+    sc.pp.calculate_qc_metrics(adata_ge, qc_vars="mt", inplace=True, log1p=True)
+    print("Done.... MAGIC+QC")
     return adata_ge
 
 
-def make_motifmatrix(
-    adata: anndata.AnnData, n_jobs: int = -1
-) -> anndata.AnnData:
-    """Return a AnnData object with X as a motif deviation matrix.
-    """
-    if adata.X.dtype != 'float64':
+def make_motifmatrix(adata: anndata.AnnData, n_jobs: int = -1) -> anndata.AnnData:
+    """Return a AnnData object with X as a motif deviation matrix."""
+    if adata.X.dtype != "float64":
         adata.X = adata.X.astype(np.float64)
 
     return pc.compute_deviations(adata, n_jobs=n_jobs)
@@ -151,7 +129,7 @@ def rank_features(
     save: Optional[str],
     use_raw: bool = False,
     pval_cutoff: float = 0.05,
-    logfoldchange_cutoff: float = 0.1
+    logfoldchange_cutoff: float = 0.1,
 ):
     """For each metadata cell grouping provided, add gene ranking information;
     if 'save' is a string, a csv of the rank data is saved to a directory
@@ -160,19 +138,16 @@ def rank_features(
     import pandas as pd
 
     for group in groups:
-
         logging.info(f"Finding marker genes for {group}s...")
         sc.tl.rank_genes_groups(
             adata,
             groupby=group,
             method="t-test",
             key_added=f"{group}_{feature_type}",
-            use_raw=use_raw
+            use_raw=use_raw,
         )
         df = sc.get.rank_genes_groups_df(
-            adata,
-            group=None,
-            key=f"{group}_{feature_type}"
+            adata, group=None, key=f"{group}_{feature_type}"
         )
 
         # Write ranked features to csv
@@ -186,11 +161,13 @@ def rank_features(
         counts["total"] = counts.sum()
         counts = pd.DataFrame(counts).reset_index()
 
-        counts.rename(columns={
-            "group": f"{group}",
-            "names": f"number differential {feature_type}"
-        }, inplace=True)
+        counts.rename(
+            columns={
+                "group": f"{group}",
+                "names": f"number differential {feature_type}",
+            },
+            inplace=True,
+        )
         counts.to_csv(
-            f"{save}/differential_{feature_type}_per_{group}_counts.csv",
-            index=False
+            f"{save}/differential_{feature_type}_per_{group}_counts.csv", index=False
         )
