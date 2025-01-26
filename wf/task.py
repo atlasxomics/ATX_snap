@@ -1,4 +1,3 @@
-import glob
 import logging
 import os
 import pickle
@@ -7,7 +6,6 @@ from typing import List
 
 import anndata
 import numpy as np
-import psutil
 import pychromvar as pc
 import scanpy as sc
 import snapatac2 as snap
