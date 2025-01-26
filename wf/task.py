@@ -149,11 +149,12 @@ def make_adata(
 def make_adata_gene(
     outdir: LatchDir,
     project_name: str,
-    genome: str,
+    genome: utils.Genome,
     groups: List[str],
 ) -> LatchDir:
     data_path = LatchFile(f"{outdir.remote_path}/combined.h5ad")
     adata = anndata.read_h5ad(data_path.local_path)
+    genome = genome.value
 
     out_dir = f"/root/{project_name}"
     os.makedirs(out_dir, exist_ok=True)
@@ -191,11 +192,12 @@ def make_adata_gene(
 def call_peaks(
     outdir: LatchDir,
     project_name: str,
-    genome: str,
+    genome: utils.Genome,
     groups: List[str],
 ) -> LatchDir:
     import rapids_singlecell as rsc
 
+    genome = genome.value
     data_path = LatchFile(f"{outdir.remote_path}/combined.h5ad")
     adata = anndata.read_h5ad(data_path.local_path)
 
@@ -257,8 +259,9 @@ def call_peaks(
 
 @custom_task(cpu=62, memory=256, storage_gib=1000)
 def motifs_task(
-    outdir: LatchDir, project_name: str, groups: List[str], genome: str
+    outdir: LatchDir, project_name: str, groups: List[str], genome: utils.Genome
 ) -> LatchDir:
+    genome = genome.value
     data_path = LatchFile(f"{outdir.remote_path}/combined.h5ad")
     adata = anndata.read_h5ad(data_path.local_path)
     peaks_path = LatchFile(f"{outdir.remote_path}/peaks.pkl")
@@ -292,6 +295,9 @@ def motifs_task(
 
     logging.info("Preparing peak matrix for motifs...")
     fasta = utils.get_genome_fasta(genome)
+    print(fasta)
+    print(fasta.local_path)
+
     cluster_peaks = ft.get_motifs(cluster_peaks, fasta.local_path)
     cluster_peaks.write(f"{out_dir}/cluster_peaks.h5ad")
 

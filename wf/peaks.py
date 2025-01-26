@@ -2,7 +2,6 @@ from os import makedirs
 from shutil import rmtree
 
 import anndata
-import gmacs as gm
 import numpy as np
 import polars as pl
 import snapatac2._snapatac2 as _snapatac2
@@ -21,6 +20,8 @@ def call_peaks_macs3_gpu(
     Wrapper around gmacs function, peak caller routine implemented for identifying peaks,
     as a potential faster alternative for MACS3.
     """
+    import gmacs as gm
+
     genome_length = adata.uns["reference_sequences"]["reference_seq_length"].sum()
     groupby = list(adata.obs[groupby_key])
     tmpdir = "tmp"
