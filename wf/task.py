@@ -142,6 +142,7 @@ def make_adata(
     sq.pl.ripley(adata, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
     subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
     adata.write(f"{out_dir}/combined.h5ad")
+
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}"), groups
 
 
@@ -152,6 +153,7 @@ def make_adata_gene(
     genome: utils.Genome,
     groups: List[str],
 ) -> LatchDir:
+
     data_path = LatchFile(f"{outdir.remote_path}/combined.h5ad")
     adata = anndata.read_h5ad(data_path.local_path)
     genome = genome.value
@@ -244,7 +246,7 @@ def call_peaks(
         logging.info("Writing marker peaks to .csv ...")
         sc.get.rank_genes_groups_df(  # Save as csv
             peak_mats[group], group=None, pval_cutoff=0.05, log2fc_min=0.1
-        ).to_csv(f"{out_dir}/marker_peaks_per_{group}.csv", index=False)
+        ).to_csv(f"{tables_dir}/marker_peaks_per_{group}.csv", index=False)
 
     logging.info("Writing combined anndata with peaks ...")
     peaks = list(peak_mats["cluster"].var_names)
@@ -254,6 +256,7 @@ def call_peaks(
     peaks_path = f"{out_dir}/peaks.pkl"
     with open(peaks_path, "wb") as f:
         pickle.dump(peak_mats, f)
+
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
 
 
@@ -261,6 +264,7 @@ def call_peaks(
 def motifs_task(
     outdir: LatchDir, project_name: str, groups: List[str], genome: utils.Genome
 ) -> LatchDir:
+
     genome = genome.value
     data_path = LatchFile(f"{outdir.remote_path}/combined.h5ad")
     adata = anndata.read_h5ad(data_path.local_path)

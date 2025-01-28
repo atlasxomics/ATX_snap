@@ -17,8 +17,8 @@ def call_peaks_macs3_gpu(
     q_thresh: float = 0.1,
 ) -> anndata.AnnData:
     """
-    Wrapper around gmacs function, peak caller routine implemented for identifying peaks,
-    as a potential faster alternative for MACS3.
+    Wrapper around gmacs function, peak caller routine implemented for
+    identifying peaks, as a potential faster alternative for MACS3.
     """
     import gmacs as gm
 
