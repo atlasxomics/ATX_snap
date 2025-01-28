@@ -1,3 +1,4 @@
+import glob
 import logging
 import os
 import pickle
@@ -108,7 +109,21 @@ def make_adata(
 
     logging.info("Performing dimensionality reduction...")
     adata = pp.add_clusters(adata, resolution, n_comps, leiden_iters, min_cluster_size)
+
     adata = sp.add_spatial(adata)  # Add spatial coordinates to tixels
+
+    logging.info("Creating coverages for groups...")
+    for group in groups:
+        coverage_dir = f"{out_dir}/{group}_coverages"
+        os.makedirs(coverage_dir, exist_ok=True)
+        snap.ex.export_coverage(
+            adata, groupby=group, suffix=f"{group}.bedgraph.gz"
+        )
+        bgs = glob.glob("*.bedgraph.gz")
+        subprocess.run(["mv"] + bgs + [coverage_dir])
+    logging.info("Finished coverages for groups...")
+
+    # Plotting --
     pl.plot_umaps(adata, groups, f"{figures_dir}/umap.pdf")
     pl.plot_spatial(
         adata,
@@ -137,8 +152,10 @@ def make_adata(
         save="neighborhood_enrichemnt.pdf",
     )
     sq.pl.ripley(adata, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
+
     subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
     adata.write(f"{out_dir}/combined.h5ad")
+
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}"), groups
 
 
@@ -161,7 +178,7 @@ def make_adata_gene(
     tables_dir = f"{out_dir}/tables"
     os.makedirs(tables_dir, exist_ok=True)
 
-    # # Genes ------------------------------------------------------------------
+    # # Genes -----------------------------------------------------------------
     logging.info("Making gene matrix...")
     adata_gene = ft.make_geneadata(adata, genome)
     adata_gene.obs.to_csv(f"{tables_dir}/gene_metadata.csv")
@@ -191,7 +208,8 @@ def call_peaks(
     genome: str,
     groups: List[str],
 ) -> LatchDir:
-    ##returns 2 files, combined.h5ad and peaks.pkl
+    # Returns 2 files, combined.h5ad and peaks.pkl
+
     data_path = LatchFile(f"{outdir.remote_path}/combined.h5ad")
     adata = anndata.read_h5ad(data_path.local_path)
 
