@@ -111,6 +111,19 @@ def make_adata(
     logging.info("Performing dimensionality reduction...")
     adata = pp.add_clusters(adata, resolution, n_comps, leiden_iters, min_cluster_size)
     adata = sp.add_spatial(adata)  # Add spatial coordinates to tixels
+
+    logging.info("Creating coverages for groups...")
+    for group in groups:
+        coverage_dir = f"{out_dir}/{group}_coverages"
+        os.makedirs(coverage_dir, exist_ok=True)
+        snap.ex.export_coverage(
+            adata, groupby=group, suffix=f"{group}.bedgraph.gz"
+        )
+        bgs = glob.glob("*.bedgraph.gz")
+        subprocess.run(["mv"] + bgs + [coverage_dir])
+    logging.info("Finished coverages for groups...")
+
+    # Plots --------------------------------------------------------------------
     pl.plot_umaps(adata, groups, f"{figures_dir}/umap.pdf")
     pl.plot_spatial(
         adata,
@@ -166,7 +179,7 @@ def make_adata_gene(
     tables_dir = f"{out_dir}/tables"
     os.makedirs(tables_dir, exist_ok=True)
 
-    # # Genes ------------------------------------------------------------------
+    # Genes -----------------------------------------------------------------
     logging.info("Making gene matrix...")
     adata_gene = ft.make_geneadata(adata, genome)
     adata_gene.obs.to_csv(f"{tables_dir}/gene_metadata.csv")
