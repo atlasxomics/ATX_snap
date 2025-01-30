@@ -7,7 +7,6 @@ from typing import List
 
 import anndata
 import numpy as np
-import psutil
 import pychromvar as pc
 import scanpy as sc
 import snapatac2 as snap
@@ -234,11 +233,23 @@ def call_peaks(
         logging.info("Finding marker peaks ...")
         logging.info(group)
 
-        rsc.get.anndata_to_GPU(anndata_peak)
-        rsc.tl.rank_genes_groups_logreg(
-            peak_mats[group], groupby=group, method="wilcoxon"
-        )
-        rsc.get.anndata_to_CPU(anndata_peak)
+        group_len = len(adata.obs[group].unique())
+        if group_len != 2:  # Work around for rcs bug
+            rsc.get.anndata_to_GPU(anndata_peak)
+            rsc.tl.rank_genes_groups_logreg(
+                peak_mats[group],
+                groupby=group,
+                method="wilcoxon",
+                use_raw=False,
+            )
+            rsc.get.anndata_to_CPU(anndata_peak)
+        else:
+            sc.tl.rank_genes_groups(
+                anndata_peak,
+                groupby=group,
+                method="logreg",
+                use_raw=False,
+            )
 
         logging.info("Writing peak matrix ...")
         anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData
