@@ -1,13 +1,15 @@
 import logging
 import math
-from typing import List
+
+from typing import List, Union
+from pathlib import Path
 
 import anndata
 import numpy as np
 import snapatac2 as snap
 from scipy.sparse import vstack
 
-from wf.utils import Run, ref_dict
+from wf.utils import Run, get_LatchFile, ref_dict
 
 logging.basicConfig(
     format="%(levelname)s - %(asctime)s - %(message)s", level=logging.INFO
@@ -52,12 +54,14 @@ def add_clusters(
     return adata
 
 
-def add_metadata(run: Run, adata: anndata.AnnData) -> anndata.AnnData:
+def add_metadata(
+    run: Run, adata: anndata.AnnData, positions_file: Union[Path, str]
+) -> anndata.AnnData:
     """Add metadata and spatial info .obs of AnnData."""
     import pandas as pd
 
     # Read in tissue_positions file from spatial/
-    positions = pd.read_csv(run.positions_file, header=None)
+    positions = pd.read_csv(positions_file, header=None)
     positions.columns = ["barcode", "on_off", "row", "col", "xcor", "ycor"]
 
     # Match barcodes in adata/fragments_file
@@ -181,8 +185,14 @@ def make_anndatas(
         sorted_by_barcode=False,
     )
 
+    position_files = {
+        run.run_id: get_LatchFile(run.spatial_dir, "tissue_positions_list.csv")
+        for run in runs
+    }
+
     # Add run_id, condition, spatial info to .obs, TSS enrichment
-    adatas = [add_metadata(run, adata) for run, adata in zip(runs, adatas)]
+    adatas = [add_metadata(run, adata, position_files[run.run_id].local_path)
+              for run, adata in zip(runs, adatas)]
 
     # Add addtional QCs
     snap.metrics.tsse(adatas, ref_dict[genome][1])
