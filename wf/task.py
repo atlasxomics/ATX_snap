@@ -347,7 +347,6 @@ def registry_task(runs: List[utils.Run], results: LatchDir) -> LatchDir:
                 name=run.run_id,
                 fragments_file=run.fragments_file,
                 spatial_directory=run.spatial_dir,
-                positions_file=run.positions_file,
                 condition=run.condition,
                 atx_snap_outs=results,
             )

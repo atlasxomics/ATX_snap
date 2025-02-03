@@ -26,9 +26,9 @@ metadata = LatchMetadata(
         "runs": LatchParameter(
             display_name="runs",
             description="List of runs to be analyzed; each run must contain a \
-                run_id and fragments.tsv file; optional: condition, tissue \
-                position file for filtering on/off tissue. Note that multiple \
-                Conditions must be separted by '_' (i.e., Female-control).",
+                run_id and fragments.tsv file; optional: condition. Note that \
+                multiple Conditions must be separted by '_'\
+                      (i.e., Female-control).",
             batch_table_column=True,
             samplesheet=True,
         ),
@@ -144,8 +144,6 @@ def snap_workflow(
     All input files for **ATX snap** must be on the LatchBio [file system](https://wiki.latch.bio/wiki/data/overview).  Each run in the workflow takes the following parameters.
 
     * [fragments.tsv.gz file](https://support.10xgenomics.com/single-cell-atac/software/pipelines/latest/output/fragments): A BED-like, tab-delimited file in which each row contains an ATAC-seq fragment.
-
-    * [tissue_positions_list.csv](https://docs.atlasxomics.com/projects/AtlasXbrowser/en/latest/SpatialFolder.html): A comma-separated file in which each row contains a unique barcode, an indicator for whether the tixel is 'on-tissue' (1, 0), and a row/column index.
 
     * [Spatial folder](https://docs.atlasxomics.com/projects/AtlasXbrowser/en/latest/SpatialFolder.html): A directory containing tissue images and experiment metadata.
 

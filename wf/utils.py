@@ -1,7 +1,9 @@
 import json
+import logging
 
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import List
 
 from latch.types import LatchFile, LatchDir
@@ -52,7 +54,6 @@ class Run:
     run_id: str
     fragments_file: LatchFile
     spatial_dir: LatchDir
-    positions_file: LatchFile
     condition: str = "None"
 
 
@@ -92,3 +93,23 @@ def get_groups(runs: List[Run]):
         groups.append("condition")
 
     return groups
+
+
+def get_LatchFile(directory: LatchDir, file_name: str) -> LatchFile:
+    try:
+        files = [file for file in directory.iterdir()
+                 if isinstance(file, LatchFile) and
+                 Path(file.path).name == file_name]
+        if len(files) == 1:
+            return files[0]
+        elif len(files) == 0:
+            raise FileNotFoundError(
+                f"No file {file_name} found in {directory.remote_path}"
+            )
+        elif len(files) > 1:
+            raise FileNotFoundError(
+                f"Multiple files {file_name} found in {directory.remote_path}"
+            )
+    except Exception as e:
+        logging.error(f"Failed to find file '{file_name}'; error {e}")
+        return None
