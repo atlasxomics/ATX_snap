@@ -109,7 +109,6 @@ def get_LatchFile(directory: LatchDir, file_name: str) -> LatchFile:
 
         if len(files) == 1:
             return files[0]
-
         elif len(files) == 0:
             raise FileNotFoundError(
                 f"No file {file_name} found in {directory.remote_path}"

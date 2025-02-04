@@ -27,8 +27,8 @@ metadata = LatchMetadata(
             display_name="runs",
             description="List of runs to be analyzed; each run must contain a \
                 run_id and fragments.tsv file; optional: condition. Note that \
-                multiple Conditions must be separted by '_' (i.e., \
-                Female-control).",
+                multiple Conditions must be separted by '_'\
+                      (i.e., Female-control).",
             batch_table_column=True,
             samplesheet=True,
         ),
