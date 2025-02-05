@@ -11,7 +11,9 @@ from wf.utils import filter_anndata
 
 
 def plot_neighborhoods(
-    adata: anndata.AnnData, group: str, subgroups: Optional[List[str]]
+    adata: anndata.AnnData, group: str,
+    subgroups: Optional[List[str]],
+    outdir: str = "figures"
 ):
 
     if group != "all" and subgroups:
@@ -22,7 +24,7 @@ def plot_neighborhoods(
             filtered_adatas[sg] = filtered_adata
 
     plt.rcParams.update({'figure.autolayout': True})
-    with PdfPages(f"{group}_neighborhoods.pdf") as pdf:
+    with PdfPages(f"{outdir}/{group}_neighborhoods.pdf") as pdf:
 
         if subgroups:
             for sg in subgroups:

@@ -148,7 +148,9 @@ def make_adata(
     group_dict["all"] = None
 
     for group in group_dict.keys():
-        pl.plot_neighborhoods(adata, group, group_dict[group])
+        pl.plot_neighborhoods(
+            adata, group, group_dict[group], outdir=figures_dir
+        )
 
     sq.pl.ripley(adata, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
 
