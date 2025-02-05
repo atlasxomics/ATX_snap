@@ -13,7 +13,7 @@ import snapatac2 as snap
 import squidpy as sq
 from latch import message
 from latch.registry.table import Table
-from latch.resources.tasks import custom_task, small_task
+from latch.resources.tasks import custom_task, large_gpu_task, small_task
 from latch.types import LatchDir, LatchFile
 
 import wf.features as ft
@@ -21,6 +21,7 @@ import wf.plotting as pl
 import wf.preprocessing as pp
 import wf.spatial as sp
 import wf.utils as utils
+from wf.peaks import call_peaks_macs3_gpu
 
 
 @custom_task(cpu=62, memory=256, storage_gib=1000)
@@ -123,7 +124,6 @@ def make_adata(
         subprocess.run(["mv"] + bgs + [coverage_dir])
     logging.info("Finished coverages for groups...")
 
-    # Plotting --
     pl.plot_umaps(adata, groups, f"{figures_dir}/umap.pdf")
     pl.plot_spatial(
         adata,
@@ -163,11 +163,13 @@ def make_adata(
 def make_adata_gene(
     outdir: LatchDir,
     project_name: str,
-    genome: str,
+    genome: utils.Genome,
     groups: List[str],
 ) -> LatchDir:
+
     data_path = LatchFile(f"{outdir.remote_path}/combined.h5ad")
     adata = anndata.read_h5ad(data_path.local_path)
+    genome = genome.value
 
     out_dir = f"/root/{project_name}"
     os.makedirs(out_dir, exist_ok=True)
@@ -178,7 +180,6 @@ def make_adata_gene(
     tables_dir = f"{out_dir}/tables"
     os.makedirs(tables_dir, exist_ok=True)
 
-    # # Genes -----------------------------------------------------------------
     logging.info("Making gene matrix...")
     adata_gene = ft.make_geneadata(adata, genome)
     adata_gene.obs.to_csv(f"{tables_dir}/gene_metadata.csv")
@@ -201,14 +202,16 @@ def make_adata_gene(
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
 
 
-@custom_task(cpu=62, memory=256, storage_gib=1000)
+@large_gpu_task
 def call_peaks(
     outdir: LatchDir,
     project_name: str,
-    genome: str,
+    genome: utils.Genome,
     groups: List[str],
 ) -> LatchDir:
-    # Returns 2 files, combined.h5ad and peaks.pkl
+    import rapids_singlecell as rsc
+
+    genome = genome.value
 
     data_path = LatchFile(f"{outdir.remote_path}/combined.h5ad")
     adata = anndata.read_h5ad(data_path.local_path)
@@ -225,24 +228,46 @@ def call_peaks(
     peak_mats = {}
     for group in groups:
         logging.info(f"Calling peaks for {group}s...")
-        snap.tl.macs3(
-            adata,
-            groupby=group,
-            shift=-75,
-            extsize=150,
-            qvalue=0.1,
-            key_added=f"{group}_peaks",
+        adata = call_peaks_macs3_gpu(
+            adata=adata,
+            groupby_key=group,
+            d_treat=150,
+            d_ctrl=10000,
+            max_gap=30,
+            peak_amp=150,
+            q_thresh=0.1,
         )
 
         logging.info("Making peak matrix AnnData...")
         anndata_peak = ft.make_peakmatrix(
             adata, genome, f"{group}_peaks", log_norm=True
         )
+
         peak_mats[group] = anndata_peak
         logging.info("Finding marker peaks ...")
-        sc.tl.rank_genes_groups(peak_mats[group], groupby=group, method="wilcoxon")
+        logging.info(group)
+
+        group_len = len(adata.obs[group].unique())
+        if group_len != 2:  # Work around for rcs bug
+            rsc.get.anndata_to_GPU(anndata_peak)
+            rsc.tl.rank_genes_groups_logreg(
+                peak_mats[group],
+                groupby=group,
+                method="wilcoxon",
+                use_raw=False,
+            )
+            rsc.get.anndata_to_CPU(anndata_peak)
+        else:
+            sc.tl.rank_genes_groups(
+                anndata_peak,
+                groupby=group,
+                method="logreg",
+                use_raw=False,
+            )
+
         logging.info("Writing peak matrix ...")
         anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData
+
         logging.info("Writing marker peaks to .csv ...")
         sc.get.rank_genes_groups_df(  # Save as csv
             peak_mats[group], group=None, pval_cutoff=0.05, log2fc_min=0.1
@@ -256,13 +281,16 @@ def call_peaks(
     peaks_path = f"{out_dir}/peaks.pkl"
     with open(peaks_path, "wb") as f:
         pickle.dump(peak_mats, f)
+
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
 
 
 @custom_task(cpu=62, memory=256, storage_gib=1000)
 def motifs_task(
-    outdir: LatchDir, project_name: str, groups: List[str], genome: str
+    outdir: LatchDir, project_name: str, groups: List[str], genome: utils.Genome
 ) -> LatchDir:
+
+    genome = genome.value
     data_path = LatchFile(f"{outdir.remote_path}/combined.h5ad")
     adata = anndata.read_h5ad(data_path.local_path)
     peaks_path = LatchFile(f"{outdir.remote_path}/peaks.pkl")
@@ -296,6 +324,9 @@ def motifs_task(
 
     logging.info("Preparing peak matrix for motifs...")
     fasta = utils.get_genome_fasta(genome)
+    print(fasta)
+    print(fasta.local_path)
+
     cluster_peaks = ft.get_motifs(cluster_peaks, fasta.local_path)
     cluster_peaks.write(f"{out_dir}/cluster_peaks.h5ad")
 

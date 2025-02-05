@@ -9,6 +9,11 @@ from typing import List
 from latch.types import LatchFile, LatchDir
 
 
+logging.basicConfig(
+    format="%(levelname)s - %(asctime)s - %(message)s", level=logging.INFO
+)
+
+
 # Map DBiT channels to plot point sizes for various spatial plots
 pt_sizes = {
     50: {"dim": 75, "qc": 25},
@@ -96,10 +101,12 @@ def get_groups(runs: List[Run]):
 
 
 def get_LatchFile(directory: LatchDir, file_name: str) -> LatchFile:
+
     try:
         files = [file for file in directory.iterdir()
                  if isinstance(file, LatchFile) and
                  Path(file.path).name == file_name]
+
         if len(files) == 1:
             return files[0]
         elif len(files) == 0:
@@ -110,6 +117,7 @@ def get_LatchFile(directory: LatchDir, file_name: str) -> LatchFile:
             raise FileNotFoundError(
                 f"Multiple files {file_name} found in {directory.remote_path}"
             )
+
     except Exception as e:
         logging.error(f"Failed to find file '{file_name}'; error {e}")
         return None

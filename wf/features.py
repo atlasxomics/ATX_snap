@@ -117,7 +117,7 @@ def make_geneadata(
     sc.external.pp.magic(adata_ge, solver="approximate")
 
     sc.pp.calculate_qc_metrics(adata_ge, qc_vars="mt", inplace=True, log1p=True)
-    print("Done.... MAGIC+QC")
+
     return adata_ge
 
 
