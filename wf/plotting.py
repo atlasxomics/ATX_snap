@@ -4,7 +4,53 @@ import scanpy as sc
 import squidpy as sq
 
 from matplotlib.backends.backend_pdf import PdfPages
-from typing import List
+from typing import List, Optional
+
+from wf.spatial import squidpy_analysis
+from wf.utils import filter_anndata
+
+
+def plot_neighborhoods(
+    adata: anndata.AnnData, group: str, subgroups: Optional[List[str]]
+):
+
+    if group != "all" and subgroups:
+        filtered_adatas = {}
+        for sg in subgroups:
+            filtered_adata = filter_anndata(adata, group, sg)
+            squidpy_analysis(filtered_adata)
+            filtered_adatas[sg] = filtered_adata
+
+    plt.rcParams.update({'figure.autolayout': True})
+    with PdfPages(f"{group}_neighborhoods.pdf") as pdf:
+
+        if subgroups:
+            for sg in subgroups:
+                fig = sq.pl.nhood_enrichment(
+                    filtered_adatas[sg],
+                    cluster_key="cluster",
+                    method="single",
+                    title=f"{group} {sg}: Neighborhood enrichment",
+                    cmap="inferno",
+                    vmin=-50,
+                    vmax=100,
+                )
+                pdf.savefig(fig, bbox_inches="tight")
+                plt.close(fig)
+
+        elif group == "all":
+            fig = sq.pl.nhood_enrichment(
+                adata,
+                cluster_key="cluster",
+                method="single",
+                title="All cells: Neighborhood enrichment",
+                cmap="inferno",
+                vmin=-50,
+                vmax=100,
+            )
+
+            pdf.savefig(fig, bbox_inches="tight")
+            plt.close(fig)
 
 
 def plot_umaps(

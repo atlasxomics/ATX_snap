@@ -274,3 +274,25 @@ def snap_workflow(
     uploaded_results = registry_task(runs=runs, results=outdir_motifs)
 
     return uploaded_results
+
+
+if __name__ == "__main__":
+    from latch.types import LatchDir, LatchFile
+    make_adata(
+        runs=[Run(
+            run_id="demo",
+            fragments_file=LatchFile("latch://13502.account/atac_outs/ds_D01033_NG01681/outs/ds_D01033_NG01681_fragments.tsv"),
+            spatial_dir=LatchDir("latch://atx-illumina.mount/Images_spatial/D1033/spatial/")
+        )],
+        genome=Genome.hg38,
+        project_name="test_neighbor_plots",
+        resolution=1.0,
+        leiden_iters=-1,
+        n_comps=30,
+        min_cluster_size=20,
+        min_tss=2.0,
+        min_frags=10,
+        tile_size=5000,
+        n_features=25000,
+        clustering_iters=1
+    )
