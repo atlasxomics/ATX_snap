@@ -11,7 +11,8 @@ from wf.utils import filter_anndata
 
 
 def plot_neighborhoods(
-    adata: anndata.AnnData, group: str,
+    adata: anndata.AnnData,
+    group: str,
     subgroups: Optional[List[str]],
     outdir: str = "figures"
 ):
@@ -33,9 +34,9 @@ def plot_neighborhoods(
                     cluster_key="cluster",
                     method="single",
                     title=f"{group} {sg}: Neighborhood enrichment",
-                    cmap="inferno",
+                    cmap="bwr",
                     vmin=-50,
-                    vmax=100,
+                    vmax=50,
                 )
                 pdf.savefig(fig, bbox_inches="tight")
                 plt.close(fig)
