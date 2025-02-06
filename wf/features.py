@@ -98,6 +98,15 @@ def make_geneadata(
                 f"Exception {e}: no annotation {obsm} found for observations."
             )
 
+    # Copy data for neighborhood enrichment plots
+        try:
+            adata_ge.obsp["spatial_connectivities"] = adata.obsp["spatial_connectivities"]
+            adata_ge.uns["cluster_nhood_enrichment"] = adata.uns["cluster_nhood_enrichment"]
+        except Exception as e:
+            logging.warning(
+                f"Exception {e}: Could not copy neighborhood enrichment data."
+            )
+
     # Remove genes with no cells, counts; per sc, one metric per call...
     logging.info("Removing mitochondtrial genes, filtering...")
 
