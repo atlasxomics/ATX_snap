@@ -274,3 +274,14 @@ def snap_workflow(
     uploaded_results = registry_task(runs=runs, results=outdir_motifs)
 
     return uploaded_results
+
+
+if __name__ == "__main__":
+    from latch.types import LatchDir
+
+    call_peaks(
+        outdir=LatchDir("latch://13502.account/snap_outs/demo_000501"),
+        project_name="test_peakAnn",
+        genome=Genome.hg38,
+        groups=["cluster"],
+    )
