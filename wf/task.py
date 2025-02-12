@@ -142,15 +142,16 @@ def make_adata(
 
     # Neighbrohood enrichment plot, Ripley's plot
     adata = sp.squidpy_analysis(adata)
-    sq.pl.nhood_enrichment(
-        adata,
-        cluster_key="cluster",
-        method="single",
-        cmap="inferno",
-        vmin=-50,
-        vmax=100,
-        save="neighborhood_enrichemnt.pdf",
-    )
+
+    neighbor_groups = [g for g in groups if g != "cluster"]
+    group_dict = {g: adata.obs[g].unique() for g in neighbor_groups}
+    group_dict["all"] = None
+
+    for group in group_dict.keys():
+        pl.plot_neighborhoods(
+            adata, group, group_dict[group], outdir=figures_dir
+        )
+
     sq.pl.ripley(adata, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
 
     subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
