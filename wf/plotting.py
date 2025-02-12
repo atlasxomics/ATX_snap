@@ -47,9 +47,9 @@ def plot_neighborhoods(
                 cluster_key="cluster",
                 method="single",
                 title="All cells: Neighborhood enrichment",
-                cmap="inferno",
+                cmap="bwr",
                 vmin=-50,
-                vmax=100,
+                vmax=50,
             )
 
             pdf.savefig(fig, bbox_inches="tight")
