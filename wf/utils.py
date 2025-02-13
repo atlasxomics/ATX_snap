@@ -1,3 +1,4 @@
+import anndata
 import json
 import logging
 
@@ -60,6 +61,12 @@ class Run:
     fragments_file: LatchFile
     spatial_dir: LatchDir
     condition: str = "None"
+
+
+def filter_anndata(
+    adata: anndata.AnnData, group: str, subgroup: List[str]
+) -> anndata.AnnData:
+    return adata[adata.obs[group] == subgroup]
 
 
 def get_channels(run: Run):
