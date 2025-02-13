@@ -41,6 +41,8 @@ RUN git clone https://github.com/latchbio-workflows/gmacs.git && \
 RUN pip3 uninstall -y aiobotocore botocore awscli s3transfer
 RUN pip3 install awscli
 
+RUN apt-get update -y && apt-get install -y bedtools
+
 # Copy workflow data (use .dockerignore to skip files)
 COPY . /root/
 

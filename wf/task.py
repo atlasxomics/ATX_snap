@@ -210,6 +210,7 @@ def call_peaks(
     genome: utils.Genome,
     groups: List[str],
 ) -> LatchDir:
+    import pandas as pd
     import rapids_singlecell as rsc
 
     genome = genome.value
@@ -258,6 +259,9 @@ def call_peaks(
                 use_raw=False,
             )
             rsc.get.anndata_to_CPU(anndata_peak)
+            peaks_df = sc.get.rank_genes_groups_df(
+                anndata_peak, group=None, pval_cutoff=0.05, log2fc_min=0.1
+            )
         else:
             sc.tl.rank_genes_groups(
                 anndata_peak,
@@ -265,14 +269,18 @@ def call_peaks(
                 method="logreg",
                 use_raw=False,
             )
+            peaks_df = sc.get.rank_genes_groups_df(
+                anndata_peak, group=None, pval_cutoff=0.05, log2fc_min=0.1
+            )
+            peaks_df["group"] = "All"
 
         logging.info("Writing peak matrix ...")
         anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData
 
         logging.info("Writing marker peaks to .csv ...")
-        sc.get.rank_genes_groups_df(  # Save as csv
-            peak_mats[group], group=None, pval_cutoff=0.05, log2fc_min=0.1
-        ).to_csv(f"{tables_dir}/marker_peaks_per_{group}.csv", index=False)
+        feats = [pd.read_csv(feat) for feat in utils.ref_dict[genome][2:]]
+        peaks_df = ft.annotate_peaks(peaks_df, feats)
+        peaks_df.to_csv(f"{tables_dir}/marker_peaks_per_{group}.csv", index=False)
 
     logging.info("Writing combined anndata with peaks ...")
     peaks = list(peak_mats["cluster"].var_names)

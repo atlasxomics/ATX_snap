@@ -3,9 +3,12 @@ from typing import List, Optional
 
 import anndata
 import numpy as np
+import pandas as pd
 import pychromvar as pc
 import scanpy as sc
 import snapatac2 as snap
+
+from pybedtools import BedTool
 from pyjaspar import jaspardb
 
 from wf.utils import ref_dict
@@ -13,6 +16,63 @@ from wf.utils import ref_dict
 logging.basicConfig(
     format="%(levelname)s - %(asctime)s - %(message)s", level=logging.INFO
 )
+
+
+def annotate_peaks(
+    peaks_df: pd.DataFrame,
+    features: List[pd.DataFrame]
+) -> pd.DataFrame:
+
+    peaks_df = reformat_peak_df(peaks_df)
+    peaks = make_peak_bed(peaks_df)
+    genes, exons, promoters = [BedTool.from_dataframe(feature)
+                               for feature in features]
+
+    nearest_genes = peaks.closest(genes.sort(), d=True, t="first")
+
+    nearest_df = nearest_genes.to_dataframe(
+        names=["peak_chrom", "peak_start", "peak_end", "peak_id",
+               "gene_chrom", "gene_start", "gene_end", "gene_name",
+               "gene_score", "gene_strand", "distance"]
+    )
+    nearest_df.index = nearest_df["peak_id"]
+
+    # Add distance and nearest gene info to original dataframe
+    peaks_df["distToGeneStart"] = nearest_df["distance"]
+    peaks_df["nearestGene"] = nearest_df["gene_name"]
+
+    # Find overlaps with different features
+    promoter_overlaps = peaks.intersect(promoters, u=True).to_dataframe()
+    gene_overlaps = peaks.intersect(genes, u=True).to_dataframe()
+    exon_overlaps = peaks.intersect(exons, u=True).to_dataframe()
+
+    # Initialize all peaks as Distal
+    peaks_df["peakType"] = "Distal"
+
+    # Create boolean masks for overlaps
+    peak_ids = peaks_df.apply(
+        lambda x: f"{x['chrom']}:{x['start']}-{x['end']}", axis=1
+    )
+
+    # Apply ArchR's logic for peak type classification
+    peaks_in_genes = peak_ids.isin(gene_overlaps.apply(
+        lambda x: f"{x['chrom']}:{x['start']}-{x['end']}", axis=1
+    ))
+    peaks_in_exons = peak_ids.isin(exon_overlaps.apply(
+        lambda x: f"{x['chrom']}:{x['start']}-{x['end']}", axis=1
+    ))
+    peaks_in_promoters = peak_ids.isin(promoter_overlaps.apply(
+        lambda x: f"{x['chrom']}:{x['start']}-{x['end']}", axis=1
+    ))
+
+    # Set peak types following ArchR's logic
+    peaks_df.loc[peaks_in_genes & peaks_in_exons, "peakType"] = "Exonic"
+    peaks_df.loc[peaks_in_genes & ~peaks_in_exons, "peakType"] = "Intronic"
+    peaks_df.loc[peaks_in_promoters, "peakType"] = "Promoter"
+
+    peaks_df = peaks_df.drop("id", axis=1)
+
+    return peaks_df
 
 
 def get_motifs(
@@ -138,6 +198,20 @@ def make_motifmatrix(adata: anndata.AnnData, n_jobs: int = -1) -> anndata.AnnDat
     return pc.compute_deviations(adata, n_jobs=n_jobs)
 
 
+def make_peak_bed(peaks_df: pd.DataFrame, sort: bool = True) -> BedTool:
+
+    columns = ["chrom", "start", "end", "id"]
+
+    try:
+        peaks_df[columns]
+    except KeyError as e:
+        logging.warning(f"Error {e}: Expected column names missing.")
+
+    bed = BedTool.from_dataframe(peaks_df[columns])
+
+    return bed.sort() if sort else bed
+
+
 def rank_features(
     adata: anndata.AnnData,
     groups: List[str],
@@ -187,3 +261,25 @@ def rank_features(
         counts.to_csv(
             f"{save}/differential_{feature_type}_per_{group}_counts.csv", index=False
         )
+
+
+def reformat_peak_df(peaks_df: pd.DataFrame) -> pd.DataFrame:
+    """ Expects a DataFrame from sc.rank_genes_groups_df with column 'names,
+    containing coordinates in the format 'chr1:631135-631636'; returns a
+    DataFrame reformatted for for compatibility with BedTools.
+    """
+
+    try:
+        peaks_df[["names", "group"]]
+    except KeyError as e:
+        logging.warning(f"Error {e}: Expected column names missing.")
+
+    peaks_df[["chrom", "range"]] = peaks_df["names"].str.split(":", expand=True)
+    peaks_df[["start", "end"]] = peaks_df["range"].str.split("-", expand=True)
+
+    # Make a unique identifier for mapping
+    peaks_df["group"] = peaks_df["group"].astype(str)
+    peaks_df["id"] = peaks_df["group"].str.cat(peaks_df["names"], sep=":")
+    peaks_df.index = peaks_df["id"]
+
+    return peaks_df

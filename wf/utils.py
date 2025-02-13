@@ -44,8 +44,20 @@ hg38_chrsizes = {
 }
 
 ref_dict = {
-    "mm10": [mm10_chrsizes, "/root/references/gencode_vM25_GRCm38.gff3.gz"],
-    "hg38": [hg38_chrsizes, "/root/references/gencode_v41_GRCh38.gff3.gz"]
+    "mm10": [
+        mm10_chrsizes,
+        "/root/references/gencode_vM25_GRCm38.gff3.gz",
+        "/root/references/mm10_genes.csv",
+        "/root/references/mm10_exons.csv",
+        "/root/references/mm10_promoters.csv",
+    ],
+    "hg38": [
+        hg38_chrsizes,
+        "/root/references/gencode_v41_GRCh38.gff3.gz",
+        "/root/references/hg38_genes.csv",
+        "/root/references/hg38_exons.csv",
+        "/root/references/hg38_promoters.csv",
+    ]
 }
 
 
