@@ -263,7 +263,7 @@ def call_peaks(
             )
         else:
             sc.tl.rank_genes_groups(
-                peak_mats[group],
+                anndata_peak,
                 groupby=group,
                 method="logreg",
                 use_raw=False,
