@@ -251,7 +251,7 @@ def call_peaks(
         if group_len != 2:  # Work around for rcs bug
             rsc.get.anndata_to_GPU(anndata_peak)
             rsc.tl.rank_genes_groups_logreg(
-                peak_mats[group],
+                anndata_peak,
                 groupby=group,
                 method="wilcoxon",
                 use_raw=False,
