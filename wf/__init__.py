@@ -280,8 +280,8 @@ if __name__ == "__main__":
     from latch.types import LatchDir
 
     call_peaks(
-        outdir=LatchDir("latch://13502.account/snap_outs/demo_000501"),
-        project_name="test_peakAnn",
+        outdir=LatchDir("latch://13502.account/snap_outs/Dhar_271_000704"),
+        project_name="test_dhar",
         genome=Genome.hg38,
-        groups=["cluster"],
+        groups=["cluster", "sample", "condition"],
     )
