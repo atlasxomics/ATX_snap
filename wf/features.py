@@ -171,7 +171,7 @@ def make_geneadata(
     logging.info("Removing mitochondtrial genes, filtering...")
 
     print(f"Pre-filtering shape: {adata_ge.shape}")
-    adata_ge.var["mt"] = adata_ge.var_names.str.startswith("MT-")
+    adata_ge.var["mt"] = adata_ge.var_names.str.startswith(("MT-", "Mt-", "mt-"))
     adata_ge = adata_ge[:, ~adata_ge.var["mt"]].copy()
     print(f"post-filtering shape: {adata_ge.shape}")
 
