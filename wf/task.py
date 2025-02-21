@@ -199,7 +199,14 @@ def make_adata_gene(
         save="genes",
     )
 
+    # Select only protein-coding and ArchR genes for plots
+    with open(utils.ref_dict[genome][5], "r") as f:
+        select_genes = f.readline().strip().split(",")
+    selected_adata = adata_gene[:, adata_gene.var_names.isin(select_genes)].copy()
+
     adata_gene.write(f"{out_dir}/combined_ge.h5ad")
+    selected_adata.write(f"{out_dir}/selected_combined_ge.h5ad")
+
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
 
 
