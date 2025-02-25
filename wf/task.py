@@ -285,7 +285,7 @@ def call_peaks(
         anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData
 
         logging.info("Writing marker peaks to .csv ...")
-        feats = [pd.read_csv(feat) for feat in utils.ref_dict[genome][2:]]
+        feats = [pd.read_csv(feat) for feat in utils.ref_dict[genome][2:5]]
         peaks_df = ft.annotate_peaks(peaks_df, feats)
         peaks_df.to_csv(f"{tables_dir}/marker_peaks_per_{group}.csv", index=False)
 
