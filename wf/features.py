@@ -75,6 +75,41 @@ def annotate_peaks(
     return peaks_df
 
 
+def clean_adata(adata: anndata.AnnData) -> anndata.AnnData:
+
+    obs = ["barcode", "n_genes_by_counts", "log1p_n_genes_by_counts", "total_counts", "log1p_total_counts", "pct_counts_in_top_50_genes", "pct_counts_in_top_100_genes", "pct_counts_in_top_200_genes", "pct_counts_in_top_500_genes", "total_counts_mt", "log1p_total_counts_mt", "pct_counts_mt"]
+    var = ["mt", "n_counts", "n_cells", "n_cells_by_counts", "mean_counts", "log1p_mean_counts", "pct_dropout_by_counts", "total_counts", "log1p_total_counts"]
+
+    rm_obs = [o for o in obs if o in adata.obs.keys()]
+    rm_var = [v for v in var if v in adata.var.keys()]
+
+    adata.obs.drop(rm_obs, axis=1, inplace=True)
+    adata.var.drop(rm_var, axis=1, inplace=True)
+
+    del adata.varm
+    del adata.layers
+
+    if adata.raw:
+        del adata.raw
+
+    for uns in ["pca", "log1p"]:
+        if uns in adata.uns.keys():
+            del adata.uns[uns]
+
+    rm_obsm = [obsm for obsm in adata.obsm.keys()
+               if obsm not in ["spatial", "X_umap"]]
+
+    for obsm in rm_obsm:
+        del adata.obsm[obsm]
+
+    try:
+        adata.X = adata.X.astype(np.float16)
+    except:
+        logging.warning("Cannot convert .X to float")
+
+    return adata
+
+
 def get_motifs(
     adata: anndata.AnnData, fasta_path: str, release: str = "JASPAR2024"
 ) -> anndata.AnnData:
@@ -184,8 +219,6 @@ def make_geneadata(
 
     logging.info("Batch correction with MAGIC...")
     sc.external.pp.magic(adata_ge, solver="approximate")
-
-    sc.pp.calculate_qc_metrics(adata_ge, qc_vars="mt", inplace=True, log1p=True)
 
     return adata_ge
 

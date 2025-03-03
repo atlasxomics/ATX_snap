@@ -203,9 +203,10 @@ def make_adata_gene(
     with open(utils.ref_dict[genome][5], "r") as f:
         select_genes = f.readline().strip().split(",")
     selected_adata = adata_gene[:, adata_gene.var_names.isin(select_genes)].copy()
+    sm_adata = ft.clean_adata(selected_adata)
 
     adata_gene.write(f"{out_dir}/combined_ge.h5ad")
-    selected_adata.write(f"{out_dir}/selected_combined_ge.h5ad")
+    sm_adata.write(f"{out_dir}/combined_sm_ge.h5ad")
 
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
 
@@ -340,8 +341,6 @@ def motifs_task(
 
     logging.info("Preparing peak matrix for motifs...")
     fasta = utils.get_genome_fasta(genome)
-    print(fasta)
-    print(fasta.local_path)
 
     cluster_peaks = ft.get_motifs(cluster_peaks, fasta.local_path)
     cluster_peaks.write(f"{out_dir}/cluster_peaks.h5ad")
@@ -369,7 +368,10 @@ def motifs_task(
         save="motifs",
     )
 
+    sm_adata = ft.clean_adata(adata_motif)
+
     adata_motif.write(f"{out_dir}/combined_motifs.h5ad")
+    sm_adata.write(f"{out_dir}/combined_sm_motifs.h5ad")
 
     # Upload data -----------------------------------------------------------
 
