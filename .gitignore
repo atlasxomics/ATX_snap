@@ -8,3 +8,5 @@ venv/
 .latch/.logs
 
 **/*.h5ad
+
+references/*_exons.csv
