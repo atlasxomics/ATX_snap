@@ -24,7 +24,7 @@ import wf.utils as utils
 from wf.peaks import call_peaks_macs3_gpu
 
 
-@custom_task(cpu=62, memory=256, storage_gib=1000)
+@custom_task(cpu=62, memory=512, storage_gib=1000)
 def make_adata(
     runs: List[utils.Run],
     genome: utils.Genome,
@@ -140,19 +140,19 @@ def make_adata(
         pt_size=utils.pt_sizes[channels]["qc"],
     )
 
-    # Neighbrohood enrichment plot, Ripley's plot
-    adata = sp.squidpy_analysis(adata)
+    # # Neighbrohood enrichment plot, Ripley's plot
+    # adata = sp.squidpy_analysis(adata)
 
-    neighbor_groups = [g for g in groups if g != "cluster"]
-    group_dict = {g: adata.obs[g].unique() for g in neighbor_groups}
-    group_dict["all"] = None
+    # neighbor_groups = [g for g in groups if g != "cluster"]
+    # group_dict = {g: adata.obs[g].unique() for g in neighbor_groups}
+    # group_dict["all"] = None
 
-    for group in group_dict.keys():
-        pl.plot_neighborhoods(
-            adata, group, group_dict[group], outdir=figures_dir
-        )
+    # for group in group_dict.keys():
+    #     pl.plot_neighborhoods(
+    #         adata, group, group_dict[group], outdir=figures_dir
+    #     )
 
-    sq.pl.ripley(adata, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
+    # sq.pl.ripley(adata, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
 
     subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
     adata.write(f"{out_dir}/combined.h5ad")
@@ -160,7 +160,7 @@ def make_adata(
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}"), groups
 
 
-@custom_task(cpu=62, memory=400, storage_gib=1000)
+@custom_task(cpu=62, memory=764, storage_gib=1000)
 def make_adata_gene(
     outdir: LatchDir,
     project_name: str,
@@ -257,30 +257,30 @@ def call_peaks(
         logging.info("Finding marker peaks ...")
         logging.info(group)
 
-        group_len = len(adata.obs[group].unique())
-        if group_len != 2:  # Work around for rcs bug
-            rsc.get.anndata_to_GPU(anndata_peak)
-            rsc.tl.rank_genes_groups_logreg(
-                anndata_peak,
-                groupby=group,
-                method="wilcoxon",
-                use_raw=False,
-            )
-            rsc.get.anndata_to_CPU(anndata_peak)
-            peaks_df = sc.get.rank_genes_groups_df(
-                anndata_peak, group=None, pval_cutoff=0.05, log2fc_min=0.1
-            )
-        else:
-            sc.tl.rank_genes_groups(
-                anndata_peak,
-                groupby=group,
-                method="logreg",
-                use_raw=False,
-            )
-            peaks_df = sc.get.rank_genes_groups_df(
-                anndata_peak, group=None, pval_cutoff=0.05, log2fc_min=0.1
-            )
-            peaks_df["group"] = "All"
+        # group_len = len(adata.obs[group].unique())
+        # if group_len != 2:  # Work around for rcs bug
+        #     rsc.get.anndata_to_GPU(anndata_peak)
+        #     rsc.tl.rank_genes_groups_logreg(
+        #         anndata_peak,
+        #         groupby=group,
+        #         method="wilcoxon",
+        #         use_raw=False,
+        #     )
+        #     rsc.get.anndata_to_CPU(anndata_peak)
+        #     peaks_df = sc.get.rank_genes_groups_df(
+        #         anndata_peak, group=None, pval_cutoff=0.05, log2fc_min=0.1
+        #     )
+        # else:
+        sc.tl.rank_genes_groups(
+            anndata_peak,
+            groupby=group,
+            method="logreg",
+            use_raw=False,
+        )
+        peaks_df = sc.get.rank_genes_groups_df(
+            anndata_peak, group=None, pval_cutoff=0.05, log2fc_min=0.1
+        )
+        peaks_df["group"] = "All"
 
         logging.info("Writing peak matrix ...")
         anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData
@@ -302,7 +302,7 @@ def call_peaks(
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
 
 
-@custom_task(cpu=62, memory=256, storage_gib=1000)
+@custom_task(cpu=62, memory=512, storage_gib=1000)
 def motifs_task(
     outdir: LatchDir, project_name: str, groups: List[str], genome: utils.Genome
 ) -> LatchDir:
