@@ -252,7 +252,7 @@ def snap_workflow(
     # )
     from latch.types import LatchDir
 
-    outdir = LatchDir(f"latch://13502.account/snap_outs/{project_name}")
+    outdir = LatchDir(f"latch://13502.account/snap_outs/Pieper_154_brain")
     groups = ["cluster", "sample", "condition"]
 
     outdir_ge1 = make_adata_gene(
