@@ -8,6 +8,7 @@ from wf.task import (
     call_peaks,
     make_adata,
     make_adata_gene,
+    rank_genes,
     motifs_task,
     registry_task,
 )
@@ -235,45 +236,56 @@ def snap_workflow(
 
     """
 
-    outdir, groups = make_adata(
-        runs=runs,
-        genome=genome,
-        project_name=project_name,
-        resolution=resolution,
-        leiden_iters=leiden_iters,
-        n_comps=n_comps,
-        min_cluster_size=min_cluster_size,
-        min_tss=min_tss,
-        min_frags=min_frags,
-        tile_size=tile_size,
-        n_features=n_features,
-        clustering_iters=clustering_iters,
-    )
+    # outdir, groups = make_adata(
+    #     runs=runs,
+    #     genome=genome,
+    #     project_name=project_name,
+    #     resolution=resolution,
+    #     leiden_iters=leiden_iters,
+    #     n_comps=n_comps,
+    #     min_cluster_size=min_cluster_size,
+    #     min_tss=min_tss,
+    #     min_frags=min_frags,
+    #     tile_size=tile_size,
+    #     n_features=n_features,
+    #     clustering_iters=clustering_iters,
+    # )
+    from latch.types import LatchDir
 
-    outdir_ge = make_adata_gene(
+    outdir = LatchDir(f"latch://13502.account/snap_outs/{project_name}")
+    groups = ["cluster", "sample", "condition"]
+
+    outdir_ge1 = make_adata_gene(
         outdir=outdir,
         project_name=project_name,
         genome=genome,
         groups=groups,
     )
 
-    outdir_peaks = call_peaks(
-        outdir=outdir,
+    outdir_ge2 = rank_genes(
+        outdir=outdir_ge1,
         project_name=project_name,
         genome=genome,
         groups=groups,
     )
 
-    outdir_motifs = motifs_task(
-        outdir=outdir_peaks,
-        project_name=project_name,
-        genome=genome,
-        groups=groups,
-    )
+    # outdir_peaks = call_peaks(
+    #     outdir=outdir,
+    #     project_name=project_name,
+    #     genome=genome,
+    #     groups=groups,
+    # )
 
-    uploaded_results = registry_task(runs=runs, results=outdir_motifs)
+    # outdir_motifs = motifs_task(
+    #     outdir=outdir_peaks,
+    #     project_name=project_name,
+    #     genome=genome,
+    #     groups=groups,
+    # )
 
-    return uploaded_results
+    # uploaded_results = registry_task(runs=runs, results=outdir_motifs)
+
+    return outdir_ge2
 
 
 if __name__ == "__main__":

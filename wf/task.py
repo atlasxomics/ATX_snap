@@ -160,7 +160,7 @@ def make_adata(
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}"), groups
 
 
-@custom_task(cpu=62, memory=764, storage_gib=1000)
+@custom_task(cpu=8, memory=250, storage_gib=1000)
 def make_adata_gene(
     outdir: LatchDir,
     project_name: str,
@@ -185,8 +185,36 @@ def make_adata_gene(
     adata_gene = ft.make_geneadata(adata, genome)
     adata_gene.obs.to_csv(f"{tables_dir}/gene_metadata.csv")
 
+    adata_gene.write(f"{out_dir}/combined_ge.h5ad")
+
+    return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
+
+
+@custom_task(cpu=62, memory=975, storage_gib=1000)
+def rank_genes(
+    outdir: LatchDir,
+    project_name: str,
+    genome: utils.Genome,
+    groups: List[str],
+) -> LatchDir:
+
+    data_path = LatchFile(f"{outdir.remote_path}/combined_ge.h5ad")
+    adata_gene = anndata.read_h5ad(data_path.local_path)
+    genome = genome.value
+
+    out_dir = f"/root/{project_name}"
+    os.makedirs(out_dir, exist_ok=True)
+
+    figures_dir = f"{out_dir}/figures"
+    os.makedirs(figures_dir, exist_ok=True)
+
+    tables_dir = f"{out_dir}/tables"
+    os.makedirs(tables_dir, exist_ok=True)
+
+    logging.info("Ranking genes...")
+
     ft.rank_features(adata_gene, groups=groups, feature_type="genes", save=tables_dir)
-    logging.info("Computed gene matrix")
+    logging.info("Finished ranking genes...")
 
     # # Plot heatmap for genes
     sc.pl.rank_genes_groups_matrixplot(

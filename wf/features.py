@@ -218,7 +218,7 @@ def make_geneadata(
     sc.pp.log1p(adata_ge)
 
     logging.info("Batch correction with MAGIC...")
-    sc.external.pp.magic(adata_ge, solver="approximate")
+    sc.external.pp.magic(adata_ge, solver="approximate", n_jobs=-1)
 
     return adata_ge
 
