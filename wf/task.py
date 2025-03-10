@@ -160,7 +160,7 @@ def make_adata(
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}"), groups
 
 
-@custom_task(cpu=8, memory=250, storage_gib=1000)
+@custom_task(cpu=62, memory=250, storage_gib=1000)
 def make_adata_gene(
     outdir: LatchDir,
     project_name: str,
