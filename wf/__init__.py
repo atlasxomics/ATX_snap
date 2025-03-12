@@ -252,7 +252,7 @@ def snap_workflow(
     # )
     from latch.types import LatchDir
 
-    outdir = LatchDir(f"latch://13502.account/snap_outs/Pieper_154_brain")
+    outdir = LatchDir("latch://13502.account/snap_outs/Bala_219_ATAC")
     groups = ["cluster", "sample", "condition"]
 
     outdir_ge1 = make_adata_gene(
@@ -262,12 +262,12 @@ def snap_workflow(
         groups=groups,
     )
 
-    outdir_ge2 = rank_genes(
-        outdir=outdir_ge1,
-        project_name=project_name,
-        genome=genome,
-        groups=groups,
-    )
+    # outdir_ge2 = rank_genes(
+    #     outdir=outdir_ge1,
+    #     project_name=project_name,
+    #     genome=genome,
+    #     groups=groups,
+    # )
 
     # outdir_peaks = call_peaks(
     #     outdir=outdir,
@@ -285,7 +285,7 @@ def snap_workflow(
 
     # uploaded_results = registry_task(runs=runs, results=outdir_motifs)
 
-    return outdir_ge2
+    return outdir_ge1
 
 
 if __name__ == "__main__":

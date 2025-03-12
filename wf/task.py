@@ -160,7 +160,7 @@ def make_adata(
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}"), groups
 
 
-@custom_task(cpu=62, memory=500, storage_gib=1000)
+@custom_task(cpu=124, memory=500, storage_gib=1000)
 def make_adata_gene(
     outdir: LatchDir,
     project_name: str,
@@ -185,7 +185,7 @@ def make_adata_gene(
     adata_gene = ft.make_geneadata(adata, genome)
     adata_gene.obs.to_csv(f"{tables_dir}/gene_metadata.csv")
 
-    adata_gene.write(f"{out_dir}/combined_ge.h5ad")
+    adata_gene.write(f"{out_dir}/combined_ge_test.h5ad")
 
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
 
