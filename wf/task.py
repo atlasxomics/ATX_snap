@@ -141,18 +141,19 @@ def make_adata(
     )
 
     # # Neighbrohood enrichment plot, Ripley's plot
-    # adata = sp.squidpy_analysis(adata)
+    adata = sp.squidpy_analysis(adata)
 
     # neighbor_groups = [g for g in groups if g != "cluster"]
     # group_dict = {g: adata.obs[g].unique() for g in neighbor_groups}
-    # group_dict["all"] = None
+    group_dict = dict()
+    group_dict["all"] = None
 
-    # for group in group_dict.keys():
-    #     pl.plot_neighborhoods(
-    #         adata, group, group_dict[group], outdir=figures_dir
-    #     )
+    for group in group_dict.keys():
+        pl.plot_neighborhoods(
+            adata, group, group_dict[group], outdir=figures_dir
+        )
 
-    # sq.pl.ripley(adata, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
+    sq.pl.ripley(adata, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
 
     subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
     adata.write(f"{out_dir}/combined.h5ad")
@@ -160,7 +161,7 @@ def make_adata(
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}"), groups
 
 
-@custom_task(cpu=62, memory=500, storage_gib=1000)
+@custom_task(cpu=124, memory=500, storage_gib=1000)
 def make_adata_gene(
     outdir: LatchDir,
     project_name: str,
