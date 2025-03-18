@@ -22,6 +22,7 @@ def annotate_peaks(
     peaks_df: pd.DataFrame,
     features: List[pd.DataFrame]
 ) -> pd.DataFrame:
+    import pandas as pd
 
     peaks_df = reformat_peak_df(peaks_df)
     peaks = make_peak_bed(peaks_df)
