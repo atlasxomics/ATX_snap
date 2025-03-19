@@ -286,7 +286,7 @@ def call_peaks(
         logging.info("Finding marker peaks ...")
         logging.info(group)
 
-        # group_len = len(adata.obs[group].unique())
+        group_len = len(adata.obs[group].unique())
         # if group_len != 2:  # Work around for rcs bug
         #     rsc.get.anndata_to_GPU(anndata_peak)
         #     rsc.tl.rank_genes_groups_logreg(
@@ -308,7 +308,8 @@ def call_peaks(
         peaks_df = sc.get.rank_genes_groups_df(
             anndata_peak, group=None, pval_cutoff=0.05, log2fc_min=0.1
         )
-        peaks_df["group"] = "All"
+        if group_len == 2:
+            peaks_df["group"] = "All"
 
         logging.info("Writing peak matrix ...")
         anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData

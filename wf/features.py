@@ -39,8 +39,8 @@ def annotate_peaks(
     nearest_df.index = nearest_df["peak_id"]
 
     # Add distance and nearest gene info to original dataframe
-    peaks_df["distToGeneStart"] = nearest_df["distance"].reset_index(drop=True)
-    peaks_df["nearestGene"] = nearest_df["gene_name"].reset_index(drop=True)
+    peaks_df["distToGeneStart"] = nearest_df["distance"]
+    peaks_df["nearestGene"] = nearest_df["gene_name"]
 
     # Find overlaps with different features
     promoter_overlaps = peaks.intersect(promoters, u=True).to_dataframe()
