@@ -1,5 +1,7 @@
 import anndata
 import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
 import scanpy as sc
 import squidpy as sq
 
@@ -54,6 +56,34 @@ def plot_neighborhoods(
 
             pdf.savefig(fig, bbox_inches="tight")
             plt.close(fig)
+
+
+def plot_stacked_peaks(
+    data: pd.DataFrame,
+    group_by: str,
+    color_by: str,
+    group: str,
+    output_path: str
+):
+
+    plt.figure(figsize=(8, 5))
+    sns.histplot(
+        data=data,
+        x=group_by,
+        hue=color_by,
+        multiple="stack",
+        discrete=True,
+        alpha=0.5,
+        edgecolor="gray",
+        linewidth=0.5
+    )
+    plt.xlabel("Group")
+    plt.ylabel("Peak Count")
+    plt.title(f"Peak Counts by {group} and PeakType")
+
+    plt.xticks(rotation=45)
+
+    plt.savefig(output_path, format="pdf", bbox_inches="tight")
 
 
 def plot_umaps(

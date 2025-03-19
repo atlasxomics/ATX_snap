@@ -110,6 +110,17 @@ def clean_adata(adata: anndata.AnnData) -> anndata.AnnData:
     return adata
 
 
+def get_merged_peaks(adata: anndata.AnnData, key: str, chrom_sizes: dict):
+    """Wrapper for snap merge_peaks."""
+
+    peaks = adata.uns[key]
+
+    if not isinstance(peaks, dict):  # Convert to dict for merge_peaks()
+        peaks = {"0": adata.uns[key]}
+
+    return snap.tl.merge_peaks(peaks, chrom_sizes)
+
+
 def get_motifs(
     adata: anndata.AnnData, fasta_path: str, release: str = "JASPAR2024"
 ) -> anndata.AnnData:
@@ -136,13 +147,8 @@ def make_peakmatrix(
     """Given an AnnData object with macs2 peak calls stored in .uns[key],
     returns a new AnnData object with X a peak count matrix.
     """
-    peaks = adata.uns[key]
 
-    if not isinstance(peaks, dict):  # Convert to dict for merge_peaks()
-        peaks = {"0": adata.uns[key]}
-
-    # Can't use a dict because of flyte
-    merged_peaks = snap.tl.merge_peaks(peaks, ref_dict[genome][0])
+    merged_peaks = get_merged_peaks(adata, key, ref_dict[genome][0])
 
     adata_p = snap.pp.make_peak_matrix(adata, use_rep=merged_peaks["Peaks"])
 
@@ -246,6 +252,93 @@ def make_peak_bed(peaks_df: pd.DataFrame, sort: bool = True) -> BedTool:
     bed = BedTool.from_dataframe(peaks_df[columns])
 
     return bed.sort() if sort else bed
+
+
+def make_plotting_peaks(
+    adata: anndata.AnnData,
+    key: str,
+    genome: str,
+    features: List[pd.DataFrame],
+) -> pd.DataFrame:
+    """
+    Annotate all peaks for a stacked bar graph.
+
+    Parameters:
+    - adata (anndata.AnnData): The AnnData object containing peak data.
+    - group (str): The group name used in peak annotation.
+    - genome (str): The genome reference key in utils.ref_dict.
+
+    Returns:
+    - pd.DataFrame: Annotated peaks ready for plotting.
+    """
+
+    try:
+
+        # Convert peaks to DataFrame
+        all_peaks = peaks_to_df(adata, key)
+
+        # Get merged peaks (union peaks)
+        union_peaks = get_merged_peaks(adata, key, ref_dict[genome][0])
+        union_peaks = reformat_peak_df(
+            union_peaks, "Peaks", add_group="Union", drop_cols=True
+        )
+
+        # Combine all peaks and union peaks
+        plotting_peaks = pd.concat([all_peaks, union_peaks])
+
+        return annotate_peaks(plotting_peaks, features)
+
+    except Exception as e:
+        logging.error(f"Unexpected error in annotate_and_plot_peaks: {e}")
+
+    return None
+
+
+def peaks_to_df(
+    adata: anndata.AnnData, peaks_key: str, drop_cols: bool = True
+) -> pd.DataFrame:
+    """
+    Converts peak information stored in adata.uns[peaks_key] into a Pandas DataFrame.
+
+    Parameters:
+        adata (anndata.AnnData): The AnnData object containing peak information.
+        peaks_key (str): The key in `adata.uns` where peak data is stored.
+        drop_cols (bool): If True, drops unnecessary columns (except 'chrom',
+            'start', 'end', 'group').
+
+    Returns:
+        pd.DataFrame: Reformatted DataFrame with an 'id' column and set index.
+    """
+
+    if peaks_key not in adata.uns.keys():
+        logging.error(f"Peaks {peaks_key} not found in adata; aborting merge.")
+        return None
+
+    peaks_dict = {
+        k: v.assign(group=k) for k, v in adata.uns[peaks_key].items()
+    }
+
+    # Drop unwanted columns if requested
+    if drop_cols:
+        keep_cols = {"chrom", "start", "end", "group"}
+        for df in peaks_dict.values():
+            df.drop(
+                columns=[col for col in df.columns if col not in keep_cols],
+                errors="ignore",
+                inplace=True
+            )
+
+    peaks_df = pd.concat(peaks_dict.values(), ignore_index=True)
+
+    # Create 'id' column
+    peaks_df["id"] = (peaks_df["group"] + ":" + peaks_df["chrom"] + ":" +
+                      peaks_df["start"].astype(str) + "-" +
+                      peaks_df["end"].astype(str))
+
+    # Set the 'id' column as index
+    peaks_df.set_index("id", inplace=True, drop=False)
+
+    return peaks_df
 
 
 def rank_features(
