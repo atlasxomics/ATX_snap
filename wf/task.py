@@ -143,9 +143,10 @@ def make_adata(
     # Neighbrohood enrichment plot, Ripley's plot
     adata = sp.squidpy_analysis(adata)
 
-    neighbor_groups = [g for g in groups if g != "cluster"]
-    group_dict = {g: adata.obs[g].unique() for g in neighbor_groups}
-    group_dict["all"] = None
+    # neighbor_groups = [g for g in groups if g != "cluster"]
+    # group_dict = {g: adata.obs[g].unique() for g in neighbor_groups}
+    # group_dict["all"] = None
+    group_dict = {"all": None}
 
     for group in group_dict.keys():
         pl.plot_neighborhoods(
