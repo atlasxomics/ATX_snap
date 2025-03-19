@@ -287,6 +287,7 @@ def call_peaks(
 
         logging.info("Writing marker peaks to .csv ...")
         feats = [pd.read_csv(feat) for feat in utils.ref_dict[genome][2:5]]
+        peaks_df = ft.reformat_peak_df(peaks_df, "names", group_col="group")
         peaks_df = ft.annotate_peaks(peaks_df, feats)
         peaks_df.to_csv(f"{tables_dir}/marker_peaks_per_{group}.csv", index=False)
 

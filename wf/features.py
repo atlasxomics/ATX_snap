@@ -22,8 +22,8 @@ def annotate_peaks(
     peaks_df: pd.DataFrame,
     features: List[pd.DataFrame]
 ) -> pd.DataFrame:
+    import pandas as pd
 
-    peaks_df = reformat_peak_df(peaks_df)
     peaks = make_peak_bed(peaks_df)
     genes, exons, promoters = [BedTool.from_dataframe(feature)
                                for feature in features]
@@ -299,23 +299,68 @@ def rank_features(
         )
 
 
-def reformat_peak_df(peaks_df: pd.DataFrame) -> pd.DataFrame:
-    """ Expects a DataFrame from sc.rank_genes_groups_df with column 'names,
-    containing coordinates in the format 'chr1:631135-631636'; returns a
-    DataFrame reformatted for for compatibility with BedTools.
+def reformat_peak_df(
+    peaks_df: pd.DataFrame,
+    peak_col: str,
+    add_group: Optional[str] = None,
+    group_col: Optional[str] = None,
+    drop_cols: bool = False
+) -> pd.DataFrame:
+    """
+    Reformat a DataFrame to be compatible with BedTools by extracting chromosome,
+    start, and end positions from a peak column ('chrom:start-stop') and adding
+    an identifier column 'id'.
+
+    Parameters:
+    - peaks_df (pd.DataFrame): Input DataFrame with a column containing peak strings.
+    - peak_col (str): Column name containing peaks in 'chrom:start-stop' format.
+    - add_group (Optional[str]): If provided, assigns a fixed group name to 'group' column.
+    - group_col (Optional[str]): Column name containing group identifiers for peaks.
+    - drop+cols (bool): Whether to drop columns not in ['chrom', 'start', 'end',
+        'group', 'id'].
+
+    Returns:
+    - pd.DataFrame: Reformatted DataFrame with 'chrom', 'start', 'end', and 'id' columns.
     """
 
-    try:
-        peaks_df[["names", "group"]]
-    except KeyError as e:
-        logging.warning(f"Error {e}: Expected column names missing.")
+    if not isinstance(peaks_df, pd.DataFrame):
+        logging.info(f"Peaks DataFrame of class {type(peaks_df)}; \
+                        attempting to convert to pandas.")
+        try:
+            peaks_df = peaks_df.to_pandas()
+        except Exception as e:
+            logging.error(f"Error {e}: could not convert peaks_df to pandas")
+            return None
 
-    peaks_df[["chrom", "range"]] = peaks_df["names"].str.split(":", expand=True)
+    if peak_col not in peaks_df.columns:
+        logging.error(f"Expected peak column {peak_col} missing.")
+        return None
+
+    peaks_df = peaks_df.copy()
+
+    peaks_df[["chrom", "range"]] = peaks_df[peak_col].str.split(":", expand=True)
     peaks_df[["start", "end"]] = peaks_df["range"].str.split("-", expand=True)
 
-    # Make a unique identifier for mapping
-    peaks_df["group"] = peaks_df["group"].astype(str)
-    peaks_df["id"] = peaks_df["group"].str.cat(peaks_df["names"], sep=":")
-    peaks_df.index = peaks_df["id"]
+    # Drop the intermediate 'range' column
+    peaks_df.drop(columns=["range"], inplace=True)
+
+    if add_group:
+        peaks_df["group"] = add_group
+    elif group_col and group_col in peaks_df.columns:
+        peaks_df["group"] = peaks_df[group_col].astype(str)
+    else:
+        logging.info("No group information provided; skipping 'id' column.")
+        return peaks_df
+
+    # Create 'id' column
+    peaks_df["id"] = peaks_df["group"] + ":" + peaks_df[peak_col]
+
+    # Set the 'id' column as index
+    peaks_df.set_index("id", inplace=True, drop=False)
+
+    if drop_cols:
+        to_drop = [col for col in peaks_df.columns
+                   if col not in ["chrom", "start", "end", "group", "id"]]
+        peaks_df.drop(to_drop, axis=1, inplace=True)
 
     return peaks_df
