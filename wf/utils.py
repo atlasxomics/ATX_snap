@@ -50,6 +50,7 @@ ref_dict = {
         "/root/references/mm10_genes.csv",
         "/root/references/mm10_exons.csv",
         "/root/references/mm10_promoters.csv",
+        "/root/references/mm10_selectGenes.txt",
     ],
     "hg38": [
         hg38_chrsizes,
@@ -57,6 +58,7 @@ ref_dict = {
         "/root/references/hg38_genes.csv",
         "/root/references/hg38_exons.csv",
         "/root/references/hg38_promoters.csv",
+        "/root/references/hg38_selectGenes.txt",
     ]
 }
 

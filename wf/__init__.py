@@ -275,3 +275,13 @@ def snap_workflow(
 
     return uploaded_results
 
+
+if __name__ == "__main__":
+    from latch.types import LatchDir
+
+    outdir_ge = make_adata_gene(
+        outdir=LatchDir("latch://13502.account/snap_outs/demo_000702"),
+        project_name="selected_genes",
+        genome=Genome.hg38,
+        groups=["cluster"],
+    )

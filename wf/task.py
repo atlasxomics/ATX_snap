@@ -199,7 +199,15 @@ def make_adata_gene(
         save="genes",
     )
 
+    # Select only protein-coding and ArchR genes for plots
+    with open(utils.ref_dict[genome][5], "r") as f:
+        select_genes = f.readline().strip().split(",")
+    selected_adata = adata_gene[:, adata_gene.var_names.isin(select_genes)].copy()
+    sm_adata = ft.clean_adata(selected_adata)
+
     adata_gene.write(f"{out_dir}/combined_ge.h5ad")
+    sm_adata.write(f"{out_dir}/combined_sm_ge.h5ad")
+
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
 
 
@@ -278,7 +286,7 @@ def call_peaks(
         anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData
 
         logging.info("Writing marker peaks to .csv ...")
-        feats = [pd.read_csv(feat) for feat in utils.ref_dict[genome][2:]]
+        feats = [pd.read_csv(feat) for feat in utils.ref_dict[genome][2:5]]
         peaks_df = ft.annotate_peaks(peaks_df, feats)
         peaks_df.to_csv(f"{tables_dir}/marker_peaks_per_{group}.csv", index=False)
 
@@ -333,8 +341,6 @@ def motifs_task(
 
     logging.info("Preparing peak matrix for motifs...")
     fasta = utils.get_genome_fasta(genome)
-    print(fasta)
-    print(fasta.local_path)
 
     cluster_peaks = ft.get_motifs(cluster_peaks, fasta.local_path)
     cluster_peaks.write(f"{out_dir}/cluster_peaks.h5ad")
@@ -362,7 +368,10 @@ def motifs_task(
         save="motifs",
     )
 
+    sm_adata = ft.clean_adata(adata_motif)
+
     adata_motif.write(f"{out_dir}/combined_motifs.h5ad")
+    sm_adata.write(f"{out_dir}/combined_sm_motifs.h5ad")
 
     # Upload data -----------------------------------------------------------
 
