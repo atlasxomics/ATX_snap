@@ -1,4 +1,5 @@
 import anndata
+import logging
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
@@ -10,6 +11,17 @@ from typing import List, Optional
 
 from wf.spatial import squidpy_analysis
 from wf.utils import filter_anndata
+
+
+def get_custom_group_order(groups):
+    """Sorts groups numerically first, then alphabetically, with 'Union'
+    at the end."""
+    groups = [str(g) for g in groups]  # Ensure everything is a string
+    numeric_groups = sorted([g for g in groups if g.isdigit()], key=int)
+    non_numeric_groups = sorted(
+        [g for g in groups if not g.isdigit() and g != "Union"]
+    )
+    return numeric_groups + non_numeric_groups + ["Union"]
 
 
 def plot_neighborhoods(
@@ -63,9 +75,42 @@ def plot_stacked_peaks(
     group_by: str,
     color_by: str,
     group: str,
-    output_path: str
+    output_path: str,
 ):
+    """
+    Plots a stacked bar chart of peak counts, grouped and colored by specified
+    columns.
 
+    Parameters:
+    - data (pd.DataFrame): Input DataFrame containing peak data.
+    - group_by (str): Column to use for x-axis grouping (e.g., "group").
+    - color_by (str): Column to color the bars by (e.g., "peakType").
+    - group (str): Group name for the title.
+    - output_path (str): File path to save the plot as a PDF.
+
+    Returns:
+    - None (saves the plot to the specified path).
+    """
+
+    # Ensure required columns exist
+    if group_by not in data.columns or color_by not in data.columns:
+        logging.error(
+            f"Missing required columns: {group_by} or {color_by} not found in data."
+        )
+        return
+
+    # Ensure 'group' is treated as a string
+    data["group"] = data["group"].astype(str)
+
+    # Sort the groups numerically first, then alphabetically, with "Union" at the end
+    custom_order = get_custom_group_order(data["group"].unique())
+
+    # Convert 'group' column to categorical with specified order
+    data["group"] = pd.Categorical(
+        data["group"], categories=custom_order, ordered=True
+    )
+
+    # Create plot
     plt.figure(figsize=(8, 5))
     sns.histplot(
         data=data,
@@ -75,15 +120,20 @@ def plot_stacked_peaks(
         discrete=True,
         alpha=0.5,
         edgecolor="gray",
-        linewidth=0.5
+        linewidth=0.5,
+        shrink=0.9  # Adjust bar width to add spacing
     )
+
     plt.xlabel("Group")
     plt.ylabel("Peak Count")
     plt.title(f"Peak Counts by {group} and PeakType")
 
     plt.xticks(rotation=45)
 
+    # Save figure
     plt.savefig(output_path, format="pdf", bbox_inches="tight")
+
+    plt.close()
 
 
 def plot_umaps(
@@ -113,6 +163,8 @@ def plot_umaps(
     plt.tight_layout()
 
     plt.savefig(output_path)
+
+    plt.close()
 
 
 def plot_spatial(
