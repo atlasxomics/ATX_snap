@@ -1,7 +1,9 @@
 from typing import List
 
 from latch.resources.workflow import workflow
-from latch.types.metadata import LatchAuthor, LatchMetadata, LatchParameter, LatchRule
+from latch.types.metadata import (
+    LatchAuthor, LatchMetadata, LatchParameter, LatchRule
+)
 
 # from wf.task import registry_task, snap_task
 from wf.task import (
@@ -255,7 +257,6 @@ def snap_workflow(
         outdir=outdir,
         project_name=project_name,
         genome=genome,
-        groups=groups,
     )
 
     outdir_ge2 = rank_genes(

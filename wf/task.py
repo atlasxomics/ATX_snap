@@ -38,7 +38,7 @@ def make_adata(
     tile_size: int,
     n_features: int,
     clustering_iters: int,
-) -> (LatchDir, List[str]):
+) -> tuple[LatchDir, List[str]]:
     import pandas as pd
 
     samples = [run.run_id for run in runs]
@@ -166,7 +166,6 @@ def make_adata_gene(
     outdir: LatchDir,
     project_name: str,
     genome: utils.Genome,
-    groups: List[str],
 ) -> LatchDir:
 
     data_path = LatchFile(f"{outdir.remote_path}/combined.h5ad")
@@ -277,6 +276,24 @@ def call_peaks(
             q_thresh=0.1,
         )
 
+        # Annotate all peaks for stacked bargraph
+        logging.info("Annotating and plotting all peaks...")
+
+        # Load reference features from CSV files
+        feat_paths = utils.ref_dict[genome][2:5]
+        feats = [pd.read_csv(feat) for feat in feat_paths]
+
+        all_peaks = ft.make_plotting_peaks(
+            adata, f"{group}_peaks", genome, feats
+        )
+        pl.plot_stacked_peaks(
+            all_peaks,
+            "group",
+            "peakType",
+            group,
+            f"{figures_dir}/{group}Peaks_stackedBar.pdf"
+        )
+
         logging.info("Making peak matrix AnnData...")
         anndata_peak = ft.make_peakmatrix(
             adata, genome, f"{group}_peaks", log_norm=True
@@ -315,7 +332,7 @@ def call_peaks(
         anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData
 
         logging.info("Writing marker peaks to .csv ...")
-        feats = [pd.read_csv(feat) for feat in utils.ref_dict[genome][2:5]]
+        peaks_df = ft.reformat_peak_df(peaks_df, "names", group_col="group")
         peaks_df = ft.annotate_peaks(peaks_df, feats)
         peaks_df.to_csv(f"{tables_dir}/marker_peaks_per_{group}.csv", index=False)
 
@@ -333,7 +350,10 @@ def call_peaks(
 
 @custom_task(cpu=62, memory=512, storage_gib=1000)
 def motifs_task(
-    outdir: LatchDir, project_name: str, groups: List[str], genome: utils.Genome
+    outdir: LatchDir,
+    project_name: str,
+    groups: List[str],
+    genome: utils.Genome,
 ) -> LatchDir:
 
     genome = genome.value
