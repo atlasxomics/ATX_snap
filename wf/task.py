@@ -259,36 +259,40 @@ def call_peaks(
         logging.info("Finding marker peaks ...")
         logging.info(group)
 
-        group_len = len(adata.obs[group].unique())
-        if group_len != 2:  # Work around for rcs bug
-            rsc.get.anndata_to_GPU(anndata_peak)
-            rsc.tl.rank_genes_groups_logreg(
-                anndata_peak,
-                groupby=group,
-                method="wilcoxon",
-                use_raw=False,
-            )
-            rsc.get.anndata_to_CPU(anndata_peak)
-            peaks_df = sc.get.rank_genes_groups_df(
-                anndata_peak, group=None, pval_cutoff=0.05, log2fc_min=0.1
-            )
-        else:
-            sc.tl.rank_genes_groups(
-                anndata_peak,
-                groupby=group,
-                method="logreg",
-                use_raw=False,
-            )
-            peaks_df = sc.get.rank_genes_groups_df(
-                anndata_peak, group=None, pval_cutoff=0.05, log2fc_min=0.1
-            )
-            peaks_df["group"] = "All"
+        peaks_df = ft.rank_differential_peaks(anndata_peak, group)
+        anndata_peak.uns["rank_genes_groups"] = peaks_df
+
+        # group_len = len(adata.obs[group].unique())
+        # if group_len != 2:  # Work around for rcs bug
+        #     rsc.get.anndata_to_GPU(anndata_peak)
+        #     rsc.tl.rank_genes_groups_logreg(
+        #         anndata_peak,
+        #         groupby=group,
+        #         method="wilcoxon",
+        #         use_raw=False,
+        #     )
+        #     rsc.get.anndata_to_CPU(anndata_peak)
+        #     peaks_df = sc.get.rank_genes_groups_df(
+        #         anndata_peak, group=None, pval_cutoff=0.05, log2fc_min=0.1
+        #     )
+        # else:
+        #     sc.tl.rank_genes_groups(
+        #         anndata_peak,
+        #         groupby=group,
+        #         method="logreg",
+        #         use_raw=False,
+        #     )
+        #     peaks_df = sc.get.rank_genes_groups_df(
+        #         anndata_peak, group=None, pval_cutoff=0.05, log2fc_min=0.1
+        #     )
+        #     peaks_df["group"] = "All"
 
         logging.info("Writing peak matrix ...")
         anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData
 
         logging.info("Writing marker peaks to .csv ...")
         feats = [pd.read_csv(feat) for feat in utils.ref_dict[genome][2:5]]
+        peaks_df = peaks_df[peaks_df["adjusted p-value"] <= 0.05]
         peaks_df = ft.annotate_peaks(peaks_df, feats)
         peaks_df.to_csv(f"{tables_dir}/marker_peaks_per_{group}.csv", index=False)
 

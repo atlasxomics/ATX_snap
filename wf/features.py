@@ -1,7 +1,11 @@
+from functools import partial
 import logging
 from typing import List, Optional
 
+
 import anndata
+import gc
+import multiprocessing as mp
 import numpy as np
 import pandas as pd
 import pychromvar as pc
@@ -319,3 +323,86 @@ def reformat_peak_df(peaks_df: pd.DataFrame) -> pd.DataFrame:
     peaks_df.index = peaks_df["id"]
 
     return peaks_df
+
+
+def process_group(group: str, adata_p: anndata.AnnData, grouping: str) -> tuple:
+    logging.info(f"Processing group {group}")
+
+    # Create boolean masks for the group and rest
+    g_cells = adata_p.obs[grouping] == group
+    rest = adata_p.obs[grouping] != group
+
+    # Perform differential peak testing
+    g_peaks = snap.tl.diff_test(
+        adata_p,
+        g_cells,
+        rest,
+        features=None,
+        covariates=None,
+        direction="both",
+        min_log_fc=0.1,
+        min_pct=0.04,
+    )
+
+    g_peaks = g_peaks.to_pandas()
+    g_peaks["group"] = group
+    if "feature name" in g_peaks.columns:
+        g_peaks = g_peaks.rename(columns={"feature name": "names"})
+
+    return group, g_peaks
+
+
+def parallel_differential_peaks(
+    adata_p: anndata.AnnData, grouping: str, n_cores: Optional[int] = None
+) -> dict:
+
+    # Get unique groups
+    groups = adata_p.obs[grouping].unique()
+
+    # Determine number of cores
+    if n_cores is None:
+        n_cores = mp.cpu_count() - 1
+
+    # Use a partial function to fix adata_p and grouping
+    process_func = partial(process_group, adata_p=adata_p, grouping=grouping)
+
+    # Use Pool for parallel processing
+    pool = mp.Pool(processes=n_cores, maxtasksperchild=1)
+    try:
+        # Map the function across groups
+        results = pool.map_async(process_func, groups).get()
+        # Convert results to dictionary
+        sig_peaks = dict(results)  # Joblib wrapper for multiprocessing
+        return sig_peaks           # this has worked for Hari in the past
+    finally:                       # Joblib .parrelel
+        # Explicitly terminate and join the pool
+        pool.close()
+        pool.join()
+
+        # Force garbage collection to clean up any remaining references
+        gc.collect()
+
+
+def sequential_differential_peaks(adata_p: anndata.AnnData, grouping: str) -> dict:
+    groups = adata_p.obs[grouping].unique()
+    sig_peaks = {}
+    for group in groups:
+        logging.info(f"Processing group {group} sequentially")
+        group_name, peaks = process_group(group, adata_p, grouping)
+        sig_peaks[group_name] = peaks
+    return sig_peaks
+
+
+def rank_differential_peaks(
+    adata_p: anndata.AnnData, grouping: str
+) -> pd.DataFrame:
+
+    n_cores = min(len(adata_p.obs[grouping].unique()), mp.cpu_count() - 1)
+    logging.info(f"Using {n_cores} cores for parallel processing.")
+
+    # Perform differential peak testing in parallel
+    sig_peaks = sequential_differential_peaks(adata_p, grouping=grouping)
+
+    all_sig_peaks = pd.concat(sig_peaks, ignore_index=True)
+
+    return all_sig_peaks
