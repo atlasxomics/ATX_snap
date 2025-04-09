@@ -252,7 +252,7 @@ def call_peaks(
 
         logging.info("Making peak matrix AnnData...")
         anndata_peak = ft.make_peakmatrix(
-            adata, genome, f"{group}_peaks", log_norm=True
+            adata, genome, f"{group}_peaks", log_norm=False
         )
 
         peak_mats[group] = anndata_peak

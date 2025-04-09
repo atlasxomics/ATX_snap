@@ -257,8 +257,8 @@ def snap_workflow(
     #     groups=groups,
     # )
     from latch.types import LatchDir
-    outdir = LatchDir("latch://13502.account/snap_outs/Swarup_4_001000")
-    groups = ["cluster", "sample"]
+    outdir = LatchDir("latch://13502.account/snap_outs/demo_001001")
+    groups = ["cluster"]
 
     outdir_peaks = call_peaks(
         outdir=outdir,
