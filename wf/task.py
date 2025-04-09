@@ -24,7 +24,7 @@ import wf.utils as utils
 from wf.peaks import call_peaks_macs3_gpu
 
 
-@custom_task(cpu=62, memory=256, storage_gib=1000)
+@custom_task(cpu=62, memory=512, storage_gib=1000)
 def make_adata(
     runs: List[utils.Run],
     genome: utils.Genome,
@@ -38,7 +38,7 @@ def make_adata(
     tile_size: int,
     n_features: int,
     clustering_iters: int,
-) -> (LatchDir, List[str]):
+) -> tuple[LatchDir, List[str]]:
     import pandas as pd
 
     samples = [run.run_id for run in runs]
@@ -140,12 +140,9 @@ def make_adata(
         pt_size=utils.pt_sizes[channels]["qc"],
     )
 
-    # Neighbrohood enrichment plot, Ripley's plot
+    # # Neighbrohood enrichment plot, Ripley's plot
     adata = sp.squidpy_analysis(adata)
 
-    # Quick fix for neighborhoods issue.
-    # neighbor_groups = [g for g in groups if g != "cluster"]
-    # group_dict = {g: adata.obs[g].unique() for g in neighbor_groups}
     group_dict = dict()
     group_dict["all"] = None
 
@@ -162,12 +159,11 @@ def make_adata(
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}"), groups
 
 
-@custom_task(cpu=62, memory=400, storage_gib=1000)
+@custom_task(cpu=124, memory=500, storage_gib=1000)
 def make_adata_gene(
     outdir: LatchDir,
     project_name: str,
     genome: utils.Genome,
-    groups: List[str],
 ) -> LatchDir:
 
     data_path = LatchFile(f"{outdir.remote_path}/combined.h5ad")
@@ -187,8 +183,36 @@ def make_adata_gene(
     adata_gene = ft.make_geneadata(adata, genome)
     adata_gene.obs.to_csv(f"{tables_dir}/gene_metadata.csv")
 
+    adata_gene.write(f"{out_dir}/combined_ge.h5ad")
+
+    return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
+
+
+@custom_task(cpu=62, memory=975, storage_gib=1000)
+def rank_genes(
+    outdir: LatchDir,
+    project_name: str,
+    genome: utils.Genome,
+    groups: List[str],
+) -> LatchDir:
+
+    data_path = LatchFile(f"{outdir.remote_path}/combined_ge.h5ad")
+    adata_gene = anndata.read_h5ad(data_path.local_path)
+    genome = genome.value
+
+    out_dir = f"/root/{project_name}"
+    os.makedirs(out_dir, exist_ok=True)
+
+    figures_dir = f"{out_dir}/figures"
+    os.makedirs(figures_dir, exist_ok=True)
+
+    tables_dir = f"{out_dir}/tables"
+    os.makedirs(tables_dir, exist_ok=True)
+
+    logging.info("Ranking genes...")
+
     ft.rank_features(adata_gene, groups=groups, feature_type="genes", save=tables_dir)
-    logging.info("Computed gene matrix")
+    logging.info("Finished ranking genes...")
 
     # # Plot heatmap for genes
     sc.pl.rank_genes_groups_matrixplot(
@@ -250,6 +274,24 @@ def call_peaks(
             q_thresh=0.1,
         )
 
+        # Annotate all peaks for stacked bargraph
+        logging.info("Annotating and plotting all peaks...")
+
+        # Load reference features from CSV files
+        feat_paths = utils.ref_dict[genome][2:5]
+        feats = [pd.read_csv(feat) for feat in feat_paths]
+
+        all_peaks = ft.make_plotting_peaks(
+            adata, f"{group}_peaks", genome, feats
+        )
+        pl.plot_stacked_peaks(
+            all_peaks,
+            "group",
+            "peakType",
+            group,
+            f"{figures_dir}/{group}Peaks_stackedBar.pdf"
+        )
+
         logging.info("Making peak matrix AnnData...")
         anndata_peak = ft.make_peakmatrix(
             adata, genome, f"{group}_peaks", log_norm=True
@@ -260,35 +302,35 @@ def call_peaks(
         logging.info(group)
 
         group_len = len(adata.obs[group].unique())
-        if group_len != 2:  # Work around for rcs bug
-            rsc.get.anndata_to_GPU(anndata_peak)
-            rsc.tl.rank_genes_groups_logreg(
-                anndata_peak,
-                groupby=group,
-                method="wilcoxon",
-                use_raw=False,
-            )
-            rsc.get.anndata_to_CPU(anndata_peak)
-            peaks_df = sc.get.rank_genes_groups_df(
-                anndata_peak, group=None, pval_cutoff=0.05, log2fc_min=0.1
-            )
-        else:
-            sc.tl.rank_genes_groups(
-                anndata_peak,
-                groupby=group,
-                method="logreg",
-                use_raw=False,
-            )
-            peaks_df = sc.get.rank_genes_groups_df(
-                anndata_peak, group=None, pval_cutoff=0.05, log2fc_min=0.1
-            )
+        # if group_len != 2:  # Work around for rcs bug
+        #     rsc.get.anndata_to_GPU(anndata_peak)
+        #     rsc.tl.rank_genes_groups_logreg(
+        #         anndata_peak,
+        #         groupby=group,
+        #         use_raw=False,
+        #     )
+        #     rsc.get.anndata_to_CPU(anndata_peak)
+        #     peaks_df = sc.get.rank_genes_groups_df(
+        #         anndata_peak, group=None, pval_cutoff=0.05, log2fc_min=0.1
+        #     )
+        # else:
+        sc.tl.rank_genes_groups(
+            anndata_peak,
+            groupby=group,
+            method="logreg",
+            use_raw=False,
+        )
+        peaks_df = sc.get.rank_genes_groups_df(
+            anndata_peak, group=None, pval_cutoff=0.05, log2fc_min=0.1
+        )
+        if group_len == 2:
             peaks_df["group"] = "All"
 
         logging.info("Writing peak matrix ...")
         anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData
 
         logging.info("Writing marker peaks to .csv ...")
-        feats = [pd.read_csv(feat) for feat in utils.ref_dict[genome][2:5]]
+        peaks_df = ft.reformat_peak_df(peaks_df, "names", group_col="group")
         peaks_df = ft.annotate_peaks(peaks_df, feats)
         peaks_df.to_csv(f"{tables_dir}/marker_peaks_per_{group}.csv", index=False)
 
@@ -304,9 +346,12 @@ def call_peaks(
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
 
 
-@custom_task(cpu=62, memory=256, storage_gib=1000)
+@custom_task(cpu=62, memory=512, storage_gib=1000)
 def motifs_task(
-    outdir: LatchDir, project_name: str, groups: List[str], genome: utils.Genome
+    outdir: LatchDir,
+    project_name: str,
+    groups: List[str],
+    genome: utils.Genome,
 ) -> LatchDir:
 
     genome = genome.value
