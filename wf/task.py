@@ -245,7 +245,6 @@ def call_peaks(
     groups: List[str],
 ) -> LatchDir:
     import pandas as pd
-    import rapids_singlecell as rsc
 
     genome = genome.value
 
@@ -298,22 +297,11 @@ def call_peaks(
         )
 
         peak_mats[group] = anndata_peak
-        logging.info("Finding marker peaks ...")
+        logging.info("Finding marker peaks...")
         logging.info(group)
 
         group_len = len(adata.obs[group].unique())
-        # if group_len != 2:  # Work around for rcs bug
-        #     rsc.get.anndata_to_GPU(anndata_peak)
-        #     rsc.tl.rank_genes_groups_logreg(
-        #         anndata_peak,
-        #         groupby=group,
-        #         use_raw=False,
-        #     )
-        #     rsc.get.anndata_to_CPU(anndata_peak)
-        #     peaks_df = sc.get.rank_genes_groups_df(
-        #         anndata_peak, group=None, pval_cutoff=0.05, log2fc_min=0.1
-        #     )
-        # else:
+
         sc.tl.rank_genes_groups(
             anndata_peak,
             groupby=group,
