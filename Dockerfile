@@ -45,16 +45,11 @@ RUN pip3 install awscli
 RUN apt-get update -y && apt-get install -y bedtools
 ENV TQDM_DISABLE=1
 
-# Install forked version of SnapATAC2
-RUN apt-get install -y cmake libclang-dev 
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
-RUN pip install git+https://github.com/jpmcga/SnapATAC2.git#subdirectory=snapatac2-python
 # Copy workflow data (use .dockerignore to skip files)
 COPY . /root/
 
-RUN apt-get update && apt-get install -y libblosc-dev
-RUN pip install --no-binary numcodecs numcodecs
+# Fix bug in snapatac2.tools.diff_test()
+COPY _diff.py /usr/local/lib/python3.11/dist-packages/snapatac2/tools/_diff.py 
 
 # Latch workflow registration metadata
 # DO NOT CHANGE
