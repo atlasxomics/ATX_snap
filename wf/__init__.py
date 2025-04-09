@@ -9,6 +9,7 @@ from wf.task import (
     make_adata,
     make_adata_gene,
     motifs_task,
+    rank_peaks,
     registry_task,
 )
 from wf.utils import Genome, Run
@@ -259,6 +260,13 @@ def snap_workflow(
 
     outdir_peaks = call_peaks(
         outdir=outdir,
+        project_name=project_name,
+        genome=genome,
+        groups=groups,
+    )
+
+    outdir_ranked_peaks = rank_peaks(
+        outdir=outdir_peaks,
         project_name=project_name,
         genome=genome,
         groups=groups,

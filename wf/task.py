@@ -220,8 +220,6 @@ def call_peaks(
     genome: utils.Genome,
     groups: List[str],
 ) -> LatchDir:
-    import pandas as pd
-    import rapids_singlecell as rsc
 
     genome = genome.value
 
@@ -255,29 +253,62 @@ def call_peaks(
             adata, genome, f"{group}_peaks", log_norm=False
         )
 
-        peak_mats[group] = anndata_peak
-        logging.info(f"Finding marker peaks for {group} ...")
-
-        peaks_df = ft.rank_differential_peaks(anndata_peak, group)
-        anndata_peak.uns["rank_genes_groups"] = peaks_df
-
-        logging.info("Writing peak matrix ...")
+        logging.info("Writing peak matrix...")
         anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData
 
+        peak_mats[group] = anndata_peak
+
+        logging.info("Writing combined anndata with peaks info...")
+        peaks = list(peak_mats["cluster"].var_names)
+        snap.metrics.frip(adata, {"cluster_peaks": peaks})
+
+        adata.write(f"{out_dir}/combined.h5ad")
+
+        logging.info("Writing all peaks to disk...")
+        peaks_path = f"{out_dir}/peaks.pkl"
+        with open(peaks_path, "wb") as f:
+            pickle.dump(peak_mats, f)
+
+    return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
+
+
+@custom_task(cpu=32, memory=384, storage_gib=1000)
+def rank_peaks(
+    outdir: LatchDir,
+    project_name: str,
+    genome: utils.Genome,
+    groups: List[str],
+) -> LatchDir:
+    import pandas as pd
+
+    out_dir = f"/root/{project_name}"
+    os.makedirs(out_dir, exist_ok=True)
+
+    figures_dir = f"{out_dir}/figures"
+    os.makedirs(figures_dir, exist_ok=True)
+
+    tables_dir = f"{out_dir}/tables"
+    os.makedirs(tables_dir, exist_ok=True)
+
+    genome = genome.value
+    feats = [pd.read_csv(feat) for feat in utils.ref_dict[genome][2:5]]
+
+    for group in groups:
+        data_path = LatchFile(f"{outdir.remote_path}/{group}_peaks.h5ad")
+        anndata_peak = anndata.read_h5ad(data_path.local_path)
+
+        logging.info(f"Finding marker peaks {group}...")
+
+        peaks_df = ft.rank_differential_peaks(anndata_peak, group)
+        anndata_peak.uns["rank_peaks_groups"] = peaks_df
+
         logging.info("Writing marker peaks to .csv ...")
-        feats = [pd.read_csv(feat) for feat in utils.ref_dict[genome][2:5]]
         peaks_df = peaks_df[peaks_df["adjusted p-value"] <= 0.05]
         peaks_df = ft.annotate_peaks(peaks_df, feats)
         peaks_df.to_csv(f"{tables_dir}/marker_peaks_per_{group}.csv", index=False)
 
-    logging.info("Writing combined anndata with peaks ...")
-    peaks = list(peak_mats["cluster"].var_names)
-    snap.metrics.frip(adata, {"cluster_peaks": peaks})
-
-    adata.write(f"{out_dir}/combined.h5ad")
-    peaks_path = f"{out_dir}/peaks.pkl"
-    with open(peaks_path, "wb") as f:
-        pickle.dump(peak_mats, f)
+        logging.info("Writing ranked peak matrix...")
+        anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData
 
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
 
