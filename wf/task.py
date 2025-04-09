@@ -256,36 +256,10 @@ def call_peaks(
         )
 
         peak_mats[group] = anndata_peak
-        logging.info("Finding marker peaks ...")
-        logging.info(group)
+        logging.info(f"Finding marker peaks for {group} ...")
 
         peaks_df = ft.rank_differential_peaks(anndata_peak, group)
         anndata_peak.uns["rank_genes_groups"] = peaks_df
-
-        # group_len = len(adata.obs[group].unique())
-        # if group_len != 2:  # Work around for rcs bug
-        #     rsc.get.anndata_to_GPU(anndata_peak)
-        #     rsc.tl.rank_genes_groups_logreg(
-        #         anndata_peak,
-        #         groupby=group,
-        #         method="wilcoxon",
-        #         use_raw=False,
-        #     )
-        #     rsc.get.anndata_to_CPU(anndata_peak)
-        #     peaks_df = sc.get.rank_genes_groups_df(
-        #         anndata_peak, group=None, pval_cutoff=0.05, log2fc_min=0.1
-        #     )
-        # else:
-        #     sc.tl.rank_genes_groups(
-        #         anndata_peak,
-        #         groupby=group,
-        #         method="logreg",
-        #         use_raw=False,
-        #     )
-        #     peaks_df = sc.get.rank_genes_groups_df(
-        #         anndata_peak, group=None, pval_cutoff=0.05, log2fc_min=0.1
-        #     )
-        #     peaks_df["group"] = "All"
 
         logging.info("Writing peak matrix ...")
         anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData

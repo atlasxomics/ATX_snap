@@ -235,30 +235,27 @@ def snap_workflow(
 
     """
 
-    # outdir, groups = make_adata(
-    #     runs=runs,
-    #     genome=genome,
-    #     project_name=project_name,
-    #     resolution=resolution,
-    #     leiden_iters=leiden_iters,
-    #     n_comps=n_comps,
-    #     min_cluster_size=min_cluster_size,
-    #     min_tss=min_tss,
-    #     min_frags=min_frags,
-    #     tile_size=tile_size,
-    #     n_features=n_features,
-    #     clustering_iters=clustering_iters,
-    # )
+    outdir, groups = make_adata(
+        runs=runs,
+        genome=genome,
+        project_name=project_name,
+        resolution=resolution,
+        leiden_iters=leiden_iters,
+        n_comps=n_comps,
+        min_cluster_size=min_cluster_size,
+        min_tss=min_tss,
+        min_frags=min_frags,
+        tile_size=tile_size,
+        n_features=n_features,
+        clustering_iters=clustering_iters,
+    )
 
-    # outdir_ge = make_adata_gene(
-    #     outdir=outdir,
-    #     project_name=project_name,
-    #     genome=genome,
-    #     groups=groups,
-    # )
-    from latch.types import LatchDir
-    outdir = LatchDir("latch://13502.account/snap_outs/demo_001001")
-    groups = ["cluster"]
+    outdir_ge = make_adata_gene(
+        outdir=outdir,
+        project_name=project_name,
+        genome=genome,
+        groups=groups,
+    )
 
     outdir_peaks = call_peaks(
         outdir=outdir,
@@ -267,18 +264,16 @@ def snap_workflow(
         groups=groups,
     )
 
-    return outdir_peaks
+    outdir_motifs = motifs_task(
+        outdir=outdir_peaks,
+        project_name=project_name,
+        genome=genome,
+        groups=groups,
+    )
 
-    # outdir_motifs = motifs_task(
-    #     outdir=outdir_peaks,
-    #     project_name=project_name,
-    #     genome=genome,
-    #     groups=groups,
-    # )
+    uploaded_results = registry_task(runs=runs, results=outdir_motifs)
 
-    # uploaded_results = registry_task(runs=runs, results=outdir_motifs)
-
-    # return uploaded_results
+    return uploaded_results
 
 
 if __name__ == "__main__":
