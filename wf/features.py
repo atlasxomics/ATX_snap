@@ -154,7 +154,8 @@ def make_peakmatrix(
     adata_p.obs = adata.obs
     adata_p.obsm = adata.obsm
 
-    if log_norm:
+    if log_norm:  # Shold add normalization, save the raw counts
+        adata_p.layers["raw_counts"] = adata_p.X.copy()
         sc.pp.log1p(adata_p)
 
     return adata_p
@@ -367,20 +368,17 @@ def parallel_differential_peaks(
     process_func = partial(process_group, adata_p=adata_p, grouping=grouping)
 
     # Use Pool for parallel processing
-    pool = mp.Pool(processes=n_cores, maxtasksperchild=1)
-    try:
-        # Map the function across groups
-        results = pool.map_async(process_func, groups).get()
-        # Convert results to dictionary
-        sig_peaks = dict(results)  # Joblib wrapper for multiprocessing
-        return sig_peaks           # this has worked for Hari in the past
-    finally:                       # Joblib .parrelel
-        # Explicitly terminate and join the pool
-        pool.close()
-        pool.join()
+    pool = mp.Pool(processes=n_cores)
 
-        # Force garbage collection to clean up any remaining references
-        gc.collect()
+    # Map the function across groups
+    results = pool.map(process_func, groups)
+    pool.close()  # Joblib wrapper for multiprocessing
+    pool.join()   # this has worked for Hari in the past
+    gc.collect()
+
+    # Convert results to dictionary
+    sig_peaks = dict(results)
+    return sig_peaks
 
 
 def sequential_differential_peaks(adata_p: anndata.AnnData, grouping: str) -> dict:
@@ -398,10 +396,12 @@ def rank_differential_peaks(
 ) -> pd.DataFrame:
 
     n_cores = min(len(adata_p.obs[grouping].unique()), mp.cpu_count() - 1)
-    logging.info(f"Using {n_cores} cores for parallel processing.")
+    # logging.info(f"Using {n_cores} cores for parallel processing.")
 
     # Perform differential peak testing in parallel
-    sig_peaks = sequential_differential_peaks(adata_p, grouping=grouping)
+    sig_peaks = sequential_differential_peaks(
+        adata_p, grouping=grouping
+    )
 
     all_sig_peaks = pd.concat(sig_peaks, ignore_index=True)
 
