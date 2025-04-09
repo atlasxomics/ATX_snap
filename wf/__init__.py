@@ -6,6 +6,7 @@ from latch.types.metadata import LatchAuthor, LatchMetadata, LatchParameter, Lat
 # from wf.task import registry_task, snap_task
 from wf.task import (
     call_peaks,
+    rank_peaks,
     make_adata,
     make_adata_gene,
     motifs_task,
@@ -257,8 +258,8 @@ def snap_workflow(
     #     groups=groups,
     # )
     from latch.types import LatchDir
-    outdir = LatchDir("latch://13502.account/snap_outs/Swarup_4_001000")
-    groups = ["cluster", "sample"]
+    outdir = LatchDir("latch://13502.account/snap_outs/demo_001001")
+    groups = ["cluster"]
 
     outdir_peaks = call_peaks(
         outdir=outdir,
@@ -267,7 +268,14 @@ def snap_workflow(
         groups=groups,
     )
 
-    return outdir_peaks
+    outdir_ranked_peaks = rank_peaks(
+        outdir=outdir_peaks,
+        project_name=project_name,
+        genome=genome,
+        groups=groups,
+    )
+
+    return outdir_ranked_peaks
 
     # outdir_motifs = motifs_task(
     #     outdir=outdir_peaks,
