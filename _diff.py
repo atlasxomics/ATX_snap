@@ -219,37 +219,28 @@ def _diff_test_helper(mat, z, peaks=None, covariate=None) -> list[float]:
     return _likelihood_ratio_test_many(np.asarray(X), np.asarray(z), mat)
 
 
+from joblib import Parallel, delayed
+
 def _likelihood_ratio_test_many(X, z, Y) -> list[float]:
-    """
-    Parameters
-    ----------
-    X
-        (n_sample, n_feature).
-    z
-        (n_sample, 1), the additional variable.
-    Y
-        (n_sample, k), labels
-    
-    Returns
-    -------
-    P-values of whether adding z to the models improves the prediction.
-    """
+    from tqdm import tqdm
+    import numpy as np
 
     X0 = X
     X1 = np.concatenate((X, z), axis=1)
-
     _, n = Y.shape
+    # Overwrite data to 1's if required
     Y.data = np.ones(Y.data.shape)
 
-    # Convert sparse matrix columns to dense arrays once to avoid overhead
-    y_arrays = [np.asarray(np.ravel(Y[:, i].todense())) for i in range(n)]
+    def compute_p(i):
+        # Convert column i once to dense and flatten it
+        col_dense = np.asarray(np.ravel(Y[:, i].todense()))
+        return _likelihood_ratio_test(X0, X1, col_dense)
 
-    with ProcessPoolExecutor() as executor:
-        result = list(executor.map(
-            lambda y: _likelihood_ratio_test(X0, X1, y),
-            y_arrays
-        ))
-    return result
+    # Use all cores (-1) or specify a fixed number
+    pvals = Parallel(n_jobs=-1)(
+        delayed(compute_p)(i) for i in tqdm(range(n))
+    )
+    return pvals
 
 def _likelihood_ratio_test(
     X0: np.ndarray,
@@ -281,13 +272,13 @@ def _likelihood_ratio_test(
         # Return a default non-significant p-value.
         return 1.0
 
-    model = LogisticRegression(penalty=None, random_state=0, n_jobs=-1,
+    model = LogisticRegression(penalty=None, random_state=0, n_jobs=1,
         solver="lbfgs", warm_start=False,
         max_iter = 1000,
         ).fit(X0, y)
     reduced = -log_loss(y, model.predict_proba(X0), normalize=False)
 
-    model = LogisticRegression(penalty=None, random_state=0, n_jobs=-1,
+    model = LogisticRegression(penalty=None, random_state=0, n_jobs=1,
         solver="lbfgs", warm_start=False,
         max_iter = 1000,
         ).fit(X1, y)
