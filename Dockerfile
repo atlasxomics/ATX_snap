@@ -32,6 +32,7 @@ RUN pip install numpy==1.25.2
 # Install pip dependencies from `requirements.txt`, pychromvar with chunks
 COPY requirements.txt /opt/latch/requirements.txt
 RUN pip install --requirement /opt/latch/requirements.txt
+
 RUN pip install 'rapids-singlecell[rapids12]' --extra-index-url=https://pypi.nvidia.com
 RUN pip install --no-cache-dir git+https://github.com/pinellolab/pychromVAR.git@7fc47cb02ed36e0ce4c53c5c08bfe17b1ee626a7
 RUN git clone https://github.com/latchbio-workflows/gmacs.git && \
@@ -42,9 +43,13 @@ RUN pip3 uninstall -y aiobotocore botocore awscli s3transfer
 RUN pip3 install awscli
 
 RUN apt-get update -y && apt-get install -y bedtools
+ENV TQDM_DISABLE=1
 
 # Copy workflow data (use .dockerignore to skip files)
 COPY . /root/
+
+# Fix bug in snapatac2.tools.diff_test()
+COPY _diff.py /usr/local/lib/python3.11/dist-packages/snapatac2/tools/_diff.py 
 
 # Latch workflow registration metadata
 # DO NOT CHANGE

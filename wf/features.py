@@ -1,6 +1,7 @@
 import logging
 from typing import List, Optional
 
+
 import anndata
 import numpy as np
 import pandas as pd
@@ -155,7 +156,8 @@ def make_peakmatrix(
     adata_p.obs = adata.obs
     adata_p.obsm = adata.obsm
 
-    if log_norm:
+    if log_norm:  # Shold add normalization, save the raw counts
+        adata_p.layers["raw_counts"] = adata_p.X.copy()
         sc.pp.log1p(adata_p)
 
     return adata_p
@@ -450,3 +452,58 @@ def reformat_peak_df(
         peaks_df.drop(to_drop, axis=1, inplace=True)
 
     return peaks_df
+
+
+def process_group(
+    group: str, adata_p: anndata.AnnData, grouping: str
+) -> tuple:
+    logging.info(f"Processing group {group}")
+
+    # Create boolean masks for the group and rest
+    g_cells = adata_p.obs[grouping] == group
+    rest = adata_p.obs[grouping] != group
+
+    # Perform differential peak testing
+    g_peaks = snap.tl.diff_test(
+        adata_p,
+        g_cells,
+        rest,
+        features=None,
+        covariates=None,
+        direction="both",
+        min_log_fc=0.1,
+        min_pct=0.04,
+    )
+
+    g_peaks = g_peaks.to_pandas()
+    g_peaks["group"] = group
+    if "feature name" in g_peaks.columns:
+        g_peaks = g_peaks.rename(columns={"feature name": "names"})
+
+    return group, g_peaks
+
+
+def sequential_differential_peaks(
+    adata_p: anndata.AnnData, grouping: str
+) -> dict:
+    groups = adata_p.obs[grouping].unique()
+    sig_peaks = {}
+    for group in groups:
+        logging.info(f"Processing group {group} sequentially")
+        group_name, peaks = process_group(group, adata_p, grouping)
+        sig_peaks[group_name] = peaks
+    return sig_peaks
+
+
+def rank_differential_peaks(
+    adata_p: anndata.AnnData, grouping: str
+) -> pd.DataFrame:
+
+    # Perform differential peak testing in parallel
+    sig_peaks = sequential_differential_peaks(
+        adata_p, grouping=grouping
+    )
+
+    all_sig_peaks = pd.concat(sig_peaks, ignore_index=True)
+
+    return all_sig_peaks
