@@ -1,11 +1,8 @@
-from functools import partial
 import logging
 from typing import List, Optional
 
 
 import anndata
-import gc
-import multiprocessing as mp
 import numpy as np
 import pandas as pd
 import pychromvar as pc
@@ -457,7 +454,9 @@ def reformat_peak_df(
     return peaks_df
 
 
-def process_group(group: str, adata_p: anndata.AnnData, grouping: str) -> tuple:
+def process_group(
+    group: str, adata_p: anndata.AnnData, grouping: str
+) -> tuple:
     logging.info(f"Processing group {group}")
 
     # Create boolean masks for the group and rest
@@ -484,35 +483,9 @@ def process_group(group: str, adata_p: anndata.AnnData, grouping: str) -> tuple:
     return group, g_peaks
 
 
-def parallel_differential_peaks(
-    adata_p: anndata.AnnData, grouping: str, n_cores: Optional[int] = None
+def sequential_differential_peaks(
+    adata_p: anndata.AnnData, grouping: str
 ) -> dict:
-
-    # Get unique groups
-    groups = adata_p.obs[grouping].unique()
-
-    # Determine number of cores
-    if n_cores is None:
-        n_cores = mp.cpu_count() - 1
-
-    # Use a partial function to fix adata_p and grouping
-    process_func = partial(process_group, adata_p=adata_p, grouping=grouping)
-
-    # Use Pool for parallel processing
-    pool = mp.Pool(processes=n_cores)
-
-    # Map the function across groups
-    results = pool.map(process_func, groups)
-    pool.close()  # Joblib wrapper for multiprocessing
-    pool.join()   # this has worked for Hari in the past
-    gc.collect()
-
-    # Convert results to dictionary
-    sig_peaks = dict(results)
-    return sig_peaks
-
-
-def sequential_differential_peaks(adata_p: anndata.AnnData, grouping: str) -> dict:
     groups = adata_p.obs[grouping].unique()
     sig_peaks = {}
     for group in groups:
@@ -525,9 +498,6 @@ def sequential_differential_peaks(adata_p: anndata.AnnData, grouping: str) -> di
 def rank_differential_peaks(
     adata_p: anndata.AnnData, grouping: str
 ) -> pd.DataFrame:
-
-    n_cores = min(len(adata_p.obs[grouping].unique()), mp.cpu_count() - 1)
-    # logging.info(f"Using {n_cores} cores for parallel processing.")
 
     # Perform differential peak testing in parallel
     sig_peaks = sequential_differential_peaks(

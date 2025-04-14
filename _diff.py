@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from joblib import Parallel, delayed
 from typing import Literal
 import numpy as np
 from scipy.stats import chi2, norm, zscore
@@ -218,37 +219,29 @@ def _diff_test_helper(mat, z, peaks=None, covariate=None) -> list[float]:
 
     return _likelihood_ratio_test_many(np.asarray(X), np.asarray(z), mat)
 
-
+  
 def _likelihood_ratio_test_many(X, z, Y) -> list[float]:
-    """
-    Parameters
-    ----------
-    X
-        (n_sample, n_feature).
-    z
-        (n_sample, 1), the additional variable.
-    Y
-        (n_sample, k), labels
-    
-    Returns
-    -------
-    P-values of whether adding z to the models improves the prediction.
-    """
     from tqdm import tqdm
- 
+    import numpy as np
+
     X0 = X
     X1 = np.concatenate((X, z), axis=1)
-
     _, n = Y.shape
+    # Overwrite data to 1's if required
     Y.data = np.ones(Y.data.shape)
 
-    result = []
-    for i in tqdm(range(n)):
-        result.append(
-            _likelihood_ratio_test(X0, X1, np.asarray(np.ravel(Y[:, i].todense())))
-        )
-    return result
+    def compute_p(i):
+        # Convert column i once to dense and flatten it
+        col_dense = np.asarray(np.ravel(Y[:, i].todense()))
+        return _likelihood_ratio_test(X0, X1, col_dense)
 
+    # Use all cores (-1) or specify a fixed number
+    pvals = Parallel(n_jobs=-1)(
+        delayed(compute_p)(i) for i in tqdm(range(n))
+    )
+    return pvals
+
+  
 def _likelihood_ratio_test(
     X0: np.ndarray,
     X1: np.ndarray,
