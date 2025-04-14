@@ -244,6 +244,7 @@ def call_peaks(
     genome: utils.Genome,
     groups: List[str],
 ) -> LatchDir:
+    import pandas as pd
 
     genome = genome.value
 
