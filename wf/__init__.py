@@ -1,13 +1,16 @@
 from typing import List
 
 from latch.resources.workflow import workflow
-from latch.types.metadata import LatchAuthor, LatchMetadata, LatchParameter, LatchRule
+from latch.types.metadata import (
+    LatchAuthor, LatchMetadata, LatchParameter, LatchRule
+)
 
 # from wf.task import registry_task, snap_task
 from wf.task import (
     call_peaks,
     make_adata,
     make_adata_gene,
+    rank_genes,
     motifs_task,
     rank_peaks,
     registry_task,
@@ -251,8 +254,14 @@ def snap_workflow(
         clustering_iters=clustering_iters,
     )
 
-    outdir_ge = make_adata_gene(
+    outdir_ge1 = make_adata_gene(
         outdir=outdir,
+        project_name=project_name,
+        genome=genome,
+    )
+
+    outdir_ge2 = rank_genes(
+        outdir=outdir_ge1,
         project_name=project_name,
         genome=genome,
         groups=groups,
@@ -266,7 +275,7 @@ def snap_workflow(
     )
 
     outdir_ranked_peaks = rank_peaks(
-        outdir=outdir,
+        outdir=outdir_peaks,
         project_name=project_name,
         genome=genome,
         groups=groups,

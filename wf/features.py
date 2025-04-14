@@ -23,8 +23,8 @@ def annotate_peaks(
     peaks_df: pd.DataFrame,
     features: List[pd.DataFrame]
 ) -> pd.DataFrame:
+    import pandas as pd
 
-    peaks_df = reformat_peak_df(peaks_df)
     peaks = make_peak_bed(peaks_df)
     genes, exons, promoters = [BedTool.from_dataframe(feature)
                                for feature in features]
@@ -111,6 +111,17 @@ def clean_adata(adata: anndata.AnnData) -> anndata.AnnData:
     return adata
 
 
+def get_merged_peaks(adata: anndata.AnnData, key: str, chrom_sizes: dict):
+    """Wrapper for snap merge_peaks."""
+
+    peaks = adata.uns[key]
+
+    if not isinstance(peaks, dict):  # Convert to dict for merge_peaks()
+        peaks = {"0": adata.uns[key]}
+
+    return snap.tl.merge_peaks(peaks, chrom_sizes)
+
+
 def get_motifs(
     adata: anndata.AnnData, fasta_path: str, release: str = "JASPAR2024"
 ) -> anndata.AnnData:
@@ -137,13 +148,7 @@ def make_peakmatrix(
     """Given an AnnData object with macs2 peak calls stored in .uns[key],
     returns a new AnnData object with X a peak count matrix.
     """
-    peaks = adata.uns[key]
-
-    if not isinstance(peaks, dict):  # Convert to dict for merge_peaks()
-        peaks = {"0": adata.uns[key]}
-
-    # Can't use a dict because of flyte
-    merged_peaks = snap.tl.merge_peaks(peaks, ref_dict[genome][0])
+    merged_peaks = get_merged_peaks(adata, key, ref_dict[genome][0])
 
     adata_p = snap.pp.make_peak_matrix(adata, use_rep=merged_peaks["Peaks"])
 
@@ -151,7 +156,8 @@ def make_peakmatrix(
     adata_p.obs = adata.obs
     adata_p.obsm = adata.obsm
 
-    if log_norm:
+    if log_norm:  # Shold add normalization, save the raw counts
+        adata_p.layers["raw_counts"] = adata_p.X.copy()
         sc.pp.log1p(adata_p)
 
     return adata_p
@@ -249,6 +255,89 @@ def make_peak_bed(peaks_df: pd.DataFrame, sort: bool = True) -> BedTool:
     return bed.sort() if sort else bed
 
 
+def make_plotting_peaks(
+    adata: anndata.AnnData,
+    key: str,
+    genome: str,
+    features: List[pd.DataFrame],
+) -> pd.DataFrame:
+    """
+    Annotate all peaks for a stacked bar graph.
+    Parameters:
+    - adata (anndata.AnnData): The AnnData object containing peak data.
+    - group (str): The group name used in peak annotation.
+    - genome (str): The genome reference key in utils.ref_dict.
+    Returns:
+    - pd.DataFrame: Annotated peaks ready for plotting.
+    """
+
+    try:
+
+        # Convert peaks to DataFrame
+        all_peaks = peaks_to_df(adata, key)
+
+        # Get merged peaks (union peaks)
+        union_peaks = get_merged_peaks(adata, key, ref_dict[genome][0])
+        union_peaks = reformat_peak_df(
+            union_peaks, "Peaks", add_group="Union", drop_cols=True
+        )
+
+        # Combine all peaks and union peaks
+        plotting_peaks = pd.concat([all_peaks, union_peaks])
+
+        return annotate_peaks(plotting_peaks, features)
+
+    except Exception as e:
+        logging.error(f"Unexpected error in annotate_and_plot_peaks: {e}")
+
+    return None
+
+
+def peaks_to_df(
+    adata: anndata.AnnData, peaks_key: str, drop_cols: bool = True
+) -> pd.DataFrame:
+    """
+    Converts peak information stored in adata.uns[peaks_key] into a Pandas DataFrame.
+    Parameters:
+        adata (anndata.AnnData): The AnnData object containing peak information.
+        peaks_key (str): The key in `adata.uns` where peak data is stored.
+        drop_cols (bool): If True, drops unnecessary columns (except 'chrom',
+            'start', 'end', 'group').
+    Returns:
+        pd.DataFrame: Reformatted DataFrame with an 'id' column and set index.
+    """
+
+    if peaks_key not in adata.uns.keys():
+        logging.error(f"Peaks {peaks_key} not found in adata; aborting merge.")
+        return None
+
+    peaks_dict = {
+        k: v.assign(group=k) for k, v in adata.uns[peaks_key].items()
+    }
+
+    # Drop unwanted columns if requested
+    if drop_cols:
+        keep_cols = {"chrom", "start", "end", "group"}
+        for df in peaks_dict.values():
+            df.drop(
+                columns=[col for col in df.columns if col not in keep_cols],
+                errors="ignore",
+                inplace=True
+            )
+
+    peaks_df = pd.concat(peaks_dict.values(), ignore_index=True)
+
+    # Create 'id' column
+    peaks_df["id"] = (peaks_df["group"] + ":" + peaks_df["chrom"] + ":" +
+                      peaks_df["start"].astype(str) + "-" +
+                      peaks_df["end"].astype(str))
+
+    # Set the 'id' column as index
+    peaks_df.set_index("id", inplace=True, drop=False)
+
+    return peaks_df
+
+
 def rank_features(
     adata: anndata.AnnData,
     groups: List[str],
@@ -300,24 +389,67 @@ def rank_features(
         )
 
 
-def reformat_peak_df(peaks_df: pd.DataFrame) -> pd.DataFrame:
-    """ Expects a DataFrame from sc.rank_genes_groups_df with column 'names,
-    containing coordinates in the format 'chr1:631135-631636'; returns a
-    DataFrame reformatted for for compatibility with BedTools.
+def reformat_peak_df(
+    peaks_df: pd.DataFrame,
+    peak_col: str,
+    add_group: Optional[str] = None,
+    group_col: Optional[str] = None,
+    drop_cols: bool = False
+) -> pd.DataFrame:
+    """
+    Reformat a DataFrame to be compatible with BedTools by extracting chromosome,
+    start, and end positions from a peak column ('chrom:start-stop') and adding
+    an identifier column 'id'.
+    Parameters:
+    - peaks_df (pd.DataFrame): Input DataFrame with a column containing peak strings.
+    - peak_col (str): Column name containing peaks in 'chrom:start-stop' format.
+    - add_group (Optional[str]): If provided, assigns a fixed group name to 'group' column.
+    - group_col (Optional[str]): Column name containing group identifiers for peaks.
+    - drop+cols (bool): Whether to drop columns not in ['chrom', 'start', 'end',
+        'group', 'id'].
+    Returns:
+    - pd.DataFrame: Reformatted DataFrame with 'chrom', 'start', 'end', and 'id' columns.
     """
 
-    try:
-        peaks_df[["names", "group"]]
-    except KeyError as e:
-        logging.warning(f"Error {e}: Expected column names missing.")
+    if not isinstance(peaks_df, pd.DataFrame):
+        logging.info(f"Peaks DataFrame of class {type(peaks_df)}; \
+                        attempting to convert to pandas.")
+        try:
+            peaks_df = peaks_df.to_pandas()
+        except Exception as e:
+            logging.error(f"Error {e}: could not convert peaks_df to pandas")
+            return None
 
-    peaks_df[["chrom", "range"]] = peaks_df["names"].str.split(":", expand=True)
+    if peak_col not in peaks_df.columns:
+        logging.error(f"Expected peak column {peak_col} missing.")
+        return None
+
+    peaks_df = peaks_df.copy()
+
+    peaks_df[["chrom", "range"]] = peaks_df[peak_col].str.split(":", expand=True)
     peaks_df[["start", "end"]] = peaks_df["range"].str.split("-", expand=True)
 
-    # Make a unique identifier for mapping
-    peaks_df["group"] = peaks_df["group"].astype(str)
-    peaks_df["id"] = peaks_df["group"].str.cat(peaks_df["names"], sep=":")
-    peaks_df.index = peaks_df["id"]
+    # Drop the intermediate 'range' column
+    peaks_df.drop(columns=["range"], inplace=True)
+
+    if add_group:
+        peaks_df["group"] = add_group
+    elif group_col and group_col in peaks_df.columns:
+        peaks_df["group"] = peaks_df[group_col].astype(str)
+    else:
+        logging.info("No group information provided; skipping 'id' column.")
+        return peaks_df
+
+    # Create 'id' column
+    peaks_df["id"] = peaks_df["group"] + ":" + peaks_df[peak_col]
+
+    # Set the 'id' column as index
+    peaks_df.set_index("id", inplace=True, drop=False)
+
+    if drop_cols:
+        to_drop = [col for col in peaks_df.columns
+                   if col not in ["chrom", "start", "end", "group", "id"]]
+        peaks_df.drop(to_drop, axis=1, inplace=True)
 
     return peaks_df
 
@@ -368,7 +500,9 @@ def rank_differential_peaks(
 ) -> pd.DataFrame:
 
     # Perform differential peak testing in parallel
-    sig_peaks = sequential_differential_peaks(adata_p, grouping=grouping)
+    sig_peaks = sequential_differential_peaks(
+        adata_p, grouping=grouping
+    )
 
     all_sig_peaks = pd.concat(sig_peaks, ignore_index=True)
 

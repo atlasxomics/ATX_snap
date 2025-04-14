@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from joblib import Parallel, delayed
 from typing import Literal
 import numpy as np
 from scipy.stats import chi2, norm, zscore
@@ -218,9 +219,7 @@ def _diff_test_helper(mat, z, peaks=None, covariate=None) -> list[float]:
 
     return _likelihood_ratio_test_many(np.asarray(X), np.asarray(z), mat)
 
-
-from joblib import Parallel, delayed
-
+  
 def _likelihood_ratio_test_many(X, z, Y) -> list[float]:
     from tqdm import tqdm
     import numpy as np
@@ -242,6 +241,7 @@ def _likelihood_ratio_test_many(X, z, Y) -> list[float]:
     )
     return pvals
 
+  
 def _likelihood_ratio_test(
     X0: np.ndarray,
     X1: np.ndarray,
