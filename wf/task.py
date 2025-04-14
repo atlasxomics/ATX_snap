@@ -272,7 +272,7 @@ def call_peaks(
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
 
 
-@custom_task(cpu=32, memory=384, storage_gib=1000)
+@custom_task(cpu=124, memory=192, storage_gib=1000)
 def rank_peaks(
     outdir: LatchDir,
     project_name: str,
