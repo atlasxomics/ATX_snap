@@ -12,6 +12,7 @@ from wf.task import (
     make_adata_gene,
     rank_genes,
     motifs_task,
+    rank_peaks,
     registry_task,
 )
 from wf.utils import Genome, Run
@@ -273,6 +274,13 @@ def snap_workflow(
         groups=groups,
     )
 
+    outdir_ranked_peaks = rank_peaks(
+        outdir=outdir_peaks,
+        project_name=project_name,
+        genome=genome,
+        groups=groups,
+    )
+
     outdir_motifs = motifs_task(
         outdir=outdir_peaks,
         project_name=project_name,
@@ -286,11 +294,12 @@ def snap_workflow(
 
 
 if __name__ == "__main__":
+
     from latch.types import LatchDir
 
-    outdir_ge = make_adata_gene(
-        outdir=LatchDir("latch://13502.account/snap_outs/demo_000702"),
-        project_name="selected_genes",
-        genome=Genome.hg38,
+    outdir = call_peaks(
+        outdir=LatchDir("latch://13502.account/snap_outs/demo_001001"),
         groups=["cluster"],
+        genome=Genome("hg38"),
+        project_name="develop_peaks",
     )
