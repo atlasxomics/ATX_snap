@@ -31,7 +31,9 @@ def add_clusters(
     try:
         n_runs = len(adata.obs["sample"].unique())
     except KeyError as e:
-        logging.warning(f"Exception {e}: Please add metadata to combined AnnData.")
+        raise KeyError(
+            f"Exception {e}: Please add metadata to combined AnnData."
+        )
 
     if n_runs > 1:
         logging.info("Performing batch correction with Harmony...")
