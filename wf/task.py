@@ -170,7 +170,7 @@ def make_adata_gene(
     import gc
 
     data_path = LatchFile(f"{outdir.remote_path}/combined.h5ad")
-    adata = anndata.read_h5ad(data_path.local_path)
+    adata = anndata.read_h5ad(data_path.local_path, backed="r")
     genome = genome.value
 
     out_dir = f"/root/{project_name}"
