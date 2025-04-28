@@ -217,6 +217,9 @@ def make_geneadata(
     sc.pp.normalize_total(adata_ge)
     sc.pp.log1p(adata_ge)
 
+    logging.info("Regressing out n_fragments...")
+    regressed_ge = sc.pp.regress_out(adata_ge, keys=["n_fragment"], n_jobs=-1)
+
     logging.info("Batch correction with MAGIC...")
     sc.external.pp.magic(adata_ge, solver="approximate", n_jobs=-1)
 

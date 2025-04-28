@@ -160,13 +160,14 @@ def make_adata(
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}"), groups
 
 
-@custom_task(cpu=124, memory=500, storage_gib=1000)
+@custom_task(cpu=124, memory=975, storage_gib=1000)
 def make_adata_gene(
     outdir: LatchDir,
     project_name: str,
     genome: utils.Genome,
     groups: List[str],
 ) -> LatchDir:
+    import gc
 
     data_path = LatchFile(f"{outdir.remote_path}/combined.h5ad")
     adata = anndata.read_h5ad(data_path.local_path)
@@ -183,9 +184,23 @@ def make_adata_gene(
 
     logging.info("Making gene matrix...")
     adata_gene = ft.make_geneadata(adata, genome)
+
+    del adata
+    gc.collect()
+
     adata_gene.obs.to_csv(f"{tables_dir}/gene_metadata.csv")
 
-    adata_gene.write(f"{out_dir}/combined_ge_test.h5ad")
+    adata_gene.write(f"{out_dir}/combined_test_ge.h5ad")
+
+    # Select only protein-coding and ArchR genes for plots
+    with open(utils.ref_dict[genome][5], "r") as f:
+        select_genes = f.readline().strip().split(",")
+    mask = adata_gene.var_names.isin(select_genes)
+    adata_gene._inplace_subset_var(mask)
+
+    sm_adata = ft.clean_adata(adata_gene)
+
+    sm_adata.write(f"{out_dir}/combined_test_sm_ge.h5ad")
 
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
 

@@ -250,9 +250,10 @@ def snap_workflow(
     #     n_features=n_features,
     #     clustering_iters=clustering_iters,
     # )
+
     from latch.types import LatchDir
 
-    outdir = LatchDir("latch://13502.account/snap_outs/Bala_219_ATAC")
+    outdir = LatchDir("latch://13502.account/snap_outs/Pieper_154_brain_repeat")
     groups = ["cluster", "sample", "condition"]
 
     outdir_ge1 = make_adata_gene(

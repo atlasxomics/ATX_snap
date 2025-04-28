@@ -43,6 +43,8 @@ RUN pip3 install awscli
 
 RUN apt-get update -y && apt-get install -y bedtools
 
+RUN pip install scanpy==1.11.1
+
 # Copy workflow data (use .dockerignore to skip files)
 COPY . /root/
 
