@@ -170,13 +170,13 @@ def make_adata_gene(
     import gc
 
     data_path = LatchFile(f"{outdir.remote_path}/combined.h5ad")
-    adata = anndata.read_h5ad(data_path.local_path, backed="r")
+    adata = anndata.read_h5ad(data_path.local_path)
     genome = genome.value
 
     out_dir = f"/root/{project_name}"
     os.makedirs(out_dir, exist_ok=True)
 
-    figures_dir = f"{out_dir}/figures"
+    figures_dir = f"{out_dir}/figures" 
     os.makedirs(figures_dir, exist_ok=True)
 
     tables_dir = f"{out_dir}/tables"
@@ -190,6 +190,7 @@ def make_adata_gene(
 
     adata_gene.obs.to_csv(f"{tables_dir}/gene_metadata.csv")
 
+    logging.info("Writing full gene matrix to disk...")
     adata_gene.write(f"{out_dir}/combined_test_ge.h5ad")
 
     # Select only protein-coding and ArchR genes for plots
@@ -200,6 +201,7 @@ def make_adata_gene(
 
     sm_adata = ft.clean_adata(adata_gene)
 
+    logging.info("Writing small gene matrix to disk...")
     sm_adata.write(f"{out_dir}/combined_test_sm_ge.h5ad")
 
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")

@@ -218,10 +218,13 @@ def make_geneadata(
     sc.pp.log1p(adata_ge)
 
     logging.info("Regressing out n_fragments...")
-    regressed_ge = sc.pp.regress_out(adata_ge, keys=["n_fragment"], n_jobs=-1)
+    sc.pp.regress_out(adata_ge, keys=["n_fragment"], n_jobs=-1)
 
     logging.info("Batch correction with MAGIC...")
     sc.external.pp.magic(adata_ge, solver="approximate", n_jobs=-1)
+
+    logging.info("Calculating variable features...")
+    sc.pp.highly_variable_genes(adata_ge, n_top_genes=2000)
 
     return adata_ge
 
