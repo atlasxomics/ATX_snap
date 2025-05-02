@@ -169,13 +169,14 @@ def make_adata(
 
 @custom_task(cpu=124, memory=500, storage_gib=1000)
 def make_adata_gene(
+    runs: List[utils.Run],
     outdir: LatchDir,
     project_name: str,
     genome: utils.Genome,
 ) -> LatchDir:
 
-    data_path = LatchFile(f"{outdir.remote_path}/combined.h5ad")
-    adata = anndata.read_h5ad(data_path.local_path)
+    # data_path = LatchFile(f"{outdir.remote_path}/combined.h5ad")
+    # adata = anndata.read_h5ad(data_path.local_path)
     genome = genome.value
 
     out_dir = f"/root/{project_name}"
@@ -188,7 +189,28 @@ def make_adata_gene(
     os.makedirs(tables_dir, exist_ok=True)
 
     logging.info("Making gene matrix...")
+
     # run subprocess R script to make .h5ad file
+    _archr_cmd = [
+        'Rscript',
+        '/root/wf/R/archr_objs.R',
+        project_name,
+        genome.value,
+    ]
+
+    runs = [
+        (
+            f'{run.run_id},'
+            f'{run.fragments_file.local_path},'
+            f'{run.condition},'
+            f'{utils.get_LatchFile(run.spatial_dir, "tissue_positions_list.csv").local_path},'
+            f'{run.spatial_dir.local_path},'
+        )
+        for run in runs
+    ]
+    _archr_cmd.extend(runs)
+    subprocess.run(_archr_cmd, check=True)
+
     # read in h5ad file
     # read in obs.csv, spatial.csv, X_umap.csv, spatial_connectivities.csv
     # adata_gene = ft.make_geneadata(adata, genome)
