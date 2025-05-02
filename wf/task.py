@@ -154,6 +154,14 @@ def make_adata(
     sq.pl.ripley(adata, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
 
     subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
+
+    # Save critical data for gene matrix
+    adata.obs.to_csv("obs.csv", index=True)
+    adata.obsm["spatial"].to_csv("spatial.csv", index=True)
+    adata.obsm["X_umap"].to_csv("X_umap.csv", index=True)
+    adata.obsp["spatial_connectivities"].to_csv("spatial_connectivities.csv", index=True)
+    adata.uns["cluster_nhood_enrichment"].to_csv("cluster_nhood_enrichment.csv", index=True)
+
     adata.write(f"{out_dir}/combined.h5ad")
 
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}"), groups
@@ -180,7 +188,10 @@ def make_adata_gene(
     os.makedirs(tables_dir, exist_ok=True)
 
     logging.info("Making gene matrix...")
-    adata_gene = ft.make_geneadata(adata, genome)
+    # run subprocess R script to make .h5ad file
+    # read in h5ad file
+    # read in obs.csv, spatial.csv, X_umap.csv, spatial_connectivities.csv
+    # adata_gene = ft.make_geneadata(adata, genome)
     adata_gene.obs.to_csv(f"{tables_dir}/gene_metadata.csv")
 
     adata_gene.write(f"{out_dir}/combined_ge.h5ad")
