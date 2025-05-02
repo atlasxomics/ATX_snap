@@ -123,6 +123,7 @@ def make_adata(
             suffix=f"{group}.bedgraph.gz",
             bin_size=10,
             output_format="bedgraph",
+            compression="gzip",
         )
         bws = glob.glob("*.bedgraph.gz")
         subprocess.run(["mv"] + bws + [coverage_dir])
