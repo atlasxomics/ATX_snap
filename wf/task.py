@@ -120,11 +120,11 @@ def make_adata(
         snap.ex.export_coverage(
             adata,
             groupby=group,
-            suffix=f"{group}.bw",
-            bin_size=100,
-            output_format=".bigwig",
+            suffix=f"{group}.bedgraph.gz",
+            bin_size=10,
+            output_format="bedgraph",
         )
-        bws = glob.glob("*.bw")
+        bws = glob.glob("*.bedgraph.gz")
         subprocess.run(["mv"] + bws + [coverage_dir])
     logging.info("Finished coverages for groups...")
 
