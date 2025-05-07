@@ -1,5 +1,4 @@
 import anndata
-import squidpy as sq
 
 
 def add_spatial(
@@ -17,6 +16,7 @@ def squidpy_analysis(
 ) -> anndata.AnnData:
     """Perform squidpy Neighbors enrichment analysis.
     """
+    import squidpy as sq
 
     if not adata.obs["cluster"].dtype.name == "category":
         adata.obs["cluster"] = adata.obs["cluster"].astype("category")

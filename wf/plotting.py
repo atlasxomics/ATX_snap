@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 import scanpy as sc
-import squidpy as sq
 
 from matplotlib.backends.backend_pdf import PdfPages
 from typing import List, Optional
@@ -30,6 +29,7 @@ def plot_neighborhoods(
     subgroups: Optional[List[str]],
     outdir: str = "figures"
 ):
+    import squidpy as sq
 
     if group != "all" and subgroups:
         filtered_adatas = {}
@@ -80,6 +80,7 @@ def plot_spatial(
     """Plot cells spatially, color by metadata stored in .obs. The function
     creates a plot for each run and saves to a .pdf, with four runs per page.
     """
+    import squidpy as sq
 
     with PdfPages(output_path) as pdf:
         for i in range(0, len(samples), 4):
@@ -122,6 +123,7 @@ def plot_spatial_qc(
     saving them into a PDF.  Each row corresponds to a sample and each column
     to a QC metric.
     """
+    import squidpy as sq
 
     rows_per_page = 3
     cols_per_page = len(qc_metrics)

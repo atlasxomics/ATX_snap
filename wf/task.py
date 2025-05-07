@@ -10,7 +10,6 @@ import numpy as np
 import pychromvar as pc
 import scanpy as sc
 import snapatac2 as snap
-import squidpy as sq
 from latch import message
 from latch.registry.table import Table
 from latch.resources.tasks import custom_task, large_gpu_task, small_task
@@ -40,6 +39,7 @@ def make_adata(
     clustering_iters: int,
 ) -> tuple[LatchDir, List[str]]:
     import pandas as pd
+    import squidpy as sq
 
     samples = [run.run_id for run in runs]
 
@@ -156,11 +156,11 @@ def make_adata(
     subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
 
     # Save critical data for gene matrix
-    adata.obs.to_csv("obs.csv", index=True)
-    adata.obsm["spatial"].to_csv("spatial.csv", index=True)
-    adata.obsm["X_umap"].to_csv("X_umap.csv", index=True)
-    adata.obsp["spatial_connectivities"].to_csv("spatial_connectivities.csv", index=True)
-    adata.uns["cluster_nhood_enrichment"].to_csv("cluster_nhood_enrichment.csv", index=True)
+    adata.obs.to_csv(f"{tables_dir}/obs.csv", index=True)
+    adata.obsm["spatial"].to_csv(f"{tables_dir}/spatial.csv", index=True)
+    adata.obsm["X_umap"].to_csv(f"{tables_dir}/X_umap.csv", index=True)
+    adata.obsp["spatial_connectivities"].to_csv(f"{tables_dir}/spatial_connectivities.csv", index=True)
+    adata.uns["cluster_nhood_enrichment"].to_csv(f"{tables_dir}/cluster_nhood_enrichment.csv", index=True)
 
     adata.write(f"{out_dir}/combined.h5ad")
 
@@ -172,10 +172,18 @@ def make_adata_gene(
     runs: List[utils.Run],
     outdir: LatchDir,
     project_name: str,
+    groups: List[str],
     genome: utils.Genome,
 ) -> LatchDir:
+    import pandas as pd
 
-    # data_path = LatchFile(f"{outdir.remote_path}/combined.h5ad")
+    # Read in data tables
+    obs_path = LatchFile(f"{outdir.remote_path}/tables/obs.csv")
+    spatial_path = LatchFile(f"{outdir.remote_path}/spatial.csv")
+    umap_path = LatchFile(f"{outdir.remote_path}/X_umap.csv")
+    spatial_connectivities_path = LatchFile(f"{outdir.remote_path}/spatial_connectivities.csv")
+    cluster_nhood_enrichment_path = LatchFile(f"{outdir.remote_path}/cluster_nhood_enrichment.csv")
+
     # adata = anndata.read_h5ad(data_path.local_path)
     genome = genome.value
 
@@ -196,6 +204,7 @@ def make_adata_gene(
         '/root/wf/R/archr_objs.R',
         project_name,
         genome.value,
+        obs_path.local_path,
     ]
 
     runs = [
@@ -211,58 +220,50 @@ def make_adata_gene(
     _archr_cmd.extend(runs)
     subprocess.run(_archr_cmd, check=True)
 
-    # read in h5ad file
-    # read in obs.csv, spatial.csv, X_umap.csv, spatial_connectivities.csv
-    # adata_gene = ft.make_geneadata(adata, genome)
-    adata_gene.obs.to_csv(f"{tables_dir}/gene_metadata.csv")
+    adata_gene = sc.read_h5ad("converted.h5ad")
 
-    adata_gene.write(f"{out_dir}/combined_ge.h5ad")
+    # Add back auxiliary data
+    obs = pd.read_csv(obs_path.local_path, index_col=0)
+    spatial = pd.read_csv(spatial_path.local_path, index_col=0)
+    umap = pd.read_csv(umap_path.local_path, index_col=0)
+    spatial_connectivities = pd.read_csv(spatial_connectivities_path.local_path, index_col=0)
+    cluster_nhood_enrichment = pd.read_csv(cluster_nhood_enrichment_path.local_path, index_col=0)
 
-    return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
+    adata_gene.uns["obs"] = obs
+    adata_gene.obsm["spatial"] = spatial
+    adata_gene.obsm["X_umap"] = umap
+    adata_gene.obsp["spatial_connectivities"] = spatial_connectivities
+    adata_gene.uns["cluster_nhood_enrichment"] = cluster_nhood_enrichment
 
+    # Add archr volcano plots
+    if "condition" in groups:
+        volcano_files = glob.glob("volcanoMarkers_genes_*.csv")
+        for file in volcano_files:
+            treatment = "".join(file.split("_")[2:]).split(".")[0]
+            df = pd.read_csv(file, index_col=0)
+            adata_gene.uns[f"volcano_{treatment}"] = df
 
-@custom_task(cpu=62, memory=975, storage_gib=1000)
-def rank_genes(
-    outdir: LatchDir,
-    project_name: str,
-    genome: utils.Genome,
-    groups: List[str],
-) -> LatchDir:
+    # Move data files to subfolder
+    project_dirs = glob.glob(f'{project_name}_*')
+    seurat_objs = glob.glob('*.rds')
+    h5_files = glob.glob('*.h5ad')
+    _mv_cmd = (['mv'] + project_dirs + seurat_objs + h5_files + [out_dir])
+    subprocess.run(_mv_cmd)
 
-    data_path = LatchFile(f"{outdir.remote_path}/combined_ge.h5ad")
-    adata_gene = anndata.read_h5ad(data_path.local_path)
-    genome = genome.value
+    # Move tables into subfolder
+    csv_tables = glob.glob('*.csv')
+    if len(csv_tables) > 0:
+        _mv_tables_cmd = ['mv'] + csv_tables + [str(tables_dir)]
+        subprocess.run(_mv_tables_cmd)
 
-    out_dir = f"/root/{project_name}"
-    os.makedirs(out_dir, exist_ok=True)
+    # Move figures into subfolder
+    figures = [fig for fig in glob.glob('*.pdf') if fig != 'Rplots.pdf']
+    if len(figures) > 0:
+        _mv_figures_cmd = ['mv'] + figures + [str(figures_dir)]
+        subprocess.run(_mv_figures_cmd)
 
-    figures_dir = f"{out_dir}/figures"
-    os.makedirs(figures_dir, exist_ok=True)
-
-    tables_dir = f"{out_dir}/tables"
-    os.makedirs(tables_dir, exist_ok=True)
-
-    logging.info("Ranking genes...")
-
-    ft.rank_features(adata_gene, groups=groups, feature_type="genes", save=tables_dir)
-    logging.info("Finished ranking genes...")
-
-    # # Plot heatmap for genes
-    sc.pl.rank_genes_groups_matrixplot(
-        adata_gene,
-        n_genes=5,
-        groupby="cluster",
-        values_to_plot="scores",
-        key="cluster_genes",
-        min_logfoldchange=0.1,
-        save="genes",
-    )
-
-    # Select only protein-coding and ArchR genes for plots
-    with open(utils.ref_dict[genome][5], "r") as f:
-        select_genes = f.readline().strip().split(",")
-    selected_adata = adata_gene[:, adata_gene.var_names.isin(select_genes)].copy()
-    sm_adata = ft.clean_adata(selected_adata)
+    # Reduce size of anndata object for Plots
+    sm_adata = ft.clean_adata(adata_gene)
 
     adata_gene.write(f"{out_dir}/combined_ge.h5ad")
     sm_adata.write(f"{out_dir}/combined_sm_ge.h5ad")

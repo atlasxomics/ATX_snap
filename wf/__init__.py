@@ -10,7 +10,6 @@ from wf.task import (
     call_peaks,
     make_adata,
     make_adata_gene,
-    rank_genes,
     motifs_task,
     rank_peaks,
     registry_task,
@@ -254,17 +253,12 @@ def snap_workflow(
         clustering_iters=clustering_iters,
     )
 
-    outdir_ge1 = make_adata_gene(
+    outdir_ge = make_adata_gene(
+        runs=runs,
         outdir=outdir,
         project_name=project_name,
         genome=genome,
-    )
-
-    outdir_ge2 = rank_genes(
-        outdir=outdir_ge1,
-        project_name=project_name,
-        genome=genome,
-        groups=groups,
+        groups=groups
     )
 
     outdir_peaks = call_peaks(

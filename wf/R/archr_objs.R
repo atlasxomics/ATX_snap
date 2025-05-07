@@ -15,9 +15,9 @@ library("readr")
 library("Seurat")
 library("tidyverse")
 
-source("/root/wf/archr.R")
-source("/root/wf/seurat.R")
-source("/root/wf/utils.R")
+source("/root/wf/R/archr.R")
+source("/root/wf/R/seurat.R")
+source("/root/wf/R/utils.R")
 
 
 # Globals ---------------------------------------------------------------------
@@ -26,6 +26,7 @@ print(args)
 
 project_name <- args[1]
 genome <- args[2]
+metadata_path <- args[3]
 tile_size <- 5000
 min_tss <- 0
 min_frags <- 0
@@ -33,12 +34,12 @@ lsi_iterations <- 2
 lsi_resolution <- 0.5
 lsi_varfeatures <- 25000
 
-runs <- strsplit(args[3:length(args)], ",")
+runs <- strsplit(args[4:length(args)], ",")
 runs
 
 inputs <- c() # Inputs for ArrowFiles (run_id : fragment_file path)
 for (run in runs) {
-  inputs[run[1]] <- run[3]
+  inputs[run[1]] <- run[2]
 }
 inputs
 
@@ -58,18 +59,31 @@ proj <- create_archrproject( # from archr.R
   inputs, genome, min_tss, min_frags, tile_size, out_dir
 )
 
-# Add Conditions, SampleName to CellColData ----
+# Add Conditions to CellColData ----
 for (run in runs) {
-  proj$Condition[proj$Sample == run[1]] <- run[4]
-  proj$SampleName[proj$Sample == run[1]] <- run[2]
+  proj$Condition[proj$Sample == run[1]] <- run[3]
 }
+saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
 
-# cells <- read.csv("obs.csv")[["X"]]
-# proj <- proj[proj$cellNames %in% cells]
+# Copy over filtering from SnapATAC2
+obs <- read.csv(metadata_path)
+cells <- obs[["X"]]
+clusters <- obs[["cluster"]]
+proj <- proj[proj$cellNames %in% cells]
 
+# Add clusters from SnapATAC2
+proj <- addCellColData(
+  ArchRProj = proj,
+  data = clusters,
+  cells = cells,
+  name = "Clusters",
+  force = TRUE
+)
+
+print(proj$Condition)
 # Parse conditions into 'treatments', add as columns to CellColData ----
 conds <- strsplit(proj$Condition, split = "\\s|-")
-
+print("line 84")
 for (i in seq_along(conds[[1]])) {
   proj <- ArchR::addCellColData(
     proj,
@@ -173,7 +187,7 @@ cluster_marker_genes <- get_marker_genes( # from archr.R
   group_by = "Clusters",
   markers_cutoff = "FDR <= 0.02",
   heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
-  rd_name = rd_name
+  rd_name = "IterativeLSI"
 )
 
 saveRDS(cluster_marker_genes$markers_gs, "markersGS_clusters.rds")
@@ -192,7 +206,7 @@ if (n_samples > 1) {
     group_by = "Sample",
     markers_cutoff = "FDR <= 0.02",
     heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
-    rd_name = rd_name
+    rd_name = "IterativeLSI"
   )
 
   saveRDS(sample_marker_genes$markers_gs, "markersGS_sample.rds")
@@ -215,7 +229,7 @@ if (n_cond > 1) {
       group_by = treatment[i],
       markers_cutoff = "FDR <= 0.02",
       heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
-      rd_name = rd_name
+      rd_name = "IterativeLSI"
     )
 
     saveRDS(
@@ -231,7 +245,7 @@ if (n_cond > 1) {
       treatment_marker_genes$heatmap_gs,
       paste0("genes_per_conditions", i, "_hm.csv")
     )
-
+  }
 }
 
 # Volcano plots for genes ----
@@ -266,13 +280,13 @@ if (n_cond > 1) {
       write.table(
         volcano_table,
         paste0(
-          "volcanoMarkers_genes_", j, "_", cond, ".txt"
+          "volcanoMarkers_genes_", j, "_", cond, ".csv"
         ),
-        sep = "\t",
+        sep = ",",
         quote = FALSE,
         row.names = FALSE
       )
-      print(paste0("volcanoMarkers_genes_", j, "_", cond, ".txt is done!"))
+      print(paste0("volcanoMarkers_genes_", j, "_", cond, ".csv is done!"))
 
       features <- unique(volcano_table$cluster)
       others <- paste(conditions[conditions != cond], collapse = "|")
@@ -307,7 +321,9 @@ spatial <- lapply(all, function(x) {
   df
 })
 
-combined <- combine_objs(all, umap_harmony, samples, spatial, project_name)
+combined <- combine_objs(all, samples, spatial, project_name)
+
+saveRDS(combined, "combined.rds", compress = FALSE)
 
 # Save anndata as converted.h5ad
-seurat_to_h5ad(combined, TRUE)
+seurat_to_h5ad(combined, TRUE)  # from utils.R
