@@ -9,7 +9,7 @@ library("patchwork")
 library("SummarizedExperiment")
 library("S4Vectors")
 
-source("/root/wf/utils.R")
+source("/root/wf/R/utils.R")
 
 
 add_motif_annotations <- function(proj, genome) {
