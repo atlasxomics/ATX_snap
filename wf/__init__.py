@@ -289,11 +289,23 @@ def snap_workflow(
 
 if __name__ == "__main__":
 
-    from latch.types import LatchDir
+    from latch.types import LatchDir, LatchFile
 
-    outdir = call_peaks(
-        outdir=LatchDir("latch://13502.account/snap_outs/demo_001001"),
-        groups=["cluster"],
+    snap_workflow(
+        runs=[Run(
+            run_id="test_run",
+            fragments_file=LatchFile("latch://13502.account/atac_outs/ds_D01033_NG01681/outs/ds_D01033_NG01681_fragments.tsv.gz"),
+            spatial_dir=LatchDir("latch://atx-illumina.mount/Images_spatial/D1033/spatial/"),
+            condition="control",
+        )],
         genome=Genome("hg38"),
-        project_name="develop_peaks",
+        project_name="develop_archrGenes",
     )
+
+    # outdir_ge = make_adata_gene(
+    #     runs=runs,
+    #     outdir=outdir,
+    #     project_name=project_name,
+    #     genome=genome,
+    #     groups=groups
+    # )
