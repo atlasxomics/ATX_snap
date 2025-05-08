@@ -16,13 +16,13 @@ def squidpy_analysis(
 ) -> anndata.AnnData:
     """Perform squidpy Neighbors enrichment analysis.
     """
-    import squidpy as sq
+    from squidpy.gr import nhood_enrichment, ripley, spatial_neighbors
 
     if not adata.obs["cluster"].dtype.name == "category":
         adata.obs["cluster"] = adata.obs["cluster"].astype("category")
 
-    sq.gr.spatial_neighbors(adata, coord_type="grid", n_neighs=4, n_rings=1)
-    sq.gr.nhood_enrichment(adata, cluster_key=cluster_key)
-    sq.gr.ripley(adata, cluster_key="cluster", mode="L", max_dist=500)
+    spatial_neighbors(adata, coord_type="grid", n_neighs=4, n_rings=1)
+    nhood_enrichment(adata, cluster_key=cluster_key)
+    ripley(adata, cluster_key="cluster", mode="L", max_dist=500)
 
     return adata
