@@ -168,7 +168,7 @@ for (run in runs) {
     run_id = run[1],
     matrix = matrix,
     metadata = metadata,
-    spatial_path = run[6]
+    spatial_path = run[5]
   )
 
   saveRDS(obj, file = paste0(run[1], "_SeuratObj.rds"))
