@@ -80,7 +80,6 @@ proj <- addCellColData(
   force = TRUE
 )
 
-print(proj$Condition)
 # Parse conditions into 'treatments', add as columns to CellColData ----
 conds <- strsplit(proj$Condition, split = "\\s|-")
 print("line 84")

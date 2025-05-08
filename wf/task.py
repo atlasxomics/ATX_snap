@@ -3,6 +3,7 @@ import logging
 import os
 import pickle
 import subprocess
+from scipy import sparse
 from typing import List
 
 import anndata
@@ -39,7 +40,7 @@ def make_adata(
     clustering_iters: int,
 ) -> tuple[LatchDir, List[str]]:
     import pandas as pd
-    import squidpy as sq
+    from squidpy.pl import ripley
 
     samples = [run.run_id for run in runs]
 
@@ -140,7 +141,7 @@ def make_adata(
         pt_size=utils.pt_sizes[channels]["qc"],
     )
 
-    # # Neighbrohood enrichment plot, Ripley's plot
+    # Neighbrohood enrichment plot, Ripley's plot
     adata = sp.squidpy_analysis(adata)
 
     group_dict = dict()
@@ -151,16 +152,18 @@ def make_adata(
             adata, group, group_dict[group], outdir=figures_dir
         )
 
-    sq.pl.ripley(adata, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
+    ripley(adata, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
 
     subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
 
     # Save critical data for gene matrix
     adata.obs.to_csv(f"{tables_dir}/obs.csv", index=True)
-    adata.obsm["spatial"].to_csv(f"{tables_dir}/spatial.csv", index=True)
-    adata.obsm["X_umap"].to_csv(f"{tables_dir}/X_umap.csv", index=True)
-    adata.obsp["spatial_connectivities"].to_csv(f"{tables_dir}/spatial_connectivities.csv", index=True)
-    adata.uns["cluster_nhood_enrichment"].to_csv(f"{tables_dir}/cluster_nhood_enrichment.csv", index=True)
+
+    np.save(f"{tables_dir}/spatial.npy", adata.obsm['spatial'])
+    np.save(f"{tables_dir}/X_umap.npy", adata.obsm['X_umap'])
+    sparse.save_npz(f"{tables_dir}/spatial_connectivities.npz", adata.obsp["spatial_connectivities"])
+    with open(f"{tables_dir}/cluster_nhood_enrichment.pkl", "wb") as f:
+        pickle.dump(adata.uns["cluster_nhood_enrichment"], f)
 
     adata.write(f"{out_dir}/combined.h5ad")
 
@@ -178,11 +181,11 @@ def make_adata_gene(
     import pandas as pd
 
     # Read in data tables
-    obs_path = LatchFile(f"{outdir.remote_path}/tables/obs.csv")
-    spatial_path = LatchFile(f"{outdir.remote_path}/spatial.csv")
-    umap_path = LatchFile(f"{outdir.remote_path}/X_umap.csv")
-    spatial_connectivities_path = LatchFile(f"{outdir.remote_path}/spatial_connectivities.csv")
-    cluster_nhood_enrichment_path = LatchFile(f"{outdir.remote_path}/cluster_nhood_enrichment.csv")
+    obs_path = LatchFile(f"{outdir.remote_path}/tables/obs.csv").local_path
+    spatial_path = LatchFile(f"{outdir.remote_path}/tables/spatial.npy").local_path
+    umap_path = LatchFile(f"{outdir.remote_path}/tables/X_umap.npy").local_path
+    spatial_connectivities_path = LatchFile(f"{outdir.remote_path}/tables/spatial_connectivities.npz").local_path
+    cluster_nhood_enrichment_path = LatchFile(f"{outdir.remote_path}/tables/cluster_nhood_enrichment.pkl").local_path
 
     # adata = anndata.read_h5ad(data_path.local_path)
     genome = genome.value
@@ -203,8 +206,8 @@ def make_adata_gene(
         'Rscript',
         '/root/wf/R/archr_objs.R',
         project_name,
-        genome.value,
-        obs_path.local_path,
+        genome,
+        obs_path,
     ]
 
     runs = [
@@ -222,14 +225,14 @@ def make_adata_gene(
 
     adata_gene = sc.read_h5ad("converted.h5ad")
 
-    # Add back auxiliary data
-    obs = pd.read_csv(obs_path.local_path, index_col=0)
-    spatial = pd.read_csv(spatial_path.local_path, index_col=0)
-    umap = pd.read_csv(umap_path.local_path, index_col=0)
-    spatial_connectivities = pd.read_csv(spatial_connectivities_path.local_path, index_col=0)
-    cluster_nhood_enrichment = pd.read_csv(cluster_nhood_enrichment_path.local_path, index_col=0)
+    obs = pd.read_csv(obs_path, index_col=0)
+    spatial = np.load(spatial_path)
+    umap = np.load(umap_path)
+    spatial_connectivities = sparse.load_npz(spatial_connectivities_path)
+    with open(cluster_nhood_enrichment_path, 'rb') as f:
+        cluster_nhood_enrichment = pickle.load(f)
 
-    adata_gene.uns["obs"] = obs
+    adata_gene.obs = obs
     adata_gene.obsm["spatial"] = spatial
     adata_gene.obsm["X_umap"] = umap
     adata_gene.obsp["spatial_connectivities"] = spatial_connectivities
