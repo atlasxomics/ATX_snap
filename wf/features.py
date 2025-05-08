@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pychromvar as pc
 import scanpy as sc
+import scipy.sparse as sp
 import snapatac2 as snap
 
 from pybedtools import BedTool
@@ -76,9 +77,17 @@ def annotate_peaks(
 
 
 def clean_adata(adata: anndata.AnnData) -> anndata.AnnData:
-
-    obs = ["barcode", "n_genes_by_counts", "log1p_n_genes_by_counts", "total_counts", "log1p_total_counts", "pct_counts_in_top_50_genes", "pct_counts_in_top_100_genes", "pct_counts_in_top_200_genes", "pct_counts_in_top_500_genes", "total_counts_mt", "log1p_total_counts_mt", "pct_counts_mt"]
-    var = ["mt", "n_counts", "n_cells", "n_cells_by_counts", "mean_counts", "log1p_mean_counts", "pct_dropout_by_counts", "total_counts", "log1p_total_counts",  "means", "dispersions", "dispersions_norm"]
+    obs = [
+        "barcode", "n_genes_by_counts", "log1p_n_genes_by_counts", "total_counts",
+        "log1p_total_counts", "pct_counts_in_top_50_genes", "pct_counts_in_top_100_genes",
+        "pct_counts_in_top_200_genes", "pct_counts_in_top_500_genes", "total_counts_mt",
+        "log1p_total_counts_mt", "pct_counts_mt"
+    ]
+    var = [
+        "mt", "n_counts", "n_cells", "n_cells_by_counts", "mean_counts", "log1p_mean_counts",
+        "pct_dropout_by_counts", "total_counts", "log1p_total_counts", "means",
+        "dispersions", "dispersions_norm"
+    ]
 
     rm_obs = [o for o in obs if o in adata.obs.keys()]
     rm_var = [v for v in var if v in adata.var.keys()]
@@ -86,15 +95,14 @@ def clean_adata(adata: anndata.AnnData) -> anndata.AnnData:
     adata.obs.drop(rm_obs, axis=1, inplace=True)
     adata.var.drop(rm_var, axis=1, inplace=True)
 
-    del adata.varm
-    del adata.layers
+    adata.varm.clear()
+    adata.layers.clear()
 
     if adata.raw:
-        del adata.raw
+        adata.raw = None
 
     for uns in ["pca", "log1p"]:
-        if uns in adata.uns.keys():
-            del adata.uns[uns]
+        adata.uns.pop(uns, None)
 
     rm_obsm = [obsm for obsm in adata.obsm.keys()
                if obsm not in ["spatial", "X_umap"]]
@@ -102,10 +110,17 @@ def clean_adata(adata: anndata.AnnData) -> anndata.AnnData:
     for obsm in rm_obsm:
         del adata.obsm[obsm]
 
+    # Sparse to dense conversion
+    if sp.issparse(adata.X):
+        try:
+            adata.X = adata.X.toarray()
+        except Exception as e:
+            logging.warning(f"Could not convert sparse .X to dense: {e}")
+
     try:
         adata.X = adata.X.astype(np.float16)
-    except:
-        logging.warning("Cannot convert .X to float")
+    except Exception as e:
+        logging.warning(f"Cannot convert .X to float16: {e}")
 
     return adata
 
