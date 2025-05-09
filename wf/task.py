@@ -239,6 +239,9 @@ def make_adata_gene(
         cluster_nhood_enrichment = pickle.load(f)
 
     adata_gene.obs = obs
+    if adata_gene.obs["cluster"].dtype != object:  # Ensure cluster is str
+        adata_gene.obs["cluster"] = adata_gene.obs["cluster"].astype(str)
+
     adata_gene.obsm["spatial"] = spatial
     adata_gene.obsm["X_umap"] = umap
     adata_gene.obsp["spatial_connectivities"] = spatial_connectivities
