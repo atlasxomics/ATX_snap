@@ -227,6 +227,10 @@ def make_adata_gene(
     if "_index" in adata_gene.raw.var:  # Do this for some stupid reason
         adata_gene.raw.var.drop(columns=['_index'], inplace=True)
 
+    logging.info("Calculating variable features...")
+    sc.pp.highly_variable_genes(adata_gene, n_top_genes=2000)
+
+    logging.info("Transfering auxiliary data...")
     obs = pd.read_csv(obs_path, index_col=0)
     spatial = np.load(spatial_path)
     umap = np.load(umap_path)
@@ -271,6 +275,7 @@ def make_adata_gene(
     # Reduce size of anndata object for Plots
     sm_adata = ft.clean_adata(adata_gene)
 
+    logging.info("Saving adata...")
     adata_gene.write(f"{out_dir}/combined_ge.h5ad")
     sm_adata.write(f"{out_dir}/combined_sm_ge.h5ad")
 
