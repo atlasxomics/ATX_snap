@@ -224,6 +224,8 @@ def make_adata_gene(
     subprocess.run(_archr_cmd, check=True)
 
     adata_gene = sc.read_h5ad("converted.h5ad")
+    if "_index" in adata_gene.raw.var:  # Do this for some stupid reason
+        adata_gene.raw.var.drop(columns=['_index'], inplace=True)
 
     obs = pd.read_csv(obs_path, index_col=0)
     spatial = np.load(spatial_path)
@@ -242,8 +244,9 @@ def make_adata_gene(
     if "condition" in groups:
         volcano_files = glob.glob("volcanoMarkers_genes_*.csv")
         for file in volcano_files:
-            treatment = "".join(file.split("_")[2:]).split(".")[0]
-            df = pd.read_csv(file, index_col=0)
+            name = file.split("/")[-1]
+            treatment = name.replace("volcanoMarkers_genes_", "").replace(".csv", "")
+            df = pd.read_csv(file, dtype={"cluster": str})
             adata_gene.uns[f"volcano_{treatment}"] = df
 
     # Move data files to subfolder

@@ -291,21 +291,34 @@ if __name__ == "__main__":
 
     from latch.types import LatchDir, LatchFile
 
-    snap_workflow(
-        runs=[Run(
-            run_id="test_run",
-            fragments_file=LatchFile("latch://13502.account/atac_outs/ds_D01033_NG01681/outs/ds_D01033_NG01681_fragments.tsv.gz"),
-            spatial_dir=LatchDir("latch://atx-illumina.mount/Images_spatial/D1033/spatial/"),
-            condition="control",
-        )],
-        genome=Genome("hg38"),
-        project_name="develop_archrGenes",
-    )
-
-    # outdir_ge = make_adata_gene(
-    #     runs=runs,
-    #     outdir=outdir,
-    #     project_name=project_name,
-    #     genome=genome,
-    #     groups=groups
+    # snap_workflow(
+    #     runs=[Run(
+    #         run_id="test_run",
+    #         fragments_file=LatchFile("latch://13502.account/atac_outs/ds_D01033_NG01681/outs/ds_D01033_NG01681_fragments.tsv.gz"),
+    #         spatial_dir=LatchDir("latch://atx-illumina.mount/Images_spatial/D1033/spatial/"),
+    #         condition="control",
+    #     )],
+    #     genome=Genome("hg38"),
+    #     project_name="develop_archrGenes",
     # )
+
+    make_adata_gene(
+        runs=[
+            Run(
+                run_id="D1990_4585",
+                fragments_file=LatchFile("latch://13502.account/chromap_outputs/D0000Spatial_archive/D01990_NG05957/chromap_output/fragments.tsv.gz"),
+                spatial_dir=LatchDir("latch://atx-illumina.mount/Images_spatial/D1990/spatial"),
+                condition="4585",
+            ),
+            Run(
+                run_id="D1991_4587",
+                fragments_file=LatchFile("latch://13502.account/chromap_outputs/D0000Spatial_archive/D01991_NG05958/chromap_output/fragments.tsv.gz"),
+                spatial_dir=LatchDir("latch://atx-illumina.mount/Images_spatial/D1991/spatial"),
+                condition="4587",
+            ),
+        ],
+        outdir="latch://13502.account/snap_outs/Dhar_271_001712",
+        project_name="Dhar_271_develop",
+        groups=["sample", "condition", "cluster"],
+        genome=Genome("hg38"),
+    )
