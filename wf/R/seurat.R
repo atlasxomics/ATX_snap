@@ -377,17 +377,17 @@ scvolcano <- function(inpMarkers, condition1, condition2, feature = "All") {
   return(ggOut)
 }
 
-seurat_to_h5ad <- function(seuratobj, spatial) {
+
+seurat_to_h5ad <- function(seuratobj, spatial, prefix) {
 
   if (spatial) {
     # Reformat spatial info for squidpy compatibility
     seuratobj <- convert_spatial(seuratobj)  # From utils.R
   }
 
-  seuratobj <- convert_to_v3(seuratobj)  # From utils.R
   SaveH5Seurat(seuratobj, filename = "temp.h5Seurat", overwrite = TRUE)
   Convert("temp.h5Seurat", dest = "h5ad", overwrite = TRUE)
-  file.rename("temp.h5ad", "converted.h5ad")
+  file.rename("temp.h5ad", paste0(prefix, "_converted.h5ad"))
 
   message("Seurat object converted to h5ad file.")
 }

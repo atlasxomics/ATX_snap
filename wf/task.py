@@ -170,7 +170,7 @@ def make_adata(
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}"), groups
 
 
-@custom_task(cpu=50, memory=120, storage_gib=1000)
+@custom_task(cpu=50, memory=580, storage_gib=1000)
 def make_adata_gene(
     runs: List[utils.Run],
     outdir: LatchDir,
@@ -223,12 +223,16 @@ def make_adata_gene(
     _archr_cmd.extend(runs)
     subprocess.run(_archr_cmd, check=True)
 
-    adata_gene = sc.read_h5ad("converted.h5ad")
+    h5ads = glob.glob("*_converted.h5ad")
+    adatas = [anndata.read_h5ad(h5ad) for h5ad in h5ads]
+    adata_gene = sc.concat(adatas)
+
     if "_index" in adata_gene.raw.var:  # Do this for some stupid reason
         adata_gene.raw.var.drop(columns=['_index'], inplace=True)
 
-    logging.info("Calculating variable features...")
-    sc.pp.highly_variable_genes(adata_gene, n_top_genes=2000)
+    logging.info("Performing log-norm...")
+    sc.pp.normalize_total(adata_gene)
+    sc.pp.log1p(adata_gene)
 
     logging.info("Transfering auxiliary data...")
     obs = pd.read_csv(obs_path, index_col=0)
@@ -239,8 +243,9 @@ def make_adata_gene(
         cluster_nhood_enrichment = pickle.load(f)
 
     adata_gene.obs = obs
-    if adata_gene.obs["cluster"].dtype != object:  # Ensure cluster is str
-        adata_gene.obs["cluster"] = adata_gene.obs["cluster"].astype(str)
+    for group in groups:
+        if adata_gene.obs[group].dtype != object:  # Ensure groups are str
+            adata_gene.obs[group] = adata_gene.obs[group].astype(str)
 
     adata_gene.obsm["spatial"] = spatial
     adata_gene.obsm["X_umap"] = umap

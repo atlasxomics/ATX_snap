@@ -28,8 +28,8 @@ project_name <- args[1]
 genome <- args[2]
 metadata_path <- args[3]
 tile_size <- 5000
-min_tss <- 0
-min_frags <- 0
+min_tss <- 0  # Use filtering from SnapATAC2
+min_frags <- 0  # Use filtering from SnapATAC2
 lsi_iterations <- 2
 lsi_resolution <- 0.5
 lsi_varfeatures <- 25000
@@ -37,7 +37,7 @@ lsi_varfeatures <- 25000
 runs <- strsplit(args[4:length(args)], ",")
 runs
 
-inputs <- c() # Inputs for ArrowFiles (run_id : fragment_file path)
+inputs <- c()  # Inputs for ArrowFiles (run_id : fragment_file path)
 for (run in runs) {
   inputs[run[1]] <- run[2]
 }
@@ -310,19 +310,8 @@ if (n_cond > 1) {
 saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
 
 all <- rename_cells(seurat_objs)
-samples <- find_sample_names(all)
 
-# extract image coordinates as -(imagecols) | imagerow --
-spatial <- lapply(all, function(x) {
-  df <- as.data.frame(x@images[[1]]@coordinates[, c(5, 4)])
-  colnames(df) <- paste0("Spatial_", 1:2)
-  df$Spatial_2 <- -df$Spatial_2
-  df
-})
-
-combined <- combine_objs(all, samples, spatial, project_name)
-
-saveRDS(combined, "combined.rds", compress = FALSE)
-
-# Save anndata as converted.h5ad
-seurat_to_h5ad(combined, TRUE)  # from utils.R
+# Convert Seurat to h5ad and save ----
+for (obj in all) {
+  seurat_to_h5ad(obj, TRUE, unique(obs$Sample))  # from utils.R
+}
