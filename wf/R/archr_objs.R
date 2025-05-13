@@ -66,9 +66,33 @@ for (run in runs) {
 saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
 
 # Copy over filtering from SnapATAC2
-obs <- read.csv(metadata_path)
-cells <- obs[["X"]]
-clusters <- obs[["cluster"]]
+tryCatch({
+  obs <- read.csv(metadata_path)
+}, error = function(e) {
+  message("Could not read obs.csv: ", e$message)
+})
+
+tryCatch({
+  cells <- obs[["X"]]
+}, error = function(e) {
+  cells <- proj$cellName
+  message(
+    "Expected column 'cluster' not found in obs.csv; skipping filtering...",
+    e$message
+  )
+})
+
+tryCatch({
+  clusters <- obs[["cluster"]]
+}, error = function(e) {
+  clusters <- rep("C0", length(cells))
+  message(
+    "No cluster information found in obs; assinging cluster 0",
+    e$message
+  )
+})
+
+
 proj <- proj[proj$cellNames %in% cells]
 
 # Add clusters from SnapATAC2
@@ -82,7 +106,7 @@ proj <- addCellColData(
 
 # Parse conditions into 'treatments', add as columns to CellColData ----
 conds <- strsplit(proj$Condition, split = "\\s|-")
-print("line 84")
+
 for (i in seq_along(conds[[1]])) {
   proj <- ArchR::addCellColData(
     proj,
@@ -313,5 +337,5 @@ all <- rename_cells(seurat_objs)
 
 # Convert Seurat to h5ad and save ----
 for (obj in all) {
-  seurat_to_h5ad(obj, TRUE, unique(obs$Sample))  # from utils.R
+  seurat_to_h5ad(obj, TRUE, unique(obj$Sample))  # from utils.R
 }

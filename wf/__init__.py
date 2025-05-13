@@ -261,30 +261,30 @@ def snap_workflow(
         groups=groups
     )
 
-    outdir_peaks = call_peaks(
-        outdir=outdir,
-        project_name=project_name,
-        genome=genome,
-        groups=groups,
-    )
+    # outdir_peaks = call_peaks(
+    #     outdir=outdir,
+    #     project_name=project_name,
+    #     genome=genome,
+    #     groups=groups,
+    # )
 
-    outdir_ranked_peaks = rank_peaks(
-        outdir=outdir_peaks,
-        project_name=project_name,
-        genome=genome,
-        groups=groups,
-    )
+    # outdir_ranked_peaks = rank_peaks(
+    #     outdir=outdir_peaks,
+    #     project_name=project_name,
+    #     genome=genome,
+    #     groups=groups,
+    # )
 
-    outdir_motifs = motifs_task(
-        outdir=outdir_peaks,
-        project_name=project_name,
-        genome=genome,
-        groups=groups,
-    )
+    # outdir_motifs = motifs_task(
+    #     outdir=outdir_peaks,
+    #     project_name=project_name,
+    #     genome=genome,
+    #     groups=groups,
+    # )
 
-    uploaded_results = registry_task(runs=runs, results=outdir_motifs)
+    # uploaded_results = registry_task(runs=runs, results=outdir_motifs)
 
-    return uploaded_results
+    return outdir_ge
 
 
 if __name__ == "__main__":
