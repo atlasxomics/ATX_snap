@@ -208,7 +208,7 @@ n_clust <- length(unique(proj$Clusters))
 cluster_marker_genes <- get_marker_genes( # from archr.R
   proj,
   group_by = "Clusters",
-  markers_cutoff = "FDR <= 0.02",
+  markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
   heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
   rd_name = "IterativeLSI"
 )
@@ -216,7 +216,7 @@ cluster_marker_genes <- get_marker_genes( # from archr.R
 saveRDS(cluster_marker_genes$markers_gs, "markersGS_clusters.rds")
 write.csv(
   cluster_marker_genes$marker_list,
-  "marker_genes_per_cluster.csv",
+  "ranked_genes_per_cluster.csv",
   row.names = FALSE
 )
 write.csv(cluster_marker_genes$heatmap_gs, "genes_per_cluster_hm.csv")
@@ -227,7 +227,7 @@ if (n_samples > 1) {
   sample_marker_genes <- get_marker_genes(
     proj,
     group_by = "Sample",
-    markers_cutoff = "FDR <= 0.02",
+    markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
     heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
     rd_name = "IterativeLSI"
   )
@@ -235,7 +235,7 @@ if (n_samples > 1) {
   saveRDS(sample_marker_genes$markers_gs, "markersGS_sample.rds")
   write.csv(
     sample_marker_genes$marker_list,
-    "marker_genes_per_sample.csv",
+    "ranked_genes_per_sample.csv",
     row.names = FALSE
   )
   write.csv(sample_marker_genes$heatmap_gs, "genes_per_sample_hm.csv")
@@ -250,7 +250,7 @@ if (n_cond > 1) {
     treatment_marker_genes <- get_marker_genes(
       proj,
       group_by = treatment[i],
-      markers_cutoff = "FDR <= 0.02",
+      markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
       heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
       rd_name = "IterativeLSI"
     )
@@ -261,7 +261,7 @@ if (n_cond > 1) {
     )
     write.csv(
       treatment_marker_genes$marker_list,
-      paste0("marker_genes_per_condition", i, ".csv"),
+      paste0("ranked_genes_per_condition", i, ".csv"),
       row.names = FALSE
     )
     write.csv(
