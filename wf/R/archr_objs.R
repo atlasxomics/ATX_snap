@@ -31,7 +31,7 @@ tile_size <- 5000
 min_tss <- 0  # Use filtering from SnapATAC2
 min_frags <- 0  # Use filtering from SnapATAC2
 lsi_iterations <- 2
-lsi_resolution <- 0.5
+lsi_resolution <- 0.7
 lsi_varfeatures <- 25000
 
 runs <- strsplit(args[4:length(args)], ",")
@@ -91,7 +91,6 @@ tryCatch({
     e$message
   )
 })
-
 
 proj <- proj[proj$cellNames %in% cells]
 

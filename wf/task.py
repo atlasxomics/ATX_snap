@@ -3,7 +3,6 @@ import logging
 import os
 import pickle
 import subprocess
-from scipy import sparse
 from typing import List
 
 import anndata
@@ -40,7 +39,6 @@ def make_adata(
     clustering_iters: int,
 ) -> tuple[LatchDir, List[str]]:
     import pandas as pd
-    from squidpy.pl import ripley
 
     samples = [run.run_id for run in runs]
 
@@ -141,29 +139,16 @@ def make_adata(
         pt_size=utils.pt_sizes[channels]["qc"],
     )
 
-    # Neighbrohood enrichment plot, Ripley's plot
-    adata = sp.squidpy_analysis(adata)
-
-    group_dict = dict()
-    group_dict["all"] = None
-
-    for group in group_dict.keys():
-        pl.plot_neighborhoods(
-            adata, group, group_dict[group], outdir=figures_dir
-        )
-
-    ripley(adata, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
-
     subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
 
     # Save critical data for gene matrix
     adata.obs.to_csv(f"{tables_dir}/obs.csv", index=True)
 
-    np.save(f"{tables_dir}/spatial.npy", adata.obsm['spatial'])
-    np.save(f"{tables_dir}/X_umap.npy", adata.obsm['X_umap'])
-    sparse.save_npz(f"{tables_dir}/spatial_connectivities.npz", adata.obsp["spatial_connectivities"])
-    with open(f"{tables_dir}/cluster_nhood_enrichment.pkl", "wb") as f:
-        pickle.dump(adata.uns["cluster_nhood_enrichment"], f)
+    umap_df = pd.DataFrame(adata.obsm["X_umap"], index=adata.obs_names)
+    umap_df.to_csv(f"{tables_dir}/X_umap.csv")
+
+    spatial_df = pd.DataFrame(adata.obsm["spatial"], index=adata.obs_names)
+    spatial_df.to_csv(f"{tables_dir}/spatial.csv")
 
     adata.write(f"{out_dir}/combined.h5ad")
 
@@ -179,13 +164,12 @@ def make_adata_gene(
     genome: utils.Genome,
 ) -> LatchDir:
     import pandas as pd
+    from squidpy.pl import ripley
 
     # Read in data tables
     obs_path = LatchFile(f"{outdir.remote_path}/tables/obs.csv").local_path
-    spatial_path = LatchFile(f"{outdir.remote_path}/tables/spatial.npy").local_path
-    umap_path = LatchFile(f"{outdir.remote_path}/tables/X_umap.npy").local_path
-    spatial_connectivities_path = LatchFile(f"{outdir.remote_path}/tables/spatial_connectivities.npz").local_path
-    cluster_nhood_enrichment_path = LatchFile(f"{outdir.remote_path}/tables/cluster_nhood_enrichment.pkl").local_path
+    spatial_path = LatchFile(f"{outdir.remote_path}/tables/spatial.csv").local_path
+    umap_path = LatchFile(f"{outdir.remote_path}/tables/X_umap.csv").local_path
 
     # adata = anndata.read_h5ad(data_path.local_path)
     genome = genome.value
@@ -230,36 +214,75 @@ def make_adata_gene(
     if "_index" in adata_gene.raw.var:  # Do this for some stupid reason
         adata_gene.raw.var.drop(columns=['_index'], inplace=True)
 
-    logging.info("Performing log-norm...")
-    sc.pp.normalize_total(adata_gene)
-    sc.pp.log1p(adata_gene)
+    logging.info("Transferring auxiliary data...")
+    try:
+        obs = pd.read_csv(obs_path, index_col=0)
+    except FileNotFoundError:
+        logging.warning(f"File not found: {obs_path}")
+        obs = None
+    if obs is not None and not obs.empty:
+        obs_aligned = obs.reindex(adata_gene.obs.index)
+        adata_gene.obs = obs_aligned
+        for group in groups:
+            if adata_gene.obs[group].dtype != object:  # Ensure groups are str
+                adata_gene.obs[group] = adata_gene.obs[group].astype(str)
 
-    logging.info("Transfering auxiliary data...")
-    obs = pd.read_csv(obs_path, index_col=0)
-    spatial = np.load(spatial_path)
-    umap = np.load(umap_path)
-    spatial_connectivities = sparse.load_npz(spatial_connectivities_path)
-    with open(cluster_nhood_enrichment_path, 'rb') as f:
-        cluster_nhood_enrichment = pickle.load(f)
+    # Convert to DataFrame and include cell names
+    umap_df = pd.read_csv(umap_path, index_col=0)
+    spatial_df = pd.read_csv(spatial_path, index_col=0)
 
-    adata_gene.obs = obs
-    for group in groups:
-        if adata_gene.obs[group].dtype != object:  # Ensure groups are str
-            adata_gene.obs[group] = adata_gene.obs[group].astype(str)
+    umap_aligned = umap_df.loc[adata_gene.obs_names].values
+    adata_gene.obsm["X_umap"] = umap_aligned
 
-    adata_gene.obsm["spatial"] = spatial
-    adata_gene.obsm["X_umap"] = umap
-    adata_gene.obsp["spatial_connectivities"] = spatial_connectivities
-    adata_gene.uns["cluster_nhood_enrichment"] = cluster_nhood_enrichment
+    spatial_aligned = spatial_df.loc[adata_gene.obs_names].values
+    adata_gene.obsm["spatial"] = spatial_aligned
+
+    # Neighbrohood enrichment plot, Ripley's plot
+    adata_gene = sp.squidpy_analysis(adata_gene)
+
+    group_dict = dict()
+    group_dict["all"] = None
+
+    for group in group_dict.keys():
+        pl.plot_neighborhoods(
+            adata_gene, group, group_dict[group], outdir=figures_dir
+        )
+
+    ripley(adata_gene, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
+
+    # Add add DA gene tables
+    try:
+        marker_files = glob.glob("ranked_genes_*.csv")
+        for file in marker_files:
+            name = file.split("/")[-1]
+            name = name.replace(".csv", "")
+            df = pd.read_csv(file, dtype={"group_name": str})
+            adata_gene.uns[name] = df
+    except Exception as e:
+        logging.warning(f"Error {e} loading marker genes files.")
+
+    # Add archr heat
+    try:
+        hm_files = glob.glob("genes_per_*_hm.csv")
+        for file in hm_files:
+            name = file.split("/")[-1]
+            name = name.replace(".csv", "")
+            df = pd.read_csv(file, dtype={"cluster": str}, index_col=0)
+            adata_gene.uns[name] = df
+    except Exception as e:
+        logging.warning(f"Error {e} loading heatmap files.")
 
     # Add archr volcano plots
     if "condition" in groups:
-        volcano_files = glob.glob("volcanoMarkers_genes_*.csv")
-        for file in volcano_files:
-            name = file.split("/")[-1]
-            treatment = name.replace("volcanoMarkers_genes_", "").replace(".csv", "")
-            df = pd.read_csv(file, dtype={"cluster": str})
-            adata_gene.uns[f"volcano_{treatment}"] = df
+        try:
+            volcano_files = glob.glob("volcanoMarkers_genes_*.csv")
+            for file in volcano_files:
+                name = file.split("/")[-1]
+                treatment = name.replace("volcanoMarkers_genes_", "").replace(".csv", "")
+                df = pd.read_csv(file, dtype={"cluster": str})
+                adata_gene.uns[f"volcano_{treatment}"] = df
+        except Exception as e:
+            logging.warning(f"Error {e} loading volcano files.")
 
     # Move data files to subfolder
     project_dirs = glob.glob(f'{project_name}_*')
