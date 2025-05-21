@@ -169,16 +169,27 @@ rownames(metadata) <- str_split_fixed(
 metadata["log10_nFrags"] <- log(metadata$nFrags)
 
 # Extract gene matrix for SeuratObject --
-gene_matrix <- getMatrixFromProject(
+gene_matrix <- ArchR::getMatrixFromProject(
   ArchRProj = proj,
-  useMatrix = "GeneScoreMatrix"
+  useMatrix = "GeneScoreMatrix",
+  asMatrix = TRUE
 )
-matrix <- imputeMatrix(
+
+# saveRDS(gene_matrix, file = "gene_matrix.rds")
+# rm(gene_matrix)
+# gc()
+# Sys.sleep(10800)
+
+matrix <- ArchR::imputeMatrix(
   mat = assay(gene_matrix),
   imputeWeights = getImputeWeights(proj)
 )
+
 gene_row_names <- gene_matrix@elementMetadata$name
 rownames(matrix) <- gene_row_names
+
+rm(gene_matrix)
+gc()
 
 # Create and save SeuratObjects --
 print("Creating SeuratObjects...")

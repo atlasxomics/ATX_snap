@@ -5,6 +5,7 @@ library("ggplot2")
 library("ggrepel")
 library("gridExtra")
 library("harmony")
+library("Matrix")
 library("patchwork")
 library("purrr")
 library("Seurat")
@@ -19,24 +20,66 @@ build_atlas_seurat_object <- function(
   #' Prepare and combine gene matrix, metadata, and image for SeuratObject
   #' for runs within a project.
 
+
+  # First garbage collect to free up memory before starting
+  gc(verbose = FALSE, full = TRUE)
+
+  # Read the image first, as it's likely smaller than the matrix manipulation
   image <- Seurat::Read10X_Image(
     image.dir = spatial_path,
     filter.matrix = TRUE
   )
+
+  # Filter metadata
   metadata <- metadata[metadata$Sample == run_id, ]
 
-  matrix <- matrix[, c(grep(pattern = run_id, colnames(matrix)))]
-  matrix@Dimnames[[2]] <- metadata@rownames
-  matrix <- Seurat::CreateAssayObject(matrix)
+  # Find indices for subsetting instead of creating a temporary vector with grep
+  col_indices <- grep(pattern = run_id, colnames(matrix))
 
+  # Create sparse matrix directly from the subset to minimize memory usage
+  message("Subsetting matrix and converting to sparse format...")
+
+  # Option 1: If matrix is already in memory and very large
+  matrix_sparse <- as(matrix[, col_indices], "dgCMatrix")
+
+  # Immediately remove references to free memory
+  rm(col_indices)
+  # Don't remove matrix here as it's an input argument
+
+  # Force garbage collection
+  gc(verbose = FALSE, full = TRUE)
+
+  # Set column names
+  colnames(matrix_sparse) <- rownames(metadata)
+
+  # Create assay object and immediately remove the source matrix
+  message("Creating Seurat assay object...")
+  matrix_assay <- Seurat::CreateAssayObject(counts = matrix_sparse)
+  rm(matrix_sparse)
+  gc(verbose = FALSE, full = TRUE)
+
+  # Create Seurat object
+  message("Creating Seurat object...")
   object <- Seurat::CreateSeuratObject(
-    counts = matrix,
-    assay  = "Spatial",
+    counts = matrix_assay,
+    assay = "Spatial",
     meta.data = as.data.frame(metadata)
   )
+
+  # Clean up
+  rm(matrix_assay)
+  gc(verbose = FALSE, full = TRUE)
+
+  # Add image
+  message("Adding spatial image...")
   image <- image[Seurat::Cells(x = object)]
   Seurat::DefaultAssay(object = image) <- "Spatial"
   object[["slice1"]] <- image
+
+  # Final cleanup
+  rm(image)
+  gc(verbose = FALSE, full = TRUE)
+
   return(object)
 }
 
