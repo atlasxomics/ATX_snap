@@ -76,6 +76,10 @@ RUN R -e "renv::restore()"
 RUN R -e "remotes::install_github('bnprks/BPCells/r', ref = 'a3096e5', upgrade = 'never')"
 RUN R -e "remotes::install_github('mojaveazure/seurat-disk', ref = '877d4e1', upgrade = 'never')"
 
+RUN R -e "BiocManager::install('sparseMatrixStats')"
+RUN echo "hi"
+RUN R -e "remotes::install_github('jpmcga/ArchR', ref = 'master')"
+
 COPY . /root/
 
 # Latch workflow registration metadata
