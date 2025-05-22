@@ -83,6 +83,36 @@ build_atlas_seurat_object <- function(
   return(object)
 }
 
+build_atlas_seurat_object_old <- function(
+  run_id,
+  matrix,
+  metadata,
+  spatial_path
+) {
+  #' Prepare and combine gene matrix, metadata, and image for SeuratObject
+  #' for runs within a project.
+
+  image <- Seurat::Read10X_Image(
+    image.dir = spatial_path,
+    filter.matrix = TRUE
+  )
+  metadata <- metadata[metadata$Sample == run_id, ]
+
+  matrix <- matrix[, c(grep(pattern = run_id, colnames(matrix)))]
+  matrix@Dimnames[[2]] <- metadata@rownames
+  matrix <- Seurat::CreateAssayObject(matrix)
+
+  object <- Seurat::CreateSeuratObject(
+    counts = matrix,
+    assay  = "Spatial",
+    meta.data = as.data.frame(metadata)
+  )
+  image <- image[Seurat::Cells(x = object)]
+  Seurat::DefaultAssay(object = image) <- "Spatial"
+  object[["slice1"]] <- image
+  return(object)
+}
+
 combine_objs <- function(
   seurat_lst, samples, spatial, project_name
 ) {
@@ -419,7 +449,6 @@ scvolcano <- function(inpMarkers, condition1, condition2, feature = "All") {
     )
   return(ggOut)
 }
-
 
 seurat_to_h5ad <- function(seuratobj, spatial, prefix) {
 
