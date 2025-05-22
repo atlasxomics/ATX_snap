@@ -151,54 +151,40 @@ saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
 # Gene Expression Analysis ----------------------------------------------------
 
 # Create SeuratObjects for gene matrix ----
-# Extract metadata for Seurat object --
-metadata <- getCellColData(ArchRProj = proj)
-
-# Set metadata rownames to barcodes
-rownames(metadata) <- str_split_fixed(
-  str_split_fixed(
-    row.names(metadata),
-    "#",
-    2
-  )[, 2],
-  "-",
-  2
-)[, 1]
-
-# Create col for log10 of fragment counts
-metadata["log10_nFrags"] <- log(metadata$nFrags)
-
-# Extract gene matrix for SeuratObject --
-gene_matrix <- getMatrixFromProject(
-  ArchRProj = proj,
-  useMatrix = "GeneScoreMatrix"
+# Process the project in chunks
+print("Processing ArchR project in chunks...")
+chunked_results <- processArchRProjectInChunks(
+  proj,
+  chunk_size = 50000,
+  stratify = TRUE,  # Enable stratification by sample/run
+  random_seed = 42  # For reproducibility
 )
-matrix <- imputeMatrix(
-  mat = assay(gene_matrix),
-  imputeWeights = getImputeWeights(proj)
-)
-gene_row_names <- gene_matrix@elementMetadata$name
-rownames(matrix) <- gene_row_names
 
 # Create and save SeuratObjects --
 print("Creating SeuratObjects...")
-
-seurat_objs <- c()
+seurat_objs <- list()
 for (run in runs) {
+  print(paste0("Processing run: ", run[1]))
 
-  obj <- build_atlas_seurat_object( # from seurat.R
+  obj <- build_atlas_seurat_object_chunked(
     run_id = run[1],
-    matrix = matrix,
-    metadata = metadata,
+    chunks_list = chunked_results$chunks_list,
+    gene_row_names = chunked_results$gene_row_names,
+    metadata = chunked_results$metadata,
     spatial_path = run[5]
   )
 
-  saveRDS(obj, file = paste0(run[1], "_SeuratObj.rds"))
-  seurat_objs <- c(seurat_objs, obj)
+  if (!is.null(obj)) {
+    saveRDS(obj, file = paste0(run[1], "_SeuratObj.rds"))
+    seurat_objs[[run[1]]] <- obj
+    print(paste0("Successfully saved SeuratObject for run ", run[1]))
+  } else {
+    warning(paste0("Could not create SeuratObject for run ", run[1]))
+  }
 }
 
 print("Available SeuratObjects:")
-seurat_objs
+names(seurat_objs)
 
 # Identify marker genes ----
 # Marker genes per cluster, save marker gene rds, csv, heatmap.csv --

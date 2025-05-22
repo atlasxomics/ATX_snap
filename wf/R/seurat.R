@@ -391,3 +391,331 @@ seurat_to_h5ad <- function(seuratobj, spatial, prefix) {
 
   message("Seurat object converted to h5ad file.")
 }
+
+# Gene Expression Analysis with Chunked Processing ----------------------------------------------------
+
+# Function to process gene matrix in chunks
+processArchRProjectInChunks <- function(
+  proj,
+  chunk_size = 5000,  # Adjust this value based on your system's memory
+  output_dir = getwd(),
+  random_seed = 42,   # For reproducibility in random sampling
+  stratify = TRUE     # Stratify by sample/run to prevent bias
+) {
+  # Extract metadata first (smaller operation)
+  metadata <- getCellColData(ArchRProj = proj)
+  
+  # Set metadata rownames to barcodes
+  rownames(metadata) <- str_split_fixed(
+    str_split_fixed(
+      row.names(metadata),
+      "#",
+      2
+    )[, 2],
+    "-",
+    2
+  )[, 1]
+  
+  # Create col for log10 of fragment counts
+  metadata["log10_nFrags"] <- log(metadata$nFrags)
+  
+  # Get all cell names to chunk
+  all_cells <- proj@cellColData@rownames
+  n_cells <- length(all_cells)
+  
+  # Set seed for reproducibility
+  set.seed(random_seed)
+  
+  # Create chunks in a way that ensures even representation
+  if (stratify && "Sample" %in% colnames(proj@cellColData)) {
+    print("Stratifying chunks by sample to prevent bias...")
+    
+    # Get sample information
+    sample_info <- proj@cellColData$Sample
+    unique_samples <- unique(sample_info)
+    n_samples <- length(unique_samples)
+    
+    print(paste0("Found ", n_samples, " unique samples/runs for stratified chunking"))
+    
+    # Determine cells per sample
+    cells_per_sample <- list()
+    for (sample in unique_samples) {
+      cells_per_sample[[sample]] <- all_cells[sample_info == sample]
+      print(paste0("Sample ", sample, " has ", length(cells_per_sample[[sample]]), " cells"))
+    }
+    
+    # Random shuffle cells within each sample to prevent any bias
+    for (sample in unique_samples) {
+      cells_per_sample[[sample]] <- sample(cells_per_sample[[sample]], size = length(cells_per_sample[[sample]]))
+    }
+    
+    # Calculate number of chunks needed
+    n_chunks <- ceiling(n_cells / chunk_size)
+    print(paste0("Processing ", n_cells, " cells in ", n_chunks, " chunks of up to ", chunk_size, " cells each"))
+    
+    # Create stratified chunks
+    chunks <- list()
+    for (i in 1:n_chunks) {
+      chunks[[i]] <- c()
+    }
+    
+    # Distribute cells from each sample evenly across chunks
+    for (sample in unique_samples) {
+      sample_cells <- cells_per_sample[[sample]]
+      n_sample_cells <- length(sample_cells)
+      
+      # Distribute cells evenly - calculate cells per chunk for this sample
+      cells_per_chunk <- ceiling(n_sample_cells / n_chunks)
+      
+      for (i in 1:n_chunks) {
+        start_idx <- (i - 1) * cells_per_chunk + 1
+        end_idx <- min(i * cells_per_chunk, n_sample_cells)
+        
+        if (start_idx <= end_idx) {
+          chunk_cells <- sample_cells[start_idx:end_idx]
+          chunks[[i]] <- c(chunks[[i]], chunk_cells)
+        }
+      }
+    }
+  } else {
+    # Simple random chunking as an alternative
+    print("Using random chunking to prevent bias...")
+    
+    # Shuffle all cells randomly
+    shuffled_cells <- sample(all_cells, size = n_cells)
+    
+    # Calculate number of chunks
+    n_chunks <- ceiling(n_cells / chunk_size)
+    print(paste0("Processing ", n_cells, " cells in ", n_chunks, " chunks of up to ", chunk_size, " cells each"))
+    
+    # Create chunks
+    chunks <- list()
+    for (i in 1:n_chunks) {
+      start_idx <- (i - 1) * chunk_size + 1
+      end_idx <- min(i * chunk_size, n_cells)
+
+      chunks[[i]] <- shuffled_cells[start_idx:end_idx]
+    }
+  }
+  
+  # Verify chunk sizes
+  for (i in 1:length(chunks)) {
+    print(paste0("Chunk ", i, " contains ", length(chunks[[i]]), " cells"))
+  }
+  
+  # Initialize an empty list to store gene matrices
+  chunks_list <- list()
+  gene_row_names <- NULL
+  
+  # Get imputation weights for the full project
+  # This ensures consistent imputation across chunks
+  print("Calculating imputation weights from full project for consistent imputation...")
+  full_impute_weights <- getImputeWeights(proj)
+  
+  # Loop through chunks
+  for (i in 1:n_chunks) {
+    print(paste0("Processing chunk ", i, " of ", n_chunks))
+    
+    # Get cells for current chunk
+    chunk_cells <- chunks[[i]]
+    
+    # Create a temporary sub-project with these cells
+    chunk_proj <- subsetArchRProject(
+      ArchRProj = proj,
+      cells = chunk_cells,
+      outputDirectory = paste0(output_dir, "/temp_chunk_", i),
+      force = TRUE
+    )
+
+    # Extract gene matrix for this chunk
+    chunk_matrix <- getMatrixFromProject(
+      ArchRProj = chunk_proj,
+      useMatrix = "GeneScoreMatrix"
+    )
+    
+    # Save the row names from the first chunk (gene names should be consistent across chunks)
+    if (i == 1) {
+      gene_row_names <- chunk_matrix@elementMetadata$name
+    }
+    
+    # Impute the chunk matrix using the global imputation weights for consistency
+    print("Imputing chunk with global imputation weights for consistency across chunks...")
+    chunk_imputed <- imputeMatrix(
+      mat = assay(chunk_matrix),
+      imputeWeights = full_impute_weights
+    )
+    rownames(chunk_imputed) <- gene_row_names
+    
+    # Store the chunk
+    chunks_list[[i]] <- chunk_imputed
+    
+    # Clean up to free memory
+    rm(chunk_proj, chunk_matrix, chunk_imputed)
+    gc(verbose = FALSE, full = TRUE)
+  }
+  
+  # Return the chunks and metadata
+  return(list(chunks_list = chunks_list, metadata = metadata, gene_row_names = gene_row_names))
+}
+
+# Function to build Seurat objects with chunked data
+build_atlas_seurat_object_chunked <- function(
+  run_id,
+  chunks_list,
+  gene_row_names,
+  metadata,
+  spatial_path
+) {
+  # First garbage collect
+  gc(verbose = FALSE, full = TRUE)
+  
+  # Read the image
+  image <- Seurat::Read10X_Image(
+    image.dir = spatial_path,
+    filter.matrix = TRUE
+  )
+  
+  # Filter metadata for this run
+  run_metadata <- metadata[metadata$Sample == run_id, ]
+  
+  # Get the barcodes for this run
+  run_barcodes <- rownames(run_metadata)
+  
+  # Create an empty sparse matrix to hold the final result
+  n_genes <- length(gene_row_names)
+  n_cells <- nrow(run_metadata)
+  message(paste0("Creating empty matrix for ", n_genes, " genes and ", n_cells, " cells"))
+  
+  # Initialize a list to collect data from all chunks for this run
+  run_data_chunks <- list()
+  total_cells_found <- 0
+  
+  # First pass: collect all data from different chunks for this run
+  for (i in 1:length(chunks_list)) {
+    chunk <- chunks_list[[i]]
+    
+    # Find cells that belong to this run in the current chunk
+    # Full barcode format in chunk: runID#barcode-1
+    chunk_run_prefix <- paste0(run_id, "#")
+    chunk_cells <- grep(pattern = chunk_run_prefix, x = colnames(chunk), value = TRUE)
+    
+    if (length(chunk_cells) > 0) {
+      message(paste0("Found ", length(chunk_cells), " cells for run ", run_id, " in chunk ", i))
+      total_cells_found <- total_cells_found + length(chunk_cells)
+      
+      # Extract cells for this run from the chunk
+      chunk_subset <- chunk[, chunk_cells, drop = FALSE]
+      
+      # Store this chunk's data
+      run_data_chunks[[i]] <- chunk_subset
+    }
+  }
+  
+  message(paste0("Total cells found across all chunks: ", total_cells_found))
+  
+  # If no cells found, return NULL or handle appropriately
+  if (total_cells_found == 0) {
+    warning(paste0("No cells found for run ", run_id, " in any chunk!"))
+    return(NULL)
+  }
+  
+  # Now combine all chunks into one matrix
+  message("Combining data from all chunks...")
+  
+  # If only one chunk has data for this run, use it directly
+  if (length(run_data_chunks) == 1) {
+    combined_chunk <- run_data_chunks[[1]]
+  } else {
+    # Otherwise, combine the chunks
+    # First pass: get all unique cell barcodes
+    all_cells <- c()
+    for (chunk_data in run_data_chunks) {
+      all_cells <- c(all_cells, colnames(chunk_data))
+    }
+    unique_cells <- unique(all_cells)
+    
+    # Initialize a matrix with the right dimensions
+    combined_chunk <- Matrix::sparseMatrix(
+      i = integer(0),
+      j = integer(0),
+      x = numeric(0),
+      dims = c(n_genes, length(unique_cells))
+    )
+    rownames(combined_chunk) <- gene_row_names
+    colnames(combined_chunk) <- unique_cells
+    
+    # Fill in the data from each chunk
+    for (chunk_data in run_data_chunks) {
+      combined_chunk[, colnames(chunk_data)] <- chunk_data
+    }
+  }
+  
+  # Now format the column names to match metadata format
+  # Format column names to match the metadata (remove run_id# prefix and -1 suffix)
+  clean_colnames <- str_split_fixed(
+    str_split_fixed(
+      colnames(combined_chunk),
+      "#",
+      2
+    )[, 2],
+    "-",
+    2
+  )[, 1]
+  
+  # Create a new matrix with properly named columns
+  final_matrix <- Matrix::sparseMatrix(
+    i = integer(0),
+    j = integer(0),
+    x = numeric(0),
+    dims = c(n_genes, length(clean_colnames))
+  )
+  rownames(final_matrix) <- gene_row_names
+  colnames(final_matrix) <- clean_colnames
+  
+  # Copy data to the final matrix
+  for (i in 1:length(clean_colnames)) {
+    final_matrix[, clean_colnames[i]] <- combined_chunk[, i]
+  }
+  
+  # Make sure we only keep cells that exist in the metadata
+  common_cells <- intersect(colnames(final_matrix), rownames(run_metadata))
+  message(paste0("Final matrix has ", length(common_cells), " cells that match metadata"))
+  
+  if (length(common_cells) == 0) {
+    warning("No cells in the matrix match the metadata after processing!")
+    return(NULL)
+  }
+  
+  final_matrix <- final_matrix[, common_cells]
+  run_metadata <- run_metadata[common_cells, ]
+  
+  # Create assay object
+  message("Creating Seurat assay object...")
+  matrix_assay <- Seurat::CreateAssayObject(counts = final_matrix)
+  rm(final_matrix, combined_chunk, run_data_chunks)
+  gc(verbose = FALSE, full = TRUE)
+
+  # Create Seurat object
+  message("Creating Seurat object...")
+  object <- Seurat::CreateSeuratObject(
+    counts = matrix_assay,
+    assay = "Spatial",
+    meta.data = as.data.frame(run_metadata)
+  )
+
+  # Clean up
+  rm(matrix_assay)
+  gc(verbose = FALSE, full = TRUE)
+  
+  # Add image
+  message("Adding spatial image...")
+  image <- image[Seurat::Cells(x = object)]
+  Seurat::DefaultAssay(object = image) <- "Spatial"
+  object[["slice1"]] <- image
+  
+  # Final cleanup
+  rm(image)
+  gc(verbose = FALSE, full = TRUE)
+
+  return(object)
+}
