@@ -351,5 +351,5 @@ all <- rename_cells(seurat_objs)
 
 # Convert Seurat to h5ad and save ----
 for (obj in all) {
-  seurat_to_h5ad(obj, TRUE, unique(obj$Sample))  # from utils.R
+  seurat_to_h5ad(obj, FALSE, unique(obj$Sample))  # from utils.R
 }
