@@ -182,7 +182,6 @@ empty_feat_idx <- which(rowSums(gsm_mat) == 0)
 empty_feat <- SummarizedExperiment::rowData(gene_matrix)$name[empty_feat_idx]
 
 rm(gsm_mat)
-rm(empty_feat_idx)
 gc()
 
 matrix <- ArchR::imputeMatrix(

@@ -261,7 +261,7 @@ def make_adata_gene(
     except Exception as e:
         logging.warning(f"Error {e} loading marker genes files.")
 
-    # Add archr heat
+    # Add archr heatmap
     try:
         hm_files = glob.glob("genes_per_*_hm.csv")
         for file in hm_files:
