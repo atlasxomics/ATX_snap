@@ -397,7 +397,7 @@ get_topn_hm_feats <- function(heatmap, n_groups, n_feats) {
 }
 
 get_volcano_table <- function(
-  markers_df, markers_by_cluster_df, condition, feature, matrix
+  markers_df, markers_by_cluster_df, condition, feature, empty_feat
 ) {
 
   # Merge df with all clusters with df for each cluster -----
@@ -406,16 +406,9 @@ get_volcano_table <- function(
   )
 
   # Remove empty features -----
-  if (feature == "gene") {
-    gsm_mat <- SummarizedExperiment::assay(matrix, "GeneScoreMatrix")
-    empty_feat_idx <- which(rowSums((gsm_mat)) == 0)
-    empty_feat <- SummarizedExperiment::rowData(matrix)$name[empty_feat_idx]
-
-  } else if (feature == "motif") {
-    empty_feat_idx <- which(rowSums(matrix) == 0)
-    empty_feat <- rownames(matrix)[empty_feat_idx]
+  if (!is.null(empty_feat)) {
+    merged_df <- merged_df[which(!merged_df$gene %in% empty_feat), ]
   }
-  merged_df <- merged_df[which(!merged_df$gene %in% empty_feat), ]
 
   # Remove na values -----
   merged_df <- na.omit(merged_df)
@@ -423,7 +416,7 @@ get_volcano_table <- function(
   # Remove FDR equal to 0 -----
   merged_df <- merged_df[which(!merged_df$p_val_adj == 0), ]
 
-  # Make logfc limiation between 1 and -1 -----
+  # Make logfc limitation between 1 and -1 -----
   merged_df <- merged_df[which(abs(merged_df$avg_log2FC) < 1.2), ]
 
   # Get string of conditions != cond
@@ -431,10 +424,9 @@ get_volcano_table <- function(
     names(markers_df)[condition != names(markers_df)], collapse = "|"
   )
 
-  # Significant if p-val < 0.01; if avg log(fold change) positive then
-  # condition, else other codition
+  # Assign significance
   merged_df$Significance <- ifelse(
-    merged_df$p_val < 10^-2,
+    merged_df$p_val < 1e-2,
     ifelse(
       merged_df$avg_log2FC > 0.0,
       condition,

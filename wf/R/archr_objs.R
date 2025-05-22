@@ -175,10 +175,15 @@ gene_matrix <- ArchR::getMatrixFromProject(
   asMatrix = TRUE
 )
 
-# saveRDS(gene_matrix, file = "gene_matrix.rds")
-# rm(gene_matrix)
-# gc()
-# Sys.sleep(10800)
+# Identify empty features for filtering volcano plots --
+print("Identifying empty features...")
+gsm_mat <- SummarizedExperiment::assay(gene_matrix, "GeneScoreMatrix")
+empty_feat_idx <- which(rowSums(gsm_mat) == 0)
+empty_feat <- SummarizedExperiment::rowData(gene_matrix)$name[empty_feat_idx]
+
+rm(gsm_mat)
+rm(empty_feat_idx)
+gc()
 
 matrix <- ArchR::imputeMatrix(
   mat = assay(gene_matrix),
@@ -307,7 +312,7 @@ if (n_cond > 1) {
     for (cond in conditions) {
 
       volcano_table <- get_volcano_table( # from archr.R
-        marker_genes_df, marker_genes_by_cluster_df, cond, "gene", gene_matrix
+        marker_genes_df, marker_genes_by_cluster_df, cond, "gene", empty_feat
       )
 
       write.table(
