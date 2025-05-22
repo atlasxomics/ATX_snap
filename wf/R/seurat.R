@@ -11,6 +11,8 @@ library("purrr")
 library("Seurat")
 library("SeuratDisk")
 
+source("/root/wf/R/utils.R")
+
 build_atlas_seurat_object <- function(
   run_id,
   matrix,

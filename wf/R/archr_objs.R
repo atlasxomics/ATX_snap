@@ -712,10 +712,10 @@ all_m <- rename_cells(seurat_objs_m)
 
 # Convert Seurat to h5ad and save ----
 for (obj in all) {
-  seurat_to_h5ad(obj, TRUE, paste0(unique(obj$Sample, "_g"))  # from utils.R
+  seurat_to_h5ad(obj, FALSE, paste0(unique(obj$Sample, "_g"))  # from utils.R
 }
 
 # Convert Seurat to h5ad and save ----
 for (obj in all_m) {
-  seurat_to_h5ad(obj, TRUE, paste0(unique(obj$Sample, "_m"))  # from utils.R
+  seurat_to_h5ad(obj, FALSE, paste0(unique(obj$Sample, "_m"))  # from utils.R
 }
