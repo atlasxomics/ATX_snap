@@ -220,137 +220,137 @@ for (run in runs) {
 print("Available SeuratObjects:")
 seurat_objs
 
-# Identify marker genes ----
-# Marker genes per cluster, save marker gene rds, csv, heatmap.csv --
-n_clust <- length(unique(proj$Clusters))
+# # Identify marker genes ----
+# # Marker genes per cluster, save marker gene rds, csv, heatmap.csv --
+# n_clust <- length(unique(proj$Clusters))
 
-cluster_marker_genes <- get_marker_genes( # from archr.R
-  proj,
-  group_by = "Clusters",
-  markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
-  heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
-  rd_name = "IterativeLSI"
-)
+# cluster_marker_genes <- get_marker_genes( # from archr.R
+#   proj,
+#   group_by = "Clusters",
+#   markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
+#   heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
+#   rd_name = "IterativeLSI"
+# )
 
-saveRDS(cluster_marker_genes$markers_gs, "markersGS_clusters.rds")
-write.csv(
-  cluster_marker_genes$marker_list,
-  "ranked_genes_per_cluster.csv",
-  row.names = FALSE
-)
-write.csv(cluster_marker_genes$heatmap_gs, "genes_per_cluster_hm.csv")
+# saveRDS(cluster_marker_genes$markers_gs, "markersGS_clusters.rds")
+# write.csv(
+#   cluster_marker_genes$marker_list,
+#   "ranked_genes_per_cluster.csv",
+#   row.names = FALSE
+# )
+# write.csv(cluster_marker_genes$heatmap_gs, "genes_per_cluster_hm.csv")
 
-# Marker genes per sample, save marker gene rds, csv, heatmap.csv --
-if (n_samples > 1) {
+# # Marker genes per sample, save marker gene rds, csv, heatmap.csv --
+# if (n_samples > 1) {
 
-  sample_marker_genes <- get_marker_genes(
-    proj,
-    group_by = "Sample",
-    markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
-    heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
-    rd_name = "IterativeLSI"
-  )
+#   sample_marker_genes <- get_marker_genes(
+#     proj,
+#     group_by = "Sample",
+#     markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
+#     heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
+#     rd_name = "IterativeLSI"
+#   )
 
-  saveRDS(sample_marker_genes$markers_gs, "markersGS_sample.rds")
-  write.csv(
-    sample_marker_genes$marker_list,
-    "ranked_genes_per_sample.csv",
-    row.names = FALSE
-  )
-  write.csv(sample_marker_genes$heatmap_gs, "genes_per_sample_hm.csv")
+#   saveRDS(sample_marker_genes$markers_gs, "markersGS_sample.rds")
+#   write.csv(
+#     sample_marker_genes$marker_list,
+#     "ranked_genes_per_sample.csv",
+#     row.names = FALSE
+#   )
+#   write.csv(sample_marker_genes$heatmap_gs, "genes_per_sample_hm.csv")
 
-}
+# }
 
-# Marker genes per treatment, save marker gene rds, csv, heatmap.csv --
-if (n_cond > 1) {
+# # Marker genes per treatment, save marker gene rds, csv, heatmap.csv --
+# if (n_cond > 1) {
 
-  for (i in seq_along(treatment)) {
+#   for (i in seq_along(treatment)) {
 
-    treatment_marker_genes <- get_marker_genes(
-      proj,
-      group_by = treatment[i],
-      markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
-      heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
-      rd_name = "IterativeLSI"
-    )
+#     treatment_marker_genes <- get_marker_genes(
+#       proj,
+#       group_by = treatment[i],
+#       markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
+#       heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
+#       rd_name = "IterativeLSI"
+#     )
 
-    saveRDS(
-      treatment_marker_genes$markers_gs,
-      paste0("markersGS_condition_", i, ".rds")
-    )
-    write.csv(
-      treatment_marker_genes$marker_list,
-      paste0("ranked_genes_per_condition", i, ".csv"),
-      row.names = FALSE
-    )
-    write.csv(
-      treatment_marker_genes$heatmap_gs,
-      paste0("genes_per_conditions", i, "_hm.csv")
-    )
-  }
-}
+#     saveRDS(
+#       treatment_marker_genes$markers_gs,
+#       paste0("markersGS_condition_", i, ".rds")
+#     )
+#     write.csv(
+#       treatment_marker_genes$marker_list,
+#       paste0("ranked_genes_per_condition", i, ".csv"),
+#       row.names = FALSE
+#     )
+#     write.csv(
+#       treatment_marker_genes$heatmap_gs,
+#       paste0("genes_per_conditions", i, "_hm.csv")
+#     )
+#   }
+# }
 
-# Volcano plots for genes ----
-if (n_cond > 1) {
-  for (j in seq_along(treatment)) {
+# # Volcano plots for genes ----
+# if (n_cond > 1) {
+#   for (j in seq_along(treatment)) {
 
-    # Get gene markers df for all clusters together --
-    marker_genes_df <- get_marker_df(
-      proj = proj,
-      group_by = treatment[j],
-      matrix = "GeneScoreMatrix",
-      seq_names = NULL,
-      max_cells = n_cells,  # Equals total cells in project
-      test_method = "ttest"
-    )
+#     # Get gene markers df for all clusters together --
+#     marker_genes_df <- get_marker_df(
+#       proj = proj,
+#       group_by = treatment[j],
+#       matrix = "GeneScoreMatrix",
+#       seq_names = NULL,
+#       max_cells = n_cells,  # Equals total cells in project
+#       test_method = "ttest"
+#     )
 
-    # Create a merged marker genes df for clusters for which no condition is
-    # >90% of all cells --
-    req_clusters <- get_required_clusters(proj, treatment[j])
-    marker_genes_by_cluster_df <- get_marker_df_clusters(
-      proj, req_clusters, treatment[j]
-    )
+#     # Create a merged marker genes df for clusters for which no condition is
+#     # >90% of all cells --
+#     req_clusters <- get_required_clusters(proj, treatment[j])
+#     marker_genes_by_cluster_df <- get_marker_df_clusters(
+#       proj, req_clusters, treatment[j]
+#     )
 
-    # Per condition, merge dfs and cleanup data --
-    conditions <- sort(unique(proj@cellColData[treatment[j]][, 1]))
-    for (cond in conditions) {
+#     # Per condition, merge dfs and cleanup data --
+#     conditions <- sort(unique(proj@cellColData[treatment[j]][, 1]))
+#     for (cond in conditions) {
 
-      volcano_table <- get_volcano_table( # from archr.R
-        marker_genes_df, marker_genes_by_cluster_df, cond, "gene", empty_feat
-      )
+#       volcano_table <- get_volcano_table( # from archr.R
+#         marker_genes_df, marker_genes_by_cluster_df, cond, "gene", empty_feat
+#       )
 
-      write.table(
-        volcano_table,
-        paste0(
-          "volcanoMarkers_genes_", j, "_", cond, ".csv"
-        ),
-        sep = ",",
-        quote = FALSE,
-        row.names = FALSE
-      )
-      print(paste0("volcanoMarkers_genes_", j, "_", cond, ".csv is done!"))
+#       write.table(
+#         volcano_table,
+#         paste0(
+#           "volcanoMarkers_genes_", j, "_", cond, ".csv"
+#         ),
+#         sep = ",",
+#         quote = FALSE,
+#         row.names = FALSE
+#       )
+#       print(paste0("volcanoMarkers_genes_", j, "_", cond, ".csv is done!"))
 
-      features <- unique(volcano_table$cluster)
-      others <- paste(conditions[conditions != cond], collapse = "|")
-      volcano_plots <- list()
-      for (i in seq_along(features)) {
-        volcano_plots[[i]] <- scvolcano(
-          volcano_table, cond, others, features[[i]]
-        )
-      }
+#       features <- unique(volcano_table$cluster)
+#       others <- paste(conditions[conditions != cond], collapse = "|")
+#       volcano_plots <- list()
+#       for (i in seq_along(features)) {
+#         volcano_plots[[i]] <- scvolcano(
+#           volcano_table, cond, others, features[[i]]
+#         )
+#       }
 
-      pdf(paste0("volcano_plots_", cond, ".pdf"))
-      for (plot in volcano_plots) {
-        print(plot)
-      }
-      dev.off()
-    }
-  }
-} else {
-  print("There are not enough conditions to be compared with!")
-}
+#       pdf(paste0("volcano_plots_", cond, ".pdf"))
+#       for (plot in volcano_plots) {
+#         print(plot)
+#       }
+#       dev.off()
+#     }
+#   }
+# } else {
+#   print("There are not enough conditions to be compared with!")
+# }
 
-saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
+# saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
 
 # Peak and motif analysis -----------------------------------------------------
 
@@ -361,78 +361,78 @@ addArchRThreads(threads = num_threads)
 # Peak calling and motif enrichment for clusters ----
 proj <- get_annotated_peaks(proj, "Clusters", genome_size, genome)
 
-saveArchRProject(ArchRProj = proj, archrproj_dir)
+# saveArchRProject(ArchRProj = proj, archrproj_dir)
 
-# Save run metrics in medians.csv ----
-medians <- get_proj_medians(proj)
-write.csv(medians, file = "medians.csv", row.names = FALSE)
+# # # Save run metrics in medians.csv ----
+# # medians <- get_proj_medians(proj)
+# # write.csv(medians, file = "medians.csv", row.names = FALSE)
 
-# Get marker peaks for clusters, samples, treatments; save as csv ----
+# # # Get marker peaks for clusters, samples, treatments; save as csv ----
 
-# Initialize base data frame, set significance cutoff --
-peak_data <- data.frame(proj@peakSet@ranges, proj@peakSet@elementMetadata)
-cut_off <- "Pval <= 0.05 & Log2FC >= 0.1"
+# # # Initialize base data frame, set significance cutoff --
+# # peak_data <- data.frame(proj@peakSet@ranges, proj@peakSet@elementMetadata)
+# # cut_off <- "Pval <= 0.05 & Log2FC >= 0.1"
 
-# Marker peaks per clusters --
-marker_peaks_c <- get_marker_peaks(proj, "Clusters", peak_data, cut_off)
+# # # Marker peaks per clusters --
+# # marker_peaks_c <- get_marker_peaks(proj, "Clusters", peak_data, cut_off)
 
-write.csv(
-  marker_peaks_c$marker_peak_list,
-  "marker_peaks_per_cluster.csv",
-  row.names = FALSE
-)
+# # write.csv(
+# #   marker_peaks_c$marker_peak_list,
+# #   "marker_peaks_per_cluster.csv",
+# #   row.names = FALSE
+# # )
 
-write.csv(
-  marker_peaks_c$total_peaks,
-  "complete_peak_list_cluster.csv",
-  row.names = FALSE
-)
+# # write.csv(
+# #   marker_peaks_c$total_peaks,
+# #   "complete_peak_list_cluster.csv",
+# #   row.names = FALSE
+# # )
 
-# Marker peaks per sample --
-marker_peaks_s <- get_marker_peaks(proj, "Sample", peak_data, cut_off)
+# # # Marker peaks per sample --
+# # marker_peaks_s <- get_marker_peaks(proj, "Sample", peak_data, cut_off)
 
-write.csv(
-  marker_peaks_s$marker_peak_list,
-  "marker_peaks_per_sample.csv",
-  row.names = FALSE
-)
+# # write.csv(
+# #   marker_peaks_s$marker_peak_list,
+# #   "marker_peaks_per_sample.csv",
+# #   row.names = FALSE
+# # )
 
-write.csv(
-  marker_peaks_s$total_peaks,
-  "complete_peak_list_sample.csv",
-  row.names = FALSE
-)
+# # write.csv(
+# #   marker_peaks_s$total_peaks,
+# #   "complete_peak_list_sample.csv",
+# #   row.names = FALSE
+# # )
 
-# Marker peaks per treatment --
-if (n_cond > 1) {
+# # # Marker peaks per treatment --
+# # if (n_cond > 1) {
 
-  for (i in seq_along(treatment)) {
+# #   for (i in seq_along(treatment)) {
 
-    marker_peaks_t <- get_marker_peaks(proj, treatment[i], peak_data, cut_off)
+# #     marker_peaks_t <- get_marker_peaks(proj, treatment[i], peak_data, cut_off)
 
-    write.csv(
-      marker_peaks_t$marker_peak_list,
-      file = paste0("marker_peaks_per_condition-", i, ".csv"),
-      row.names = FALSE
-    )
+# #     write.csv(
+# #       marker_peaks_t$marker_peak_list,
+# #       file = paste0("marker_peaks_per_condition-", i, ".csv"),
+# #       row.names = FALSE
+# #     )
 
-    write.csv(
-      marker_peaks_t$total_peaks,
-      file = paste0("complete_peak_list_condition-", i, ".csv"),
-      row.names = FALSE
+# #     write.csv(
+# #       marker_peaks_t$total_peaks,
+# #       file = paste0("complete_peak_list_condition-", i, ".csv"),
+# #       row.names = FALSE
 
-    )
-  }
-}
+# #     )
+# #   }
+# # }
 
-# Get enriched motif data for clusters, write to disk ----
-enriched_motifs_c <- get_enriched_motifs(
-  proj, marker_peaks_c$marker_peaks, cut_off
-)
+# # # Get enriched motif data for clusters, write to disk ----
+# # enriched_motifs_c <- get_enriched_motifs(
+# #   proj, marker_peaks_c$marker_peaks, cut_off
+# # )
 
-write.csv(enriched_motifs_c$enrich_df, "enrichedMotifs_cluster.csv")
-saveRDS(enriched_motifs_c$enrich_motifs, "enrichMotifs_clusters.rds")
-write.csv(enriched_motifs_c$heatmap_em, "motif_per_cluster_hm.csv")
+# # write.csv(enriched_motifs_c$enrich_df, "enrichedMotifs_cluster.csv")
+# # saveRDS(enriched_motifs_c$enrich_motifs, "enrichMotifs_clusters.rds")
+# # write.csv(enriched_motifs_c$heatmap_em, "motif_per_cluster_hm.csv")
 
 
 # Create motif SeuratObjects ----
@@ -444,6 +444,10 @@ proj <- addDeviationsMatrix(
   peakAnnotation = "Motif",
   force = TRUE
 )
+
+saveArchRProject(ArchRProj = proj, outputDirectory = "adddevs_ArchRProject")
+print("sleeping...")
+Sys.sleep(7200)
 
 markers_motifs <- getMarkerFeatures(
   ArchRProj = proj,
@@ -468,15 +472,16 @@ for (i in seq_len(length(marker_motifs_list))) {
 
 if (length(motifs) > 1) {
   motifs <- unlist(motifs)
-  motifs <- paste0("z:", motifs)
+  # motifs <- paste0("z:", motifs)
   motifs <- unique(motifs)
 
-  proj <- addImputeWeights(proj)
+  # proj <- addImputeWeights(proj)
 
   dev_score <- getDeviation_ArchR(
     ArchRProj = proj,
     name = motifs,
-    imputeWeights = getImputeWeights(proj)
+    useAssay = "z",  # can be "deviations" or "z"ls
+    log2Norm = TRUE
   )
 
   dev_score[is.na(dev_score)] <- 0
@@ -500,7 +505,7 @@ empty_feat_m <- rownames(dev_score3)[empty_feat_idx_m]
 seurat_objs_m <- c()
 for (run in runs) {
 
-  obj <- build_atlas_seurat_object_old(
+  obj <- build_atlas_seurat_object(
     run_id = run[1],
     matrix = dev_score3,
     metadata = metadata,
