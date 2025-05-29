@@ -445,10 +445,6 @@ proj <- addDeviationsMatrix(
   force = TRUE
 )
 
-saveArchRProject(ArchRProj = proj, outputDirectory = "adddevs_ArchRProject")
-print("sleeping...")
-Sys.sleep(7200)
-
 markers_motifs <- getMarkerFeatures(
   ArchRProj = proj,
   useMatrix = "MotifMatrix",
