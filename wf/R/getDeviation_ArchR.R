@@ -26,7 +26,6 @@ getDeviation_ArchR <- function(
   rownames(result) <- motif_names[idx]
 
   if (log2Norm) {
-    result[result < 0] <- 0  # Optional: clip negatives
     result <- log2(result + 1)
   }
 

@@ -1,6 +1,6 @@
 getDeviation_ArchR2 <- function(
   ArchRProj = projHeme1,
-  name = markerGenes,:wq
+  name = markerGenes,
   imputeWeights = getImputeWeights(projHeme1),
   threads = getArchRThreads(),
   logFile = createLogFile("plotEmbedding"),
