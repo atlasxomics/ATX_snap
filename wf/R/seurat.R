@@ -422,7 +422,6 @@ scvolcano <- function(inpMarkers, condition1, condition2, feature = "All") {
   return(ggOut)
 }
 
-
 seurat_to_h5ad <- function(seuratobj, spatial, prefix) {
 
   if (spatial) {
