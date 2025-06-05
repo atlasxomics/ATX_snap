@@ -4,6 +4,7 @@ from latch.resources.workflow import workflow
 from latch.types.metadata import (
     LatchAuthor, LatchMetadata, LatchParameter, LatchRule
 )
+from latch.types import LatchDir
 
 # from wf.task import registry_task, snap_task
 from wf.task import (
@@ -14,7 +15,7 @@ from wf.task import (
     rank_peaks,
     registry_task,
 )
-from wf.utils import Genome, Run
+from wf.utils import Genome, Run, get_groups
 
 metadata = LatchMetadata(
     display_name="atx_snap",
@@ -34,6 +35,11 @@ metadata = LatchMetadata(
                       (i.e., Female-control).",
             batch_table_column=True,
             samplesheet=True,
+        ),
+        "input_dir": LatchParameter(
+            display_name="input directory",
+            description="Output directory from previous execution; with ArchRProject.",
+            batch_table_column=True,
         ),
         "genome": LatchParameter(
             display_name="genome",
@@ -123,6 +129,7 @@ metadata = LatchMetadata(
 @workflow(metadata)
 def snap_workflow(
     runs: List[Run],
+    indir: LatchDir,
     genome: Genome,
     project_name: str,
     resolution: float = 1.0,
@@ -238,24 +245,26 @@ def snap_workflow(
 
     """
 
-    outdir, groups = make_adata(
-        runs=runs,
-        genome=genome,
-        project_name=project_name,
-        resolution=resolution,
-        leiden_iters=leiden_iters,
-        n_comps=n_comps,
-        min_cluster_size=min_cluster_size,
-        min_tss=min_tss,
-        min_frags=min_frags,
-        tile_size=tile_size,
-        n_features=n_features,
-        clustering_iters=clustering_iters,
-    )
+    # outdir, groups = make_adata(
+    #     runs=runs,
+    #     genome=genome,
+    #     project_name=project_name,
+    #     resolution=resolution,
+    #     leiden_iters=leiden_iters,
+    #     n_comps=n_comps,
+    #     min_cluster_size=min_cluster_size,
+    #     min_tss=min_tss,
+    #     min_frags=min_frags,
+    #     tile_size=tile_size,
+    #     n_features=n_features,
+    #     clustering_iters=clustering_iters,
+    # )
+
+    groups = ["sample", "condition", "cluster"]
 
     outdir_ge = make_adata_gene(
         runs=runs,
-        outdir=outdir,
+        outdir=indir,
         project_name=project_name,
         genome=genome,
         groups=groups

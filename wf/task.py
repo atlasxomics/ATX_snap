@@ -171,6 +171,8 @@ def make_adata_gene(
     spatial_path = LatchFile(f"{outdir.remote_path}/tables/spatial.csv").local_path
     umap_path = LatchFile(f"{outdir.remote_path}/tables/X_umap.csv").local_path
 
+    archrproj_path = LatchDir(f"{outdir.remote_path}/{project_name}_ArchRProject").local_path
+
     # adata = anndata.read_h5ad(data_path.local_path)
     genome = genome.value
 
@@ -192,6 +194,7 @@ def make_adata_gene(
         project_name,
         genome,
         obs_path,
+        archrproj_path,
     ]
 
     runs = [
@@ -207,18 +210,18 @@ def make_adata_gene(
     _archr_cmd.extend(runs)
     subprocess.run(_archr_cmd, check=True)
 
-    logging.info("Reading and combining gene AnnData...")
-    h5ads_g = glob.glob("*g_converted.h5ad")
-    adatas_g = [anndata.read_h5ad(h5ad) for h5ad in h5ads_g]
-    adata_gene = sc.concat(adatas_g)
+    # logging.info("Reading and combining gene AnnData...")
+    # h5ads_g = glob.glob("*g_converted.h5ad")
+    # adatas_g = [anndata.read_h5ad(h5ad) for h5ad in h5ads_g]
+    # adata_gene = sc.concat(adatas_g)
 
     logging.info("Reading and combining motif AnnData...")
     h5ads_m = glob.glob("*m_converted.h5ad")
     adatas_m = [anndata.read_h5ad(h5ad) for h5ad in h5ads_m]
     adata_motif = sc.concat(adatas_m)
 
-    if "_index" in adata_gene.raw.var:  # Do this for some stupid reason
-        adata_gene.raw.var.drop(columns=['_index'], inplace=True)
+    # if "_index" in adata_gene.raw.var:  # Do this for some stupid reason
+    #     adata_gene.raw.var.drop(columns=['_index'], inplace=True)
 
     if "_index" in adata_motif.raw.var:  # Do this for some stupid reason
         adata_motif.raw.var.drop(columns=['_index'], inplace=True)
@@ -230,12 +233,13 @@ def make_adata_gene(
         logging.warning(f"File not found: {obs_path}")
         obs = None
     if obs is not None and not obs.empty:
-        obs_aligned = obs.reindex(adata_gene.obs.index)
-        adata_gene.obs = obs_aligned
+        # obs_aligned = obs.reindex(adata_gene.obs.index)
+        obs_aligned = obs.reindex(adata_motif.obs.index)
+        # adata_gene.obs = obs_aligned
         adata_motif.obs = obs_aligned
         for group in groups:
-            if adata_gene.obs[group].dtype != object:  # Ensure groups are str
-                adata_gene.obs[group] = adata_gene.obs[group].astype(str)
+            # if adata_gene.obs[group].dtype != object:  # Ensure groups are str
+            #     adata_gene.obs[group] = adata_gene.obs[group].astype(str)
             if adata_motif.obs[group].dtype != object:  # Ensure groups are str
                 adata_motif.obs[group] = adata_motif.obs[group].astype(str)
 
@@ -243,37 +247,39 @@ def make_adata_gene(
     umap_df = pd.read_csv(umap_path, index_col=0)
     spatial_df = pd.read_csv(spatial_path, index_col=0)
 
-    umap_aligned = umap_df.loc[adata_gene.obs_names].values
-    adata_gene.obsm["X_umap"] = umap_aligned
+    # umap_aligned = umap_df.loc[adata_gene.obs_names].values
+    umap_aligned = umap_df.loc[adata_motif.obs_names].values
+    # adata_gene.obsm["X_umap"] = umap_aligned
     adata_motif.obsm["X_umap"] = umap_aligned
 
-    spatial_aligned = spatial_df.loc[adata_gene.obs_names].values
-    adata_gene.obsm["spatial"] = spatial_aligned
+    # spatial_aligned = spatial_df.loc[adata_gene.obs_names].values
+    spatial_aligned = spatial_df.loc[adata_motif.obs_names].values
+    # adata_gene.obsm["spatial"] = spatial_aligned
     adata_motif.obsm["spatial"] = spatial_aligned
 
-    # Neighbrohood enrichment plot, Ripley's plot
-    adata_gene = sp.squidpy_analysis(adata_gene)
+    # # Neighbrohood enrichment plot, Ripley's plot
+    # adata_gene = sp.squidpy_analysis(adata_gene)
 
-    group_dict = dict()
-    group_dict["all"] = None
+    # group_dict = dict()
+    # group_dict["all"] = None
 
-    for group in group_dict.keys():
-        pl.plot_neighborhoods(
-            adata_gene, group, group_dict[group], outdir=figures_dir
-        )
+    # for group in group_dict.keys():
+    #     pl.plot_neighborhoods(
+    #         adata_gene, group, group_dict[group], outdir=figures_dir
+    #     )
 
-    ripley(adata_gene, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
+    # ripley(adata_gene, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
 
-    # Add add DA gene tables
-    try:
-        marker_files = glob.glob("ranked_genes_*.csv")
-        for file in marker_files:
-            name = file.split("/")[-1]
-            name = name.replace(".csv", "")
-            df = pd.read_csv(file, dtype={"group_name": str})
-            adata_gene.uns[name] = df
-    except Exception as e:
-        logging.warning(f"Error {e} loading marker genes files.")
+    # # Add add DA gene tables
+    # try:
+    #     marker_files = glob.glob("ranked_genes_*.csv")
+    #     for file in marker_files:
+    #         name = file.split("/")[-1]
+    #         name = name.replace(".csv", "")
+    #         df = pd.read_csv(file, dtype={"group_name": str})
+    #         adata_gene.uns[name] = df
+    # except Exception as e:
+    #     logging.warning(f"Error {e} loading marker genes files.")
 
     # Add add DA motif tables
     try:
@@ -286,16 +292,16 @@ def make_adata_gene(
     except Exception as e:
         logging.warning(f"Error {e} loading marker genes files.")
 
-    # Add archr genes heatmap
-    try:
-        hm_files = glob.glob("genes_per_*_hm.csv")
-        for file in hm_files:
-            name = file.split("/")[-1]
-            name = name.replace(".csv", "")
-            df = pd.read_csv(file, dtype={"cluster": str}, index_col=0)
-            adata_gene.uns[name] = df
-    except Exception as e:
-        logging.warning(f"Error {e} loading heatmap files.")
+    # # Add archr genes heatmap
+    # try:
+    #     hm_files = glob.glob("genes_per_*_hm.csv")
+    #     for file in hm_files:
+    #         name = file.split("/")[-1]
+    #         name = name.replace(".csv", "")
+    #         df = pd.read_csv(file, dtype={"cluster": str}, index_col=0)
+    #         adata_gene.uns[name] = df
+    # except Exception as e:
+    #     logging.warning(f"Error {e} loading heatmap files.")
 
     # Add archr motifs heatmap
     try:
@@ -308,22 +314,22 @@ def make_adata_gene(
     except Exception as e:
         logging.warning(f"Error {e} loading heatmap files.")
 
-    # Add archr gene volcano plots
-    if "condition" in groups:
-        try:
-            volcano_files = glob.glob("volcanoMarkers_genes_*.csv")
-            for file in volcano_files:
-                name = file.split("/")[-1]
-                treatment = name.replace("volcanoMarkers_genes_", "").replace(".csv", "")
-                df = pd.read_csv(file, dtype={"cluster": str})
-                adata_gene.uns[f"volcano_{treatment}"] = df
-        except Exception as e:
-            logging.warning(f"Error {e} loading volcano files.")
+    # # Add archr gene volcano plots
+    # if "condition" in groups:
+    #     try:
+    #         volcano_files = glob.glob("volcanoMarkers_genes_*.csv")
+    #         for file in volcano_files:
+    #             name = file.split("/")[-1]
+    #             treatment = name.replace("volcanoMarkers_genes_", "").replace(".csv", "")
+    #             df = pd.read_csv(file, dtype={"cluster": str})
+    #             adata_gene.uns[f"volcano_{treatment}"] = df
+    #     except Exception as e:
+    #         logging.warning(f"Error {e} loading volcano files.")
 
     # Add archr motif volcano plots
     if "condition" in groups:
         try:
-            volcano_files = glob.glob("volcanoMarkers_motifs_*.csv") 
+            volcano_files = glob.glob("volcanoMarkers_motifs_*.csv")
             for file in volcano_files:
                 name = file.split("/")[-1]
                 treatment = name.replace("volcanoMarkers_motifs_", "").replace(".csv", "")
@@ -352,12 +358,12 @@ def make_adata_gene(
         subprocess.run(_mv_figures_cmd)
 
     # Reduce size of anndata object for Plots
-    sm_adata = ft.clean_adata(adata_gene)
+    # sm_adata = ft.clean_adata(adata_gene)
     sm_adata_m = ft.clean_adata(adata_motif)
 
-    logging.info("Saving gene adata...")
-    adata_gene.write(f"{out_dir}/combined_ge.h5ad")
-    sm_adata.write(f"{out_dir}/combined_sm_ge.h5ad")
+    # logging.info("Saving gene adata...")
+    # adata_gene.write(f"{out_dir}/combined_ge.h5ad")
+    # sm_adata.write(f"{out_dir}/combined_sm_ge.h5ad")
 
     logging.info("Saving motif adata...")
     adata_motif.write(f"{out_dir}/combined_motifs.h5ad")
