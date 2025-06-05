@@ -6,6 +6,7 @@ import subprocess
 from typing import List
 
 import anndata
+import gc
 import numpy as np
 import pychromvar as pc
 import scanpy as sc
@@ -155,7 +156,7 @@ def make_adata(
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}"), groups
 
 
-@custom_task(cpu=50, memory=975, storage_gib=1000)
+@custom_task(cpu=50, memory=975, storage_gib=2000)
 def make_adata_gene(
     runs: List[utils.Run],
     outdir: LatchDir,
@@ -206,7 +207,6 @@ def make_adata_gene(
     ]
     _archr_cmd.extend(runs)
     subprocess.run(_archr_cmd, check=True)
-
     logging.info("Reading and combining gene AnnData...")
     h5ads_g = glob.glob("*g_converted.h5ad")
     adatas_g = [anndata.read_h5ad(h5ad) for h5ad in h5ads_g]
@@ -217,9 +217,11 @@ def make_adata_gene(
     adatas_m = [anndata.read_h5ad(h5ad) for h5ad in h5ads_m]
     adata_motif = sc.concat(adatas_m)
 
+    del adatas
+    gc.collect()
+
     if "_index" in adata_gene.raw.var:  # Do this for some stupid reason
         adata_gene.raw.var.drop(columns=['_index'], inplace=True)
-
     if "_index" in adata_motif.raw.var:  # Do this for some stupid reason
         adata_motif.raw.var.drop(columns=['_index'], inplace=True)
 
@@ -239,32 +241,35 @@ def make_adata_gene(
             if adata_motif.obs[group].dtype != object:  # Ensure groups are str
                 adata_motif.obs[group] = adata_motif.obs[group].astype(str)
 
+    logging.info("Transferring umap...")
     # Convert to DataFrame and include cell names
     umap_df = pd.read_csv(umap_path, index_col=0)
-    spatial_df = pd.read_csv(spatial_path, index_col=0)
-
     umap_aligned = umap_df.loc[adata_gene.obs_names].values
     adata_gene.obsm["X_umap"] = umap_aligned
     adata_motif.obsm["X_umap"] = umap_aligned
 
+    logging.info("Transferring spatial...")
+    spatial_df = pd.read_csv(spatial_path, index_col=0)
     spatial_aligned = spatial_df.loc[adata_gene.obs_names].values
     adata_gene.obsm["spatial"] = spatial_aligned
     adata_motif.obsm["spatial"] = spatial_aligned
 
+    logging.info("Running squidpy...")
     # Neighbrohood enrichment plot, Ripley's plot
     adata_gene = sp.squidpy_analysis(adata_gene)
 
     group_dict = dict()
     group_dict["all"] = None
 
+    logging.info("Making neighborhood plots...")
     for group in group_dict.keys():
-        pl.plot_neighborhoods(
-            adata_gene, group, group_dict[group], outdir=figures_dir
-        )
+        pl.plot_neighborhoods(adata_gene, group, group_dict[group], outdir=figures_dir)
 
+    logging.info("Running ripley...")
     ripley(adata_gene, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
 
     # Add add DA gene tables
+    logging.info("Adding ranked genes...")
     try:
         marker_files = glob.glob("ranked_genes_*.csv")
         for file in marker_files:
@@ -287,6 +292,7 @@ def make_adata_gene(
         logging.warning(f"Error {e} loading marker genes files.")
 
     # Add archr genes heatmap
+    logging.info("Adding heatmaps...")
     try:
         hm_files = glob.glob("genes_per_*_hm.csv")
         for file in hm_files:
@@ -309,6 +315,7 @@ def make_adata_gene(
         logging.warning(f"Error {e} loading heatmap files.")
 
     # Add archr gene volcano plots
+    logging.info("Adding gene volcanos...")
     if "condition" in groups:
         try:
             volcano_files = glob.glob("volcanoMarkers_genes_*.csv")
@@ -320,6 +327,7 @@ def make_adata_gene(
         except Exception as e:
             logging.warning(f"Error {e} loading volcano files.")
 
+    logging.info("Adding motif volcanos...")
     # Add archr motif volcano plots
     if "condition" in groups:
         try:
@@ -332,6 +340,7 @@ def make_adata_gene(
         except Exception as e:
             logging.warning(f"Error {e} loading volcano files.")
 
+    logging.info("Moving outputs to ourdir...")
     # Move data files to subfolder
     project_dirs = glob.glob(f'{project_name}_*')
     seurat_objs = glob.glob('*.rds')
@@ -351,6 +360,10 @@ def make_adata_gene(
         _mv_figures_cmd = ['mv'] + figures + [str(figures_dir)]
         subprocess.run(_mv_figures_cmd)
 
+    logging.info("Saving full adata...")
+    adata_gene.write(f"{out_dir}/combined_ge.h5ad")
+
+    logging.info("Making reduced gene adata...")
     # Reduce size of anndata object for Plots
     sm_adata = ft.clean_adata(adata_gene)
     sm_adata_m = ft.clean_adata(adata_motif)
@@ -363,6 +376,7 @@ def make_adata_gene(
     adata_motif.write(f"{out_dir}/combined_motifs.h5ad")
     sm_adata_m.write(f"{out_dir}/combined_sm_motifs.h5ad")
 
+    logging.info("Uploading data to Latch...")
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
 
 

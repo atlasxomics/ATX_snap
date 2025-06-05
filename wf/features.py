@@ -89,8 +89,6 @@ def clean_adata(adata: anndata.AnnData) -> anndata.AnnData:
         "dispersions", "dispersions_norm"
     ]
 
-    adata = adata.copy()
-
     rm_obs = [o for o in obs if o in adata.obs.keys()]
     rm_var = [v for v in var if v in adata.var.keys()]
 
