@@ -7,11 +7,8 @@ from latch.types.metadata import (
 
 # from wf.task import registry_task, snap_task
 from wf.task import (
-    call_peaks,
+    archr_task,
     make_adata,
-    make_adata_gene,
-    motifs_task,
-    rank_peaks,
     registry_task,
 )
 from wf.utils import Genome, Run
@@ -253,7 +250,7 @@ def snap_workflow(
         clustering_iters=clustering_iters,
     )
 
-    outdir_ge = make_adata_gene(
+    outdir_ge = archr_task(
         runs=runs,
         outdir=outdir,
         project_name=project_name,
@@ -261,37 +258,16 @@ def snap_workflow(
         groups=groups
     )
 
-    # outdir_peaks = call_peaks(
-    #     outdir=outdir,
-    #     project_name=project_name,
-    #     genome=genome,
-    #     groups=groups,
-    # )
+    uploaded_results = registry_task(runs=runs, results=outdir_ge)
 
-    # outdir_ranked_peaks = rank_peaks(
-    #     outdir=outdir_peaks,
-    #     project_name=project_name,
-    #     genome=genome,
-    #     groups=groups,
-    # )
-
-    # outdir_motifs = motifs_task(
-    #     outdir=outdir_peaks,
-    #     project_name=project_name,
-    #     genome=genome,
-    #     groups=groups,
-    # )
-
-    # uploaded_results = registry_task(runs=runs, results=outdir_motifs)
-
-    return outdir_ge
+    return uploaded_results
 
 
 if __name__ == "__main__":
 
     from latch.types import LatchDir, LatchFile
 
-    make_adata_gene(
+    archr_task(
         runs=[Run(
             run_id="demo",
             fragments_file=LatchFile("latch://13502.account/atac_outs/ds_D01033_NG01681/outs/ds_D01033_NG01681_fragments.tsv.gz"),
@@ -303,24 +279,3 @@ if __name__ == "__main__":
         groups=["cluster"],
         project_name="develop_archrGenes",
     )
-
-    # make_adata_gene(
-    #     runs=[
-    #         Run(
-    #             run_id="D1990_4585",
-    #             fragments_file=LatchFile("latch://13502.account/chromap_outputs/D0000Spatial_archive/D01990_NG05957/chromap_output/fragments.tsv.gz"),
-    #             spatial_dir=LatchDir("latch://atx-illumina.mount/Images_spatial/D1990/spatial"),
-    #             condition="4585",
-    #         ),
-    #         Run(
-    #             run_id="D1991_4587",
-    #             fragments_file=LatchFile("latch://13502.account/chromap_outputs/D0000Spatial_archive/D01991_NG05958/chromap_output/fragments.tsv.gz"),
-    #             spatial_dir=LatchDir("latch://atx-illumina.mount/Images_spatial/D1991/spatial"),
-    #             condition="4587",
-    #         ),
-    #     ],
-    #     outdir="latch://13502.account/snap_outs/Dhar_271_001712",
-    #     project_name="Dhar_271_develop",
-    #     groups=["sample", "condition", "cluster"],
-    #     genome=Genome("hg38"),
-    # )
