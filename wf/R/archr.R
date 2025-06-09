@@ -462,3 +462,289 @@ save_umap <- function(proj, color_by) {
   gridExtra::grid.arrange(grobs = umap_plots, ncol = 2)
   dev.off()
 }
+
+performPairwiseMarkerComparisons <- function(
+    ArchRProj,
+    groupBy = "Condition",
+    useMatrix = "GeneScoreMatrix",
+    testMethod = "ttest",
+    bias = c("TSSEnrichment", "log10(nFrags)"),
+    maxCells = 500,
+    scaleTo = 10^4,
+    threads = getArchRThreads(),
+    outputDir = "PairwiseMarkers",
+    saveResults = TRUE,
+    removeSameSignReciprocals = TRUE,  # New parameter
+    verbose = TRUE
+) {
+  
+  if(saveResults && !dir.exists(outputDir)) {
+    dir.create(outputDir, recursive = TRUE)
+  }
+  
+  allGroups <- unique(getCellColData(ArchRProj, groupBy, drop = TRUE))
+  allGroups <- allGroups[!is.na(allGroups)]
+  
+  if(verbose) {
+    cat("Found", length(allGroups), "groups:", paste(allGroups, collapse = ", "), "\n")
+  }
+  
+  # Generate all directional pairwise comparisons (A vs B and B vs A)
+  directionalCombos <- expand.grid(group1 = allGroups, group2 = allGroups, stringsAsFactors = FALSE)
+  directionalCombos <- directionalCombos[directionalCombos$group1 != directionalCombos$group2, ]
+  
+  if(verbose) {
+    cat("Performing", nrow(directionalCombos), "directional pairwise comparisons\n")
+  }
+  
+  pairwiseResults <- list()
+  rawResults <- list()  # Store raw results for filtering
+  
+  for(i in seq_len(nrow(directionalCombos))) {
+    
+    group1 <- directionalCombos$group1[i]
+    group2 <- directionalCombos$group2[i]
+    comparisonName <- paste0(group1, "_vs_", group2)
+    
+    if(verbose) {
+      cat("Processing comparison", i, "of", nrow(directionalCombos), ":", comparisonName, "\n")
+    }
+    
+    tryCatch({
+      markerFeatures <- getMarkerFeatures(
+        ArchRProj = ArchRProj,
+        groupBy = groupBy,
+        useGroups = group1,
+        bgdGroups = group2,
+        useMatrix = useMatrix,
+        bias = bias,
+        testMethod = testMethod,
+        maxCells = maxCells,
+        scaleTo = scaleTo,
+        threads = threads,
+        verbose = FALSE
+      )
+      
+      markers_df <- processMarkerFeatures(markerFeatures, group1, ArchRProj)
+      
+      pairwiseResults[[comparisonName]] <- markerFeatures
+      rawResults[[comparisonName]] <- markers_df
+      
+    }, error = function(e) {
+      if(verbose) {
+        cat("Error in comparison", comparisonName, ":", e$message, "\n")
+      }
+      pairwiseResults[[comparisonName]] <- NULL
+      rawResults[[comparisonName]] <- NULL
+    })
+  }
+  
+  # Filter same-signed reciprocals if requested
+  if(removeSameSignReciprocals && length(rawResults) > 0) {
+    if(verbose) {
+      cat("Filtering same-signed reciprocal features...\n")
+    }
+    
+    filteredResults <- filterSameSignReciprocals(rawResults, verbose = verbose)
+    
+    # Save filtered results
+    if(saveResults) {
+      for(comparisonName in names(filteredResults)) {
+        if(!is.null(filteredResults[[comparisonName]]) && !is.null(comparisonName)) {
+          splitResult <- strsplit(comparisonName, "_vs_")[[1]]
+          if(length(splitResult) >= 2) {
+            group1 <- splitResult[1]
+            group2 <- splitResult[2]
+            filename <- paste0(group1, "-vs-", group2, "_filtered.csv")
+            write.csv(
+              filteredResults[[comparisonName]], 
+              file.path(outputDir, filename), 
+              row.names = FALSE
+            )
+          }
+        }
+      }
+      
+      # Save summary of filtering
+      filteringSummary <- generateFilteringSummary(rawResults, filteredResults)
+      write.csv(
+        filteringSummary,
+        file.path(outputDir, "filtering_summary.csv"),
+        row.names = FALSE
+      )
+    }
+  }
+  
+  # Save raw results regardless
+  if(saveResults) {
+    for(comparisonName in names(rawResults)) {
+      if(!is.null(rawResults[[comparisonName]]) && !is.null(comparisonName)) {
+        splitResult <- strsplit(comparisonName, "_vs_")[[1]]
+        if(length(splitResult) >= 2) {
+          group1 <- splitResult[1]
+          group2 <- splitResult[2]
+          filename <- paste0(group1, "-vs-", group2, "_raw.csv")
+          write.csv(
+            rawResults[[comparisonName]], 
+            file.path(outputDir, filename), 
+            row.names = FALSE
+          )
+        }
+      }
+    }
+    
+    saveRDS(pairwiseResults, file.path(outputDir, "all_directional_pairwise_comparisons.rds"))
+  }
+  
+  if(verbose) {
+    cat("Completed all directional pairwise comparisons!\n")
+    cat("Results saved to:", outputDir, "\n")
+  }
+
+  # Return filtered results if filtering was applied, otherwise raw results
+  if(removeSameSignReciprocals && exists("filteredResults")) {
+    return(list(raw = pairwiseResults, filtered = filteredResults))
+  } else {
+    return(pairwiseResults)
+  }
+}
+
+# Function to filter same-signed reciprocal features
+filterSameSignReciprocals <- function(rawResults, verbose = TRUE) {
+  
+  filteredResults <- list()
+  comparisonNames <- names(rawResults)
+  
+  # Track features removed for summary
+  removalStats <- data.frame(
+    comparison = character(),
+    total_features = integer(),
+    removed_features = integer(),
+    remaining_features = integer(),
+    stringsAsFactors = FALSE
+  )
+
+  for (comparisonName in comparisonNames) {
+
+    if (is.null(rawResults[[comparisonName]])) next
+
+    # Parse comparison name
+    groups <- strsplit(comparisonName, "_vs_")[[1]]
+    group1 <- groups[1]
+    group2 <- groups[2]
+
+    # Find reciprocal comparison
+    reciprocalName <- paste0(group2, "_vs_", group1)
+    
+    if(reciprocalName %in% comparisonNames && !is.null(rawResults[[reciprocalName]])) {
+      
+      df1 <- rawResults[[comparisonName]]
+      df2 <- rawResults[[reciprocalName]]
+      
+      # Find common genes
+      commonGenes <- intersect(df1$gene, df2$gene)
+      
+      if(length(commonGenes) > 0) {
+        
+        # Get log2FC for common genes
+        df1_common <- df1[df1$gene %in% commonGenes, ]
+        df2_common <- df2[df2$gene %in% commonGenes, ]
+        
+        # Match by gene name
+        df1_common <- df1_common[order(df1_common$gene), ]
+        df2_common <- df2_common[order(df2_common$gene), ]
+        
+        # Find same-signed features (both positive or both negative)
+        sameSigned <- sign(df1_common$avg_log2FC) == sign(df2_common$avg_log2FC)
+        sameSigned <- sameSigned & !is.na(sameSigned)
+        
+        # Remove same-signed features
+        genesToRemove <- df1_common$gene[sameSigned]
+        df1_filtered <- df1[!df1$gene %in% genesToRemove, ]
+        
+        filteredResults[[comparisonName]] <- df1_filtered
+        
+        if(verbose) {
+          cat("Comparison", comparisonName, ": removed", sum(sameSigned), 
+              "same-signed features out of", nrow(df1), "total features\n")
+        }
+        
+        # Store removal stats
+        removalStats <- rbind(removalStats, data.frame(
+          comparison = comparisonName,
+          total_features = nrow(df1),
+          removed_features = sum(sameSigned),
+          remaining_features = nrow(df1_filtered),
+          stringsAsFactors = FALSE
+        ))
+        
+      } else {
+        # No common genes, keep all features
+        filteredResults[[comparisonName]] <- rawResults[[comparisonName]]
+        
+        removalStats <- rbind(removalStats, data.frame(
+          comparison = comparisonName,
+          total_features = nrow(rawResults[[comparisonName]]),
+          removed_features = 0,
+          remaining_features = nrow(rawResults[[comparisonName]]),
+          stringsAsFactors = FALSE
+        ))
+      }
+      
+    } else {
+      # No reciprocal comparison found, keep all features
+      filteredResults[[comparisonName]] <- rawResults[[comparisonName]]
+      
+      removalStats <- rbind(removalStats, data.frame(
+        comparison = comparisonName,
+        total_features = nrow(rawResults[[comparisonName]]),
+        removed_features = 0,
+        remaining_features = nrow(rawResults[[comparisonName]]),
+        stringsAsFactors = FALSE
+      ))
+    }
+  }
+
+  # Store removal stats as attribute
+  attr(filteredResults, "removal_stats") <- removalStats
+
+  return(filteredResults)
+}
+
+# Function to generate filtering summary
+generateFilteringSummary <- function(rawResults, filteredResults) {
+  
+  removalStats <- attr(filteredResults, "removal_stats")
+  
+  if(is.null(removalStats)) {
+    return(data.frame(
+      comparison = names(rawResults),
+      total_features = sapply(rawResults, nrow),
+      removed_features = 0,
+      remaining_features = sapply(rawResults, nrow),
+      removal_percentage = 0
+    ))
+  }
+  
+  removalStats$removal_percentage <- round(
+    (removalStats$removed_features / removalStats$total_features) * 100, 2
+  )
+  
+  return(removalStats)
+}
+
+# Analysis code for processing marker features (unchanged)
+processMarkerFeatures <- function(markers, groups, proj) {
+  df <- S4Vectors::DataFrame(
+    markers_df1 <- SummarizedExperiment::assay(markers, "MeanDiff"),
+    markers_df2 <- SummarizedExperiment::assay(markers, "Pval"),
+    markers_df3 <- SummarizedExperiment::assay(markers, "FDR"),
+    markers_df4 <- SummarizedExperiment::assay(markers, "Log2FC"),
+    markers_df5 <- SummarizedExperiment::assay(markers, "Mean")
+  )
+  df$genes <- SummarizedExperiment::rowData(markers)$name
+  colnames(df) <- c(
+    "mean_diff", "p_val", "p_val_adj", "avg_log2FC", "mean", "gene"
+  )
+  return(df)
+}
