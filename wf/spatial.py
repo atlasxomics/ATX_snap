@@ -1,4 +1,8 @@
 import anndata
+import logging
+from pathlib import Path
+
+import wf.plotting as pl
 
 
 def add_spatial(
@@ -9,6 +13,31 @@ def add_spatial(
     adata.obsm["spatial"] = adata.obs[[y_key, x_key]].values
 
     return adata
+
+
+def run_squidpy_analysis(
+    adata_gene: anndata.AnnData, figures_dir: Path
+) -> anndata.AnnData:
+    """Run Squidpy analysis and generate plots."""
+    from squidpy.pl import ripley
+
+    logging.info("Running squidpy...")
+    adata_gene = squidpy_analysis(adata_gene)
+
+    # Generate neighborhood plots
+    logging.info("Making neighborhood plots...")
+    group_dict = {"all": None}
+
+    for group_name, group_value in group_dict.items():
+        pl.plot_neighborhoods(
+            adata_gene, group_name, group_value, outdir=str(figures_dir)
+        )
+
+    # Generate Ripley's plot
+    logging.info("Running ripley...")
+    ripley(adata_gene, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
+
+    return adata_gene
 
 
 def squidpy_analysis(
