@@ -111,10 +111,14 @@ def make_adata(
         coverage_dir = f"{out_dir}/{group}_coverages"
         os.makedirs(coverage_dir, exist_ok=True)
         snap.ex.export_coverage(
-            adata, groupby=group, suffix=f"{group}.bedgraph.gz"
+            adata,
+            groupby=group,
+            suffix=f"{group}.bw",
+            bin_size=10,
+            output_format="bigwig",
         )
-        bgs = glob.glob("*.bedgraph.gz")
-        subprocess.run(["mv"] + bgs + [coverage_dir])
+        bws = glob.glob("*.bw")
+        subprocess.run(["mv"] + bws + [coverage_dir])
     logging.info("Finished coverages for groups...")
 
     pl.plot_umaps(adata, groups, f"{figures_dir}/umap.pdf")
