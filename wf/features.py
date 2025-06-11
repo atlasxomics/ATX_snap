@@ -72,44 +72,41 @@ def clean_index_columns(*adatas: anndata.AnnData) -> None:
                 adata.raw.var.drop(columns=['_index'], inplace=True)
 
 
-def load_and_combine_data() -> Tuple[anndata.AnnData, anndata.AnnData]:
-    """Load and combine gene and motif AnnData objects."""
+def load_and_combine_data(suffix: str) -> anndata.AnnData:
+    """Load and combine AnnData objects."""
     logging.info("Reading and combining gene AnnData...")
-    gene_files = glob.glob("*g_converted.h5ad")
-    gene_adatas = [anndata.read_h5ad(file) for file in gene_files]
-    adata_gene = sc.concat(gene_adatas)
-
-    logging.info("Reading and combining motif AnnData...")
-    motif_files = glob.glob("*m_converted.h5ad")
-    motif_adatas = [anndata.read_h5ad(file) for file in motif_files]
-    adata_motif = sc.concat(motif_adatas)
+    files = glob.glob(f"*{suffix}.h5ad")
+    adatas = [anndata.read_h5ad(file) for file in files]
+    adata = sc.concat(adatas)
 
     # Clean up memory
-    del gene_adatas, motif_adatas
+    del adatas
     gc.collect()
 
     # Clean up index columns if they exist
-    clean_index_columns(adata_gene, adata_motif)
+    clean_index_columns(adata)
 
-    return adata_gene, adata_motif
+    return adata
 
 
 def load_analysis_results(
-    adata_gene: anndata.AnnData,
-    adata_motif: anndata.AnnData,
+    adata: anndata.AnnData,
+    type: str,
     groups: List[str]
 ) -> None:
     """Load various analysis results into AnnData objects."""
     # Load differential analysis results
-    load_ranked_genes(adata_gene)
-    load_enriched_motifs(adata_motif)
+    if type == "gene":
+        load_ranked_genes(adata)
+    elif type == "motif":
+        load_enriched_motifs(adata)
 
     # Load heatmap data
-    load_heatmaps(adata_gene, adata_motif)
+    load_heatmaps(adata, type)
 
     # Load volcano plots if condition analysis was performed
     if "condition" in groups:
-        load_volcano_plots(adata_gene, adata_motif)
+        load_volcano_plots(adata, type)
 
 
 def load_csv_files_to_uns(
@@ -143,25 +140,28 @@ def load_enriched_motifs(adata_motif: anndata.AnnData) -> None:
 
 
 def load_heatmaps(
-    adata_gene: anndata.AnnData, adata_motif: anndata.AnnData
+    adata: anndata.AnnData,
+    type: str
 ) -> None:
     """Load heatmap data for both genes and motifs."""
     logging.info("Adding heatmaps...")
 
-    # Gene heatmaps
-    load_csv_files_to_uns(
-        "genes_per_*_hm.csv",
-        adata_gene.uns,
-        dtype_spec={"cluster": str},
-        index_col=0
-    )
+    if type == "gene":
+        # Gene heatmaps
+        load_csv_files_to_uns(
+            "genes_per_*_hm.csv",
+            adata.uns,
+            dtype_spec={"cluster": str},
+            index_col=0
+        )
 
+    elif type == "motif":
     # Motif heatmaps
-    load_csv_files_to_uns(
-        "motif_per_*_hm.csv",
-        adata_motif.uns,
-        index_col=0
-    )
+        load_csv_files_to_uns(
+            "motif_per_*_hm.csv",
+            adata.uns,
+            index_col=0
+        )
 
 
 def load_ranked_genes(adata_gene: anndata.AnnData) -> None:
@@ -173,54 +173,49 @@ def load_ranked_genes(adata_gene: anndata.AnnData) -> None:
 
 
 def load_volcano_plots(
-    adata_gene: anndata.AnnData, adata_motif: anndata.AnnData
+    adata: anndata.AnnData, type: str
 ) -> None:
     """Load volcano plot data for genes and motifs."""
-    logging.info("Adding gene volcanos...")
-    load_csv_files_to_uns(
-        "volcanoMarkers_genes_*.csv",
-        adata_gene.uns,
-        dtype_spec={"cluster": str},
-        name_transform=lambda name, file: volcano_name_transform(name, file, "genes")
-    )
+    if type == "gene":
+        logging.info("Adding gene volcanos...")
+        load_csv_files_to_uns(
+            "volcanoMarkers_genes_*.csv",
+            adata.uns,
+            dtype_spec={"cluster": str},
+            name_transform=lambda name, file: volcano_name_transform(name, file, "genes")
+        )
 
-    logging.info("Adding motif volcanos...")
-    load_csv_files_to_uns(
-        "volcanoMarkers_motifs_*.csv",
-        adata_motif.uns,
-        dtype_spec={"cluster": str},
-        name_transform=lambda name,
-        file: volcano_name_transform(name, file, "motifs")
-    )
+    elif type == "motif":
+        logging.info("Adding motif volcanos...")
+        load_csv_files_to_uns(
+            "volcanoMarkers_motifs_*.csv",
+            adata.uns,
+            dtype_spec={"cluster": str},
+            name_transform=lambda name,
+            file: volcano_name_transform(name, file, "motifs")
+        )
 
 
 def save_anndata_objects(
-    adata_gene: anndata.AnnData,
-    adata_motif: anndata.AnnData,
+    adata: anndata.AnnData,
+    suffix: str,
     base_dir: Path
 ) -> None:
     """Save full and reduced AnnData objects."""
     logging.info("Saving full adata...")
-
     # Save full objects
-    adata_gene.write(f"{base_dir}/combined_ge.h5ad")
-    adata_motif.write(f"{base_dir}/combined_motifs.h5ad")
+    adata.write(f"{base_dir}/combined{suffix}.h5ad")
 
     # Create and save reduced objects
-    logging.info("Making reduced gene adata...")
-    sm_adata_gene = clean_adata(adata_gene)
-    sm_adata_motif = clean_adata(adata_motif)
+    logging.info("Making reduced adata...")
+    sm_adata = clean_adata(adata)
 
-    logging.info("Saving gene adata...")
-    sm_adata_gene.write(f"{base_dir}/combined_sm_ge.h5ad")
-
-    logging.info("Saving motif adata...")
-    sm_adata_motif.write(f"{base_dir}/combined_sm_motifs.h5ad")
+    logging.info("Saving reduced adata...")
+    sm_adata.write(f"{base_dir}/combined_sm{suffix}.h5ad")
 
 
 def transfer_auxiliary_data(
-    adata_gene: anndata.AnnData,
-    adata_motif: anndata.AnnData,
+    adata: anndata.AnnData,
     data_paths: Dict[str, str],
     groups: List[str]
 ) -> None:
@@ -228,22 +223,21 @@ def transfer_auxiliary_data(
     logging.info("Transferring auxiliary data...")
 
     # Transfer observation data
-    transfer_obs_data(adata_gene, adata_motif, data_paths['obs'], groups)
+    transfer_obs_data(adata, data_paths['obs'], groups)
 
     # Transfer UMAP coordinates
     transfer_embedding_data(
-        adata_gene, adata_motif, data_paths['umap'], 'X_umap'
+        adata, data_paths['umap'], 'X_umap'
     )
 
     # Transfer spatial coordinates
     transfer_embedding_data(
-        adata_gene, adata_motif, data_paths['spatial'], 'spatial'
+        adata, data_paths['spatial'], 'spatial'
     )
 
 
 def transfer_embedding_data(
-    adata_gene: anndata.AnnData,
-    adata_motif: anndata.AnnData,
+    adata: anndata.AnnData,
     data_path: str,
     obsm_key: str
 ) -> None:
@@ -254,18 +248,16 @@ def transfer_embedding_data(
 
     try:
         df = pd.read_csv(data_path, index_col=0)
-        aligned_data = df.loc[adata_gene.obs_names].values
+        aligned_data = df.loc[adata.obs_names].values
 
-        adata_gene.obsm[obsm_key] = aligned_data
-        adata_motif.obsm[obsm_key] = aligned_data
+        adata.obsm[obsm_key] = aligned_data
 
     except (FileNotFoundError, KeyError) as e:
         logging.warning(f"Error loading {obsm_key} data: {e}")
 
 
 def transfer_obs_data(
-    adata_gene: anndata.AnnData,
-    adata_motif: anndata.AnnData,
+    adata: anndata.AnnData,
     obs_path: str,
     groups: List[str]
 ) -> None:
@@ -278,15 +270,13 @@ def transfer_obs_data(
         if obs.empty:
             return
 
-        obs_aligned = obs.reindex(adata_gene.obs.index)
-        adata_gene.obs = obs_aligned
-        adata_motif.obs = obs_aligned
+        obs_aligned = obs.reindex(adata.obs.index)
+        adata.obs = obs_aligned
 
         # Ensure group columns are strings
         for group in groups:
-            for adata in [adata_gene, adata_motif]:
-                if group in adata.obs.columns and adata.obs[group].dtype != object:
-                    adata.obs[group] = adata.obs[group].astype(str)
+            if group in adata.obs.columns and adata.obs[group].dtype != object:
+                adata.obs[group] = adata.obs[group].astype(str)
 
     except FileNotFoundError:
         logging.warning(f"File not found: {obs_path}")
