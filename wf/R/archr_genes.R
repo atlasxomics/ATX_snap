@@ -37,7 +37,7 @@ min_frags <- 0  # Use filtering from SnapATAC2
 lsi_iterations <- 2
 lsi_resolution <- 0.7
 lsi_varfeatures <- 25000
-num_threads <- 50
+num_threads <- 10
 
 runs <- strsplit(args[4:length(args)], ",")
 runs
@@ -58,7 +58,7 @@ tempdir <- "/root"
 archrproj_dir <- paste0(project_name, "_ArchRProject")
 
 # Create ArchRProject ---------------------------------------------------------
-addArchRThreads(threads = 50)
+addArchRThreads(threads = num_threads)
 
 proj <- create_archrproject( # from archr.R
   inputs, genome, min_tss, min_frags, tile_size, out_dir
@@ -174,31 +174,34 @@ rownames(metadata) <- str_split_fixed(
 metadata["log10_nFrags"] <- log(metadata$nFrags)
 
 # Extract gene matrix for SeuratObject --
+# Get imputation weights once
+impute_weights <- getImputeWeights(proj)
+
 gene_matrix <- ArchR::getMatrixFromProject(
   ArchRProj = proj,
   useMatrix = "GeneScoreMatrix",
   asMatrix = TRUE
 )
+gene_row_names <- gene_matrix@elementMetadata$name
 
 # Identify empty features for filtering volcano plots --
 print("Identifying empty features...")
-gsm_mat <- SummarizedExperiment::assay(gene_matrix, "GeneScoreMatrix")
-empty_feat_idx <- which(rowSums(gsm_mat) == 0)
-empty_feat <- SummarizedExperiment::rowData(gene_matrix)$name[empty_feat_idx]
+empty_feat_idx <- which(Matrix::rowSums(
+  SummarizedExperiment::assay(gene_matrix, "GeneScoreMatrix")
+) == 0)
+empty_feat <- gene_row_names[empty_feat_idx]
+print(paste("Found", length(empty_feat), "empty features"))
 
-rm(gsm_mat)
-gc()
 
 matrix <- ArchR::imputeMatrix(
-  mat = assay(gene_matrix),
-  imputeWeights = getImputeWeights(proj)
+  mat = SummarizedExperiment::assay(gene_matrix),
+  imputeWeights = impute_weights
 )
 
-gene_row_names <- gene_matrix@elementMetadata$name
-rownames(matrix) <- gene_row_names
-
-rm(gene_matrix)
+rm(gene_matrix, impute_weights)
 gc()
+
+rownames(matrix) <- gene_row_names
 
 # Create and save SeuratObjects --
 print("Creating SeuratObjects...")
@@ -219,6 +222,17 @@ for (run in runs) {
 
 print("Available SeuratObjects:")
 seurat_objs
+
+all <- rename_cells(seurat_objs)  # from seurat.R
+rm(seurat_objs)
+gc()
+
+# Convert Seurat to h5ad and save ----
+for (obj in all) {
+  seurat_to_h5ad(obj, FALSE, paste0(unique(obj$Sample), "_g"))  # from utils.R
+}
+rm(all)
+gc()
 
 # Identify marker genes ----
 # Marker genes per cluster, save marker gene rds, csv, heatmap.csv --
@@ -351,10 +365,3 @@ if (n_cond > 1) {
 }
 
 saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
-
-all <- rename_cells(seurat_objs)  # from seurat.R
-
-# Convert Seurat to h5ad and save ----
-for (obj in all) {
-  seurat_to_h5ad(obj, FALSE, paste0(unique(obj$Sample), "_g"))  # from utils.R
-}
