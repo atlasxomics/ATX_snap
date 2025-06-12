@@ -308,7 +308,7 @@ if (n_cond > 1) {
     # >90% of all cells --
     req_clusters <- get_required_clusters(proj, treatment[j])
     marker_genes_by_cluster_df <- get_marker_df_clusters(
-      proj, req_clusters, treatment[j]
+      proj, req_clusters, treatment[j], "GeneScoreMatrix"
     )
 
     # Per condition, merge dfs and cleanup data --
@@ -659,7 +659,7 @@ if (n_cond > 1) {
     # >90% of all cells --
     req_clusters <- get_required_clusters(proj, treatment[j]) # from archr.R
     marker_motifs_by_cluster_df <- get_marker_df_clusters(
-      proj, req_clusters, treatment[j]
+      proj, req_clusters, treatment[j], "MotifMatrix"
     )
 
     # Merge and cleanup data --

@@ -189,7 +189,7 @@ get_marker_df <- function(
   return(markers_df)
 }
 
-get_marker_df_clusters <- function(proj, clusters, group_by) {
+get_marker_df_clusters <- function(proj, clusters, group_by, matrix) {
 
   markers_by_cluster <- list()
   for (i in seq_along(clusters)) {
@@ -202,7 +202,7 @@ get_marker_df_clusters <- function(proj, clusters, group_by) {
     # Get gene score matrix each cluster separately -----
     markers_by_cluster[[i]] <- ArchR::getMarkerFeatures(
       ArchRProj = proj_subset,
-      useMatrix = "GeneScoreMatrix",
+      useMatrix = matrix,
       groupBy = group_by,
       bias = c("TSSEnrichment", "log10(nFrags)"),
       maxCells = n_cells,
