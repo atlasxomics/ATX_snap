@@ -189,7 +189,9 @@ get_marker_df <- function(
   return(markers_df)
 }
 
-get_marker_df_clusters <- function(proj, clusters, group_by, matrix) {
+get_marker_df_clusters <- function(
+  proj, clusters, group_by, seq_names, matrix, test_method
+) {
 
   markers_by_cluster <- list()
   for (i in seq_along(clusters)) {
@@ -206,10 +208,12 @@ get_marker_df_clusters <- function(proj, clusters, group_by, matrix) {
       groupBy = group_by,
       bias = c("TSSEnrichment", "log10(nFrags)"),
       maxCells = n_cells,
+      useSeqnames = seq_names,
       normBy = "none",
-      testMethod = "ttest"
+      testMethod = test_method
     )
   }
+
   names(markers_by_cluster) <- clusters
 
   # create markList_df for each cluster -----
