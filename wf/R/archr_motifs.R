@@ -221,7 +221,7 @@ if (length(motifs) > 1) {
   dev_score <- getDeviation_ArchR(
     ArchRProj = proj,
     name = motifs,
-    useAssay = "z",  # can be "deviations" or "z"ls
+    useAssay = "z",  # can be "deviations" or "z"
     log2Norm = TRUE
   )
 
@@ -323,73 +323,73 @@ if (n_cond > 1) {
   }
 }
 
-# Volcano plots for motifs ----
-if (n_cond > 1) {
-  for (j in seq_along(treatment)) {
+# # Volcano plots for motifs ----
+# if (n_cond > 1) {
+#   for (j in seq_along(treatment)) {
 
-    # Get motif markers for all clusters together --
-    marker_motifs_df <- get_marker_df( # from archr.R
-      proj = proj,
-      group_by = treatment[j],
-      matrix = "MotifMatrix",
-      seq_names = "z",
-      max_cells = 5000,
-      test_method = "wilcoxon"
-    )
+#     # Get motif markers for all clusters together --
+#     marker_motifs_df <- get_marker_df( # from archr.R
+#       proj = proj,
+#       group_by = treatment[j],
+#       matrix = "MotifMatrix",
+#       seq_names = "z",
+#       max_cells = 5000,
+#       test_method = "wilcoxon"
+#     )
 
-    # Create a data from of marker genes for clusters for which no condition is
-    # >90% of all cells --
-    req_clusters <- get_required_clusters(proj, treatment[j]) # from archr.R
-    marker_motifs_by_cluster_df <- get_marker_df_clusters(
-      proj = proj,
-      clusters = req_clusters,
-      group_by =  treatment[j],
-      seq_names = "z",
-      matrix = "MotifMatrix",
-      test_method = "ttest"
-    )
+#     # Create a data from of marker genes for clusters for which no condition is
+#     # >90% of all cells --
+#     req_clusters <- get_required_clusters(proj, treatment[j]) # from archr.R
+#     marker_motifs_by_cluster_df <- get_marker_df_clusters(
+#       proj = proj,
+#       clusters = req_clusters,
+#       group_by =  treatment[j],
+#       seq_names = "z",
+#       matrix = "MotifMatrix",
+#       test_method = "ttest"
+#     )
 
-    # Merge and cleanup data --
-    conditions <- sort(unique(proj@cellColData[treatment[j]][, 1]))
-    for (cond in conditions) {
+#     # Merge and cleanup data --
+#     conditions <- sort(unique(proj@cellColData[treatment[j]][, 1]))
+#     for (cond in conditions) {
 
-      volcano_table <- get_volcano_table( # from archr.R
-        marker_motifs_df,
-        marker_motifs_by_cluster_df,
-        cond,
-        "motif",
-        empty_feat_m
-      )
-      write.table(
-        volcano_table,
-        paste0("volcanoMarkers_motifs_", j, "_", cond, ".csv"),
-        sep = ",",
-        quote = FALSE,
-        row.names = FALSE
-      )
-      print(
-        paste0("writing volcanoMarkers_motifs_", j, "_", cond, ".csv is done!")
-      )
+#       volcano_table <- get_volcano_table( # from archr.R
+#         marker_motifs_df,
+#         marker_motifs_by_cluster_df,
+#         cond,
+#         "motif",
+#         empty_feat_m
+#       )
+#       write.table(
+#         volcano_table,
+#         paste0("volcanoMarkers_motifs_", j, "_", cond, ".csv"),
+#         sep = ",",
+#         quote = FALSE,
+#         row.names = FALSE
+#       )
+#       print(
+#         paste0("writing volcanoMarkers_motifs_", j, "_", cond, ".csv is done!")
+#       )
 
-      features_m <- unique(volcano_table$cluster)
-      others <- paste(conditions[conditions != cond], collapse = "|")
-      volcano_plots_m <- list()
-      for (i in seq_along(features_m)) {
-        volcano_plots_m[[i]] <- scvolcano(
-          volcano_table,  cond, others, features_m[[i]]
-        )
-      }
+#       features_m <- unique(volcano_table$cluster)
+#       others <- paste(conditions[conditions != cond], collapse = "|")
+#       volcano_plots_m <- list()
+#       for (i in seq_along(features_m)) {
+#         volcano_plots_m[[i]] <- scvolcano(
+#           volcano_table,  cond, others, features_m[[i]]
+#         )
+#       }
 
-      pdf(paste0("volcano_plots_motifs_", j, "_", cond, ".pdf"))
-      for (plot in volcano_plots_m) {
-        print(plot)
-      }
-      dev.off()
-    }
-  }
-} else {
-  print("There are not enough conditions to be compared with!")
-}
+#       pdf(paste0("volcano_plots_motifs_", j, "_", cond, ".pdf"))
+#       for (plot in volcano_plots_m) {
+#         print(plot)
+#       }
+#       dev.off()
+#     }
+#   }
+# } else {
+#   print("There are not enough conditions to be compared with!")
+# }
 
 saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
 
