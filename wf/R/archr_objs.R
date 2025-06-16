@@ -301,7 +301,8 @@ if (n_cond > 1) {
       matrix = "GeneScoreMatrix",
       seq_names = NULL,
       max_cells = n_cells,  # Equals total cells in project
-      test_method = "ttest"
+      test_method = "ttest",
+      diff_metric = "Log2FC"
     )
 
     # Create a merged marker genes df for clusters for which no condition is
@@ -313,7 +314,8 @@ if (n_cond > 1) {
       treatment[j],
       matrix = "GeneScoreMatrix",
       seq_names = NULL,
-      test_method = "ttest"
+      test_method = "ttest",
+      diff_metric = "Log2FC"
     )
 
     # Per condition, merge dfs and cleanup data --
@@ -321,7 +323,12 @@ if (n_cond > 1) {
     for (cond in conditions) {
 
       volcano_table <- get_volcano_table( # from archr.R
-        marker_genes_df, marker_genes_by_cluster_df, cond, "gene", empty_feat
+        marker_genes_df,
+        marker_genes_by_cluster_df,
+        cond,
+        "gene",
+        empty_feat,
+        "Log2FC"
       )
 
       write.table(
@@ -337,18 +344,18 @@ if (n_cond > 1) {
 
       features <- unique(volcano_table$cluster)
       others <- paste(conditions[conditions != cond], collapse = "|")
-      volcano_plots <- list()
-      for (i in seq_along(features)) {
-        volcano_plots[[i]] <- scvolcano(
-          volcano_table, cond, others, features[[i]]
-        )
-      }
+      # volcano_plots <- list()
+      # for (i in seq_along(features)) {
+      #   volcano_plots[[i]] <- scvolcano(
+      #     volcano_table, cond, others, features[[i]], fc_col = "Log2FC"
+      #   )
+      # }
 
-      pdf(paste0("volcano_plots_", cond, ".pdf"))
-      for (plot in volcano_plots) {
-        print(plot)
-      }
-      dev.off()
+      # pdf(paste0("volcano_plots_", cond, ".pdf"))
+      # for (plot in volcano_plots) {
+      #   print(plot)
+      # }
+      # dev.off()
     }
   }
 } else {
@@ -657,7 +664,8 @@ if (n_cond > 1) {
       matrix = "MotifMatrix",
       seq_names = "z",
       max_cells = 5000,
-      test_method = "wilcoxon"
+      test_method = "wilcoxon",
+      diff_metric = "MeanDiff"
     )
 
     # Create a data from of marker genes for clusters for which no condition is
@@ -669,7 +677,8 @@ if (n_cond > 1) {
       group_by =  treatment[j],
       matrix = "MotifMatrix",
       seq_names = "z",
-      test_method = "wilcoxon"
+      test_method = "ttest",
+      diff_metric = "MeanDiff"
     )
 
     # Merge and cleanup data --
@@ -681,7 +690,8 @@ if (n_cond > 1) {
         marker_motifs_by_cluster_df,
         cond,
         "motif",
-        empty_feat_m
+        empty_feat_m,
+        "MeanDiff"
       )
       write.table(
         volcano_table,
@@ -696,18 +706,18 @@ if (n_cond > 1) {
 
       features_m <- unique(volcano_table$cluster)
       others <- paste(conditions[conditions != cond], collapse = "|")
-      volcano_plots_m <- list()
-      for (i in seq_along(features_m)) {
-        volcano_plots_m[[i]] <- scvolcano(
-          volcano_table,  cond, others, features_m[[i]]
-        )
-      }
+    #   volcano_plots_m <- list()
+    #   for (i in seq_along(features_m)) {
+    #     volcano_plots_m[[i]] <- scvolcano(
+    #       volcano_table, cond, others, features_m[[i]], fc_col = "MeanDiff"
+    #     )
+    #   }
 
-      pdf(paste0("volcano_plots_motifs_", j, "_", cond, ".pdf"))
-      for (plot in volcano_plots_m) {
-        print(plot)
-      }
-      dev.off()
+    #   pdf(paste0("volcano_plots_motifs_", j, "_", cond, ".pdf"))
+    #   for (plot in volcano_plots_m) {
+    #     print(plot)
+    #   }
+    #   dev.off()
     }
   }
 } else {
