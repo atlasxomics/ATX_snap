@@ -25,6 +25,8 @@ source("/root/wf/R/utils.R")
 source("/root/wf/R/getDeviation_ArchR.R")
 
 # Globals ---------------------------------------------------------------------
+set.seed(42)
+
 args <- commandArgs(trailingOnly = TRUE)
 print(args)
 
@@ -487,7 +489,7 @@ if (length(motifs) > 1) {
   dev_score <- getDeviation_ArchR(
     ArchRProj = proj,
     name = motifs,
-    useAssay = "z",  # can be "deviations" or "z"ls
+    useAssay = "z",  # can be "deviations" or "z"
     log2Norm = TRUE
   )
 
