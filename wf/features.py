@@ -3,7 +3,7 @@ import gc
 import glob
 
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import anndata
 import numpy as np
@@ -156,7 +156,7 @@ def load_heatmaps(
         )
 
     elif type == "motif":
-    # Motif heatmaps
+        # Motif heatmaps
         load_csv_files_to_uns(
             "motif_per_*_hm.csv",
             adata.uns,
@@ -248,11 +248,9 @@ def transfer_embedding_data(
 
     try:
         df = pd.read_csv(data_path, index_col=0)
-        aligned_data_g = df.loc[adata_gene.obs_names].values
-        aligned_data_m = df.loc[adata_motif.obs_names].values
+        aligned_data = df.loc[adata.obs_names].values
 
-        adata_gene.obsm[obsm_key] = aligned_data_g
-        adata_motif.obsm[obsm_key] = aligned_data_m
+        adata.obsm[obsm_key] = aligned_data
 
     except (FileNotFoundError, KeyError) as e:
         logging.warning(f"Error loading {obsm_key} data: {e}")
@@ -272,11 +270,8 @@ def transfer_obs_data(
         if obs.empty:
             return
 
-        obs_aligned_g = obs.reindex(adata_gene.obs.index)
-        adata_gene.obs = obs_aligned_g
-
-        obs_aligned_m = obs.reindex(adata_motif.obs.index)
-        adata_motif.obs = obs_aligned_m
+        obs_aligned = obs.reindex(adata.obs.index)
+        adata.obs = obs_aligned
 
         # Ensure group columns are strings
         for group in groups:

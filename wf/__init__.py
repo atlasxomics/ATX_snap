@@ -236,24 +236,20 @@ def snap_workflow(
 
     """
 
-    # outdir, groups = make_adata(
-    #     runs=runs,
-    #     genome=genome,
-    #     project_name=project_name,
-    #     resolution=resolution,
-    #     leiden_iters=leiden_iters,
-    #     n_comps=n_comps,
-    #     min_cluster_size=min_cluster_size,
-    #     min_tss=min_tss,
-    #     min_frags=min_frags,
-    #     tile_size=tile_size,
-    #     n_features=n_features,
-    #     clustering_iters=clustering_iters,
-    # )
-    from latch.types import LatchDir
-
-    outdir = LatchDir(f"latch://13502.account/snap_outs/Pieper_154_brain_ArchRFull")
-    groups = ["cluster", "sample", "condition"]
+    outdir, groups = make_adata(
+        runs=runs,
+        genome=genome,
+        project_name=project_name,
+        resolution=resolution,
+        leiden_iters=leiden_iters,
+        n_comps=n_comps,
+        min_cluster_size=min_cluster_size,
+        min_tss=min_tss,
+        min_frags=min_frags,
+        tile_size=tile_size,
+        n_features=n_features,
+        clustering_iters=clustering_iters,
+    )
 
     outdir_ge = genes_task(
         runs=runs,
