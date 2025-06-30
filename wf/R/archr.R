@@ -145,7 +145,7 @@ get_enriched_motifs <- function(proj, marker_peaks, cutoff) {
 }
 
 get_marker_df <- function(
-  proj, group_by, matrix, seq_names, max_cells, test_method
+  proj, group_by, matrix, seq_names, max_cells, test_method, diff_metric
 ) {
   #' Return data frame of ArhcR marker features with:
   #' "avg_log2FC", "p_val", "p_val_adj", "gene", "cluster"
@@ -163,7 +163,7 @@ get_marker_df <- function(
   )
 
   # Create data frame with for MeanDiff, Pval, FDR -----
-  markers_df1 <- SummarizedExperiment::assay(markers, "MeanDiff")
+  markers_df1 <- SummarizedExperiment::assay(markers, diff_metric)
   markers_df2 <- SummarizedExperiment::assay(markers, "Pval")
   markers_df3 <- SummarizedExperiment::assay(markers, "FDR")
 
@@ -183,14 +183,14 @@ get_marker_df <- function(
       "All", length(rownames(markers_df[[conds]]))
     )
     colnames(markers_df[[conds]]) <- c(
-      "avg_log2FC", "p_val", "p_val_adj", "gene", "cluster"
+      diff_metric, "p_val", "p_val_adj", "gene", "cluster"
     )
   }
   return(markers_df)
 }
 
 get_marker_df_clusters <- function(
-  proj, clusters, group_by, seq_names, matrix, test_method
+  proj, clusters, group_by, matrix, seq_names, test_method, diff_metric
 ) {
 
   markers_by_cluster <- list()
@@ -226,7 +226,7 @@ get_marker_df_clusters <- function(
 
     cluster <- clusters[i]
     markerlist_df1[[i]] <- SummarizedExperiment::assay(
-      markers_by_cluster[[i]], "Log2FC"
+      markers_by_cluster[[i]], diff_metric
     )
     markerlist_df2[[i]] <- SummarizedExperiment::assay(
       markers_by_cluster[[i]], "Pval"
@@ -256,7 +256,7 @@ get_marker_df_clusters <- function(
         cluster, dim(markerlist_df[[i]][[conds]])[1]
       )
       colnames(markerlist_df[[i]][[conds]]) <- c(
-        "avg_log2FC", "p_val", "p_val_adj", "gene", "cluster"
+        diff_metric, "p_val", "p_val_adj", "gene", "cluster"
       )
     }
   }
@@ -401,7 +401,12 @@ get_topn_hm_feats <- function(heatmap, n_groups, n_feats) {
 }
 
 get_volcano_table <- function(
-  markers_df, markers_by_cluster_df, condition, feature, empty_feat
+  markers_df,
+  markers_by_cluster_df,
+  condition,
+  feature,
+  empty_feat,
+  fc_col = "avg_log2FC"
 ) {
 
   # Merge df with all clusters with df for each cluster -----
@@ -414,16 +419,21 @@ get_volcano_table <- function(
     merged_df <- merged_df[which(!merged_df$gene %in% empty_feat), ]
   }
 
-  # Remove na values -----
+  # Remove NA values -----
   merged_df <- na.omit(merged_df)
+
+  # Convert fold change column to numeric if needed -----
+  if (!is.numeric(merged_df[[fc_col]])) {
+    merged_df[[fc_col]] <- as.numeric(as.character(merged_df[[fc_col]]))
+  }
 
   # Remove FDR equal to 0 -----
   merged_df <- merged_df[which(!merged_df$p_val_adj == 0), ]
 
-  # Make logfc limitation between 1 and -1 -----
-  merged_df <- merged_df[which(abs(merged_df$avg_log2FC) < 1.2), ]
+  # Filter by fold change threshold -----
+  merged_df <- merged_df[which(abs(merged_df[[fc_col]]) < 1.2), ]
 
-  # Get string of conditions != cond
+  # Get string of other conditions
   others <- paste(
     names(markers_df)[condition != names(markers_df)], collapse = "|"
   )
@@ -432,7 +442,7 @@ get_volcano_table <- function(
   merged_df$Significance <- ifelse(
     merged_df$p_val < 1e-2,
     ifelse(
-      merged_df$avg_log2FC > 0.0,
+      merged_df[[fc_col]] > 0.0,
       condition,
       others
     ),

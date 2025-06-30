@@ -374,17 +374,20 @@ sctheme <- function(base_size = 24, xy_val = TRUE, x_ang = 0, x_jus_h = 0.5) {
   return(oup_theme)
 }
 
-scvolcano <- function(inpMarkers, condition1, condition2, feature = "All") {
+scvolcano <- function(
+  inpMarkers, condition1, condition2, feature = "All", fc_col = "Log2FC"
+) {
 
-  # Prepare ggData
-  ggData <- inpMarkers[which(inpMarkers$cluster == feature), ]
+  # Subset by cluster
+  ggData <- inpMarkers[inpMarkers$cluster == feature, ]
   minfdr <- 0.09
   minfdr1 <- 10^-(1 / 6 * (-log10(min(ggData$p_val_adj))))
 
+  # Add Significance column
   ggData$Significance <- ifelse(
     ggData$p_val_adj < minfdr,
     ifelse(
-      ggData$avg_log2FC > 0.0,
+      ggData[[fc_col]] > 0.0,
       condition1,
       condition2
     ),
@@ -393,18 +396,15 @@ scvolcano <- function(inpMarkers, condition1, condition2, feature = "All") {
 
   ggData$Significance <- factor(
     ggData$Significance,
-    levels = c(
-      condition1,
-      condition2,
-      "Not siginficant"
-    )
+    levels = c(condition1, condition2, "Not siginficant")
   )
 
+  # Avoid log10(0)
   ggData[ggData$p_val_adj < 1e-300, "p_val_adj"] <- 1e-300
   ggData$log10fdr <- -log10(ggData$p_val_adj)
 
-  # Actual ggplot
-  ggOut <- ggplot(ggData, aes(avg_log2FC, log10fdr)) +
+  # Make volcano plot
+  ggOut <- ggplot(ggData, aes(x = .data[[fc_col]], y = log10fdr)) +
     geom_point() +
     sctheme() +
     ylab("-log10(FDR)") +
@@ -419,6 +419,7 @@ scvolcano <- function(inpMarkers, condition1, condition2, feature = "All") {
       legend.text = element_text(size = 15),
       legend.title = element_text(size = 18)
     )
+
   return(ggOut)
 }
 
