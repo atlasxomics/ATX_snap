@@ -346,18 +346,18 @@ if (n_cond > 1) {
 
       features <- unique(volcano_table$cluster)
       others <- paste(conditions[conditions != cond], collapse = "|")
-      # volcano_plots <- list()
-      # for (i in seq_along(features)) {
-      #   volcano_plots[[i]] <- scvolcano(
-      #     volcano_table, cond, others, features[[i]], fc_col = "Log2FC"
-      #   )
-      # }
+      volcano_plots <- list()
+      for (i in seq_along(features)) {
+        volcano_plots[[i]] <- scvolcano(
+          volcano_table, cond, others, features[[i]], fc_col = "Log2FC"
+        )
+      }
 
-      # pdf(paste0("volcano_plots_", cond, ".pdf"))
-      # for (plot in volcano_plots) {
-      #   print(plot)
-      # }
-      # dev.off()
+      pdf(paste0("volcano_plots_", cond, ".pdf"))
+      for (plot in volcano_plots) {
+        print(plot)
+      }
+      dev.off()
     }
   }
 } else {
