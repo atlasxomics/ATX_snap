@@ -708,18 +708,18 @@ if (n_cond > 1) {
 
       features_m <- unique(volcano_table$cluster)
       others <- paste(conditions[conditions != cond], collapse = "|")
-    #   volcano_plots_m <- list()
-    #   for (i in seq_along(features_m)) {
-    #     volcano_plots_m[[i]] <- scvolcano(
-    #       volcano_table, cond, others, features_m[[i]], fc_col = "MeanDiff"
-    #     )
-    #   }
+      volcano_plots_m <- list()
+      for (i in seq_along(features_m)) {
+        volcano_plots_m[[i]] <- scvolcano(
+          volcano_table, cond, others, features_m[[i]], fc_col = "MeanDiff"
+        )
+      }
 
-    #   pdf(paste0("volcano_plots_motifs_", j, "_", cond, ".pdf"))
-    #   for (plot in volcano_plots_m) {
-    #     print(plot)
-    #   }
-    #   dev.off()
+      pdf(paste0("volcano_plots_motifs_", j, "_", cond, ".pdf"))
+      for (plot in volcano_plots_m) {
+        print(plot)
+      }
+      dev.off()
     }
   }
 } else {
