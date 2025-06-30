@@ -7,7 +7,8 @@ from latch.types.metadata import (
 
 # from wf.task import registry_task, snap_task
 from wf.task import (
-    archr_task,
+    genes_task,
+    motifs_task,
     make_adata,
     registry_task,
 )
@@ -235,22 +236,26 @@ def snap_workflow(
 
     """
 
-    outdir, groups = make_adata(
-        runs=runs,
-        genome=genome,
-        project_name=project_name,
-        resolution=resolution,
-        leiden_iters=leiden_iters,
-        n_comps=n_comps,
-        min_cluster_size=min_cluster_size,
-        min_tss=min_tss,
-        min_frags=min_frags,
-        tile_size=tile_size,
-        n_features=n_features,
-        clustering_iters=clustering_iters,
-    )
+    # outdir, groups = make_adata(
+    #     runs=runs,
+    #     genome=genome,
+    #     project_name=project_name,
+    #     resolution=resolution,
+    #     leiden_iters=leiden_iters,
+    #     n_comps=n_comps,
+    #     min_cluster_size=min_cluster_size,
+    #     min_tss=min_tss,
+    #     min_frags=min_frags,
+    #     tile_size=tile_size,
+    #     n_features=n_features,
+    #     clustering_iters=clustering_iters,
+    # )
+    from latch.types import LatchDir
 
-    outdir_ge = archr_task(
+    outdir = LatchDir(f"latch://13502.account/snap_outs/Pieper_154_brain_ArchRFull")
+    groups = ["cluster", "sample", "condition"]
+
+    outdir_ge = genes_task(
         runs=runs,
         outdir=outdir,
         project_name=project_name,
@@ -258,7 +263,15 @@ def snap_workflow(
         groups=groups
     )
 
-    uploaded_results = registry_task(runs=runs, results=outdir_ge)
+    outdir_motifs = motifs_task(
+        runs=runs,
+        outdir=outdir_ge,
+        project_name=project_name,
+        groups=groups,
+        genome=genome,
+    )
+
+    uploaded_results = registry_task(runs=runs, results=outdir_motifs)
 
     return uploaded_results
 
@@ -267,7 +280,7 @@ if __name__ == "__main__":
 
     from latch.types import LatchDir, LatchFile
 
-    archr_task(
+    genes_task(
         runs=[Run(
             run_id="demo",
             fragments_file=LatchFile("latch://13502.account/atac_outs/ds_D01033_NG01681/outs/ds_D01033_NG01681_fragments.tsv.gz"),

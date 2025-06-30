@@ -154,7 +154,7 @@ def make_adata(
 
 
 @custom_task(cpu=50, memory=975, storage_gib=2000)
-def archr_task(
+def genes_task(
     runs: List[utils.Run],
     outdir: LatchDir,
     project_name: str,
@@ -174,7 +174,7 @@ def archr_task(
     # run subprocess R script to make .h5ad file
     _archr_cmd = [
         'Rscript',
-        '/root/wf/R/archr_objs.R',
+        '/root/wf/R/archr_genes.R',
         project_name,
         genome,
         data_paths['obs'],
@@ -194,22 +194,87 @@ def archr_task(
     subprocess.run(_archr_cmd, check=True)
 
     # Load and combine data
-    adata_gene, adata_motif = ft.load_and_combine_data()
+    adata_gene = ft.load_and_combine_data("g_converted")
 
     # Transfer auxiliary data to combined AnnData
-    ft.transfer_auxiliary_data(adata_gene, adata_motif, data_paths, groups)
+    ft.transfer_auxiliary_data(adata_gene, data_paths, groups)
 
     # Run spatial analysis
     adata_gene = sp.run_squidpy_analysis(adata_gene, dirs["figures"])
 
     # Load differential analysis results
-    ft.load_analysis_results(adata_gene, adata_motif, groups)
+    ft.load_analysis_results(adata_gene, "gene", groups)
 
     # Organize outputs
     utils.organize_outputs(project_name, dirs)
 
     # Save AnnData
-    ft.save_anndata_objects(adata_gene, adata_motif, dirs['base'])
+    ft.save_anndata_objects(adata_gene, "_ge", dirs['base'])
+
+    logging.info("Uploading data to Latch...")
+    return LatchDir(str(dirs['base']), f"latch:///snap_outs/{project_name}")
+
+
+@custom_task(cpu=50, memory=975, storage_gib=2000)
+def motifs_task(
+    runs: List[utils.Run],
+    outdir: LatchDir,
+    project_name: str,
+    groups: List[str],
+    genome: utils.Genome,
+) -> LatchDir:
+
+    # Read in data tables
+    data_paths = utils.get_data_paths(outdir)
+
+    genome = genome.value
+
+    # Create output dirs
+    dirs = utils.create_output_directories(project_name)
+
+    # Download ArchRProject
+    archrproj_path = LatchDir(
+        f"{outdir.remote_path}/{project_name}_ArchRProject"
+    ).local_path
+
+    logging.info("Running ArchR analysis...")
+    # run subprocess R script to make .h5ad file
+    _archr_cmd = [
+        'Rscript',
+        '/root/wf/R/archr_motifs.R',
+        project_name,
+        genome,
+        data_paths['obs'],
+        archrproj_path,
+    ]
+
+    runs = [
+        (
+            f'{run.run_id},'
+            f'{run.fragments_file.local_path},'
+            f'{run.condition},'
+            f'{utils.get_LatchFile(run.spatial_dir, "tissue_positions_list.csv").local_path},'
+            f'{run.spatial_dir.local_path},'
+        )
+        for run in runs
+    ]
+    _archr_cmd.extend(runs)
+    subprocess.run(_archr_cmd, check=True)
+
+    # Load and combine data
+    adata_motif = ft.load_and_combine_data("m_converted")
+
+    # Transfer auxiliary data to combined AnnData
+    ft.transfer_auxiliary_data(adata_motif, data_paths, groups)
+
+    # Load differential analysis results
+    ft.load_analysis_results(adata_motif, "motif", groups)
+
+    # Organize outputs
+    utils.organize_outputs(project_name, dirs)
+
+    # Save AnnData
+    ft.save_anndata_objects(adata_motif, "_motifs", dirs['base'])
 
     logging.info("Uploading data to Latch...")
     return LatchDir(str(dirs['base']), f"latch:///snap_outs/{project_name}")

@@ -213,6 +213,7 @@ get_marker_df_clusters <- function(
       testMethod = test_method
     )
   }
+
   names(markers_by_cluster) <- clusters
 
   # create markList_df for each cluster -----
