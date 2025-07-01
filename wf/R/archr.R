@@ -430,23 +430,9 @@ get_volcano_table <- function(
   # Remove FDR equal to 0 -----
   merged_df <- merged_df[which(!merged_df$p_val_adj == 0), ]
 
-  # Filter by fold change threshold -----
-  merged_df <- merged_df[which(abs(merged_df[[fc_col]]) < 1.2), ]
-
   # Get string of other conditions
   others <- paste(
     names(markers_df)[condition != names(markers_df)], collapse = "|"
-  )
-
-  # Assign significance
-  merged_df$Significance <- ifelse(
-    merged_df$p_val < 1e-2,
-    ifelse(
-      merged_df[[fc_col]] > 0.0,
-      condition,
-      others
-    ),
-    "Not siginficant"
   )
 
   return(merged_df)
