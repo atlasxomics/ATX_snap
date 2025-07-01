@@ -315,7 +315,8 @@ if (n_cond > 1) {
       matrix = "GeneScoreMatrix",
       seq_names = NULL,
       max_cells = n_cells,  # Equals total cells in project
-      test_method = "ttest"
+      test_method = "ttest",
+      diff_metric = "Log2FC"
     )
 
     # Create a merged marker genes df for clusters for which no condition is
@@ -327,7 +328,8 @@ if (n_cond > 1) {
       group_by = treatment[j],
       seq_names = "z",
       matrix = "GeneScoreMatrix",
-      test_method = "ttest"
+      test_method = "ttest",
+      diff_metric = "Log2FC"
     )
 
     # Per condition, merge dfs and cleanup data --
