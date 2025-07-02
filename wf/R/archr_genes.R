@@ -294,12 +294,12 @@ if (n_cond > 1) {
     )
     write.csv(
       treatment_marker_genes$marker_list,
-      paste0("ranked_genes_per_condition", i, ".csv"),
+      paste0("ranked_genes_per_condition_", i, ".csv"),
       row.names = FALSE
     )
     write.csv(
       treatment_marker_genes$heatmap_gs,
-      paste0("genes_per_conditions", i, "_hm.csv")
+      paste0("genes_per_condition_", i, "_hm.csv")
     )
   }
 }
@@ -337,7 +337,12 @@ if (n_cond > 1) {
     for (cond in conditions) {
 
       volcano_table <- get_volcano_table( # from archr.R
-        marker_genes_df, marker_genes_by_cluster_df, cond, "gene", empty_feat
+        marker_genes_df,
+        marker_genes_by_cluster_df,
+        cond,
+        "gene",
+        empty_feat,
+        fc_col = "Log2FC"
       )
 
       write.table(
@@ -356,7 +361,7 @@ if (n_cond > 1) {
       volcano_plots <- list()
       for (i in seq_along(features)) {
         volcano_plots[[i]] <- scvolcano(
-          volcano_table, cond, others, features[[i]]
+          volcano_table, cond, others, features[[i]], fc_col = "Log2FC"
         )
       }
 

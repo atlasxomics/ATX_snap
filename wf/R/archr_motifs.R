@@ -360,7 +360,8 @@ if (n_cond > 1) {
         marker_motifs_by_cluster_df,
         cond,
         "motif",
-        empty_feat_m
+        empty_feat_m,
+        fc_col = "MeanDiff"
       )
       write.table(
         volcano_table,
@@ -378,7 +379,7 @@ if (n_cond > 1) {
       volcano_plots_m <- list()
       for (i in seq_along(features_m)) {
         volcano_plots_m[[i]] <- scvolcano(
-          volcano_table,  cond, others, features_m[[i]]
+          volcano_table,  cond, others, features_m[[i]], fc_col = "MeanDiff"
         )
       }
 

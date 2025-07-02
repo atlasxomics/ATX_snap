@@ -422,11 +422,23 @@ get_volcano_table <- function(
   # Remove NA values -----
   merged_df <- na.omit(merged_df)
 
-  # Convert fold change column to numeric if needed -----
-  if (!is.numeric(merged_df[[fc_col]])) {
-    merged_df[[fc_col]] <- as.numeric(as.character(merged_df[[fc_col]]))
+  # Check if fc_col exists
+  if (!fc_col %in% colnames(merged_df)) {
+    stop(paste("Column", fc_col, "not found in merged_df. Available columns:",
+               paste(colnames(merged_df), collapse = ", ")))
   }
 
+  # Convert fold change column to numeric if needed -----
+  if (!is.numeric(merged_df[[fc_col]])) {
+    converted_values <- as.numeric(as.character(merged_df[[fc_col]]))
+
+    # Safety check - only assign if conversion was successful
+    if (length(converted_values) > 0 && !all(is.na(converted_values))) {
+      merged_df[[fc_col]] <- converted_values
+    } else {
+      warning("Could not convert fc_col to numeric - keeping original values")
+    }
+  }
   # Remove FDR equal to 0 -----
   merged_df <- merged_df[which(!merged_df$p_val_adj == 0), ]
 
