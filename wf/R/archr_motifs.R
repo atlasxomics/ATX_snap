@@ -25,6 +25,8 @@ source("/root/wf/R/utils.R")
 source("/root/wf/R/getDeviation_ArchR.R")
 
 # Globals ---------------------------------------------------------------------
+set.seed(42)  # Set seed for reproducibility
+
 args <- commandArgs(trailingOnly = TRUE)
 print(args)
 
