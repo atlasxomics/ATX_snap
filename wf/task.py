@@ -282,21 +282,24 @@ def motifs_task(
 
 @small_task(cache=True)
 def registry_task(runs: List[utils.Run], results: LatchDir) -> LatchDir:
-    tbl = Table(id="761")
+    try:
+        tbl = Table(id="761")
 
-    logging.info("Uploading results to Runs Table in Registry...")
+        logging.info("Uploading results to Runs Table in Registry...")
 
-    for run in runs:
-        logging.info(f"Adding {run.run_id} results to Registry...")
+        for run in runs:
+            logging.info(f"Adding {run.run_id} results to Registry...")
 
-        with tbl.update() as updater:
-            updater.upsert_record(
-                name=run.run_id,
-                fragments_file=run.fragments_file,
-                spatial_directory=run.spatial_dir,
-                condition=run.condition,
-                atx_snap_outs=results,
-            )
-
-    logging.info("Done uploading to Registry.")
-    return results
+            with tbl.update() as updater:
+                updater.upsert_record(
+                    name=run.run_id,
+                    fragments_file=run.fragments_file,
+                    spatial_directory=run.spatial_dir,
+                    condition=run.condition,
+                    atx_snap_outs=results,
+                )
+        logging.info("Done uploading to Registry.")
+        return results
+    except Exception as e:
+        logging.warning(f"Unexpected {e=}, {type(e)=}")
+        return results
