@@ -1,11 +1,13 @@
 import anndata
+import glob
 import json
 import logging
+import subprocess
 
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 from latch.types import LatchFile, LatchDir
 
@@ -77,6 +79,22 @@ class Run:
     condition: str = "None"
 
 
+def create_output_directories(project_name: str) -> Dict[str, Path]:
+    """Create necessary output directories and return paths."""
+    base_dir = Path(f"/root/{project_name}")
+    figures_dir = base_dir / "figures"
+    tables_dir = base_dir / "tables"
+
+    for directory in [base_dir, figures_dir, tables_dir]:
+        directory.mkdir(parents=True, exist_ok=True)
+
+    return {
+        'base': base_dir,
+        'figures': figures_dir,
+        'tables': tables_dir
+    }
+
+
 def filter_anndata(
     adata: anndata.AnnData, group: str, subgroup: List[str]
 ) -> anndata.AnnData:
@@ -92,6 +110,16 @@ def get_channels(run: Run):
         channels = metadata["numChannels"]
 
     return channels
+
+
+def get_data_paths(outdir: LatchDir) -> Dict[str, str]:
+    """Get paths to required data files."""
+    base_path = outdir.remote_path
+    return {
+        'obs': LatchFile(f"{base_path}/tables/obs.csv").local_path,
+        'spatial': LatchFile(f"{base_path}/tables/spatial.csv").local_path,
+        'umap': LatchFile(f"{base_path}/tables/X_umap.csv").local_path,
+    }
 
 
 def get_genome_fasta(genome: str) -> LatchFile:
@@ -142,3 +170,32 @@ def get_LatchFile(directory: LatchDir, file_name: str) -> LatchFile:
     except Exception as e:
         logging.error(f"Failed to find file '{file_name}'; error {e}")
         return None
+
+
+def move_files_to_directory(patterns: List[str], target_dir: Path) -> None:
+    """Move files matching patterns to target directory."""
+    files_to_move = []
+    for pattern in patterns:
+        files_to_move.extend(glob.glob(pattern))
+
+    if files_to_move:
+        subprocess.run(['mv'] + files_to_move + [str(target_dir)])
+
+
+def organize_outputs(project_name: str, dirs: Dict[str, Path]) -> None:
+    """Move output files to appropriate directories."""
+    logging.info("Moving outputs to output directory...")
+
+    # Move main project files
+    project_patterns = [f'{project_name}_*', '*.rds', '*.h5ad']
+    move_files_to_directory(project_patterns, dirs['base'])
+
+    # Move tables
+    csv_files = glob.glob('*.csv')
+    if csv_files:
+        subprocess.run(['mv'] + csv_files + [str(dirs['tables'])])
+
+    # Move figures (excluding Rplots.pdf)
+    figures = [fig for fig in glob.glob('*.pdf') if fig != 'Rplots.pdf']
+    if figures:
+        subprocess.run(['mv'] + figures + [str(dirs['figures'])])

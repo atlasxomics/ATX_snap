@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 import scanpy as sc
-import squidpy as sq
 
 from matplotlib.backends.backend_pdf import PdfPages
 from typing import List, Optional
@@ -30,6 +29,7 @@ def plot_neighborhoods(
     subgroups: Optional[List[str]],
     outdir: str = "figures"
 ):
+    from squidpy.pl import nhood_enrichment
 
     if group != "all" and subgroups:
         filtered_adatas = {}
@@ -43,7 +43,7 @@ def plot_neighborhoods(
 
         if subgroups:
             for sg in subgroups:
-                fig = sq.pl.nhood_enrichment(
+                fig = nhood_enrichment(
                     filtered_adatas[sg],
                     cluster_key="cluster",
                     method="single",
@@ -56,7 +56,7 @@ def plot_neighborhoods(
                 plt.close(fig)
 
         elif group == "all":
-            fig = sq.pl.nhood_enrichment(
+            fig = nhood_enrichment(
                 adata,
                 cluster_key="cluster",
                 method="single",
@@ -80,6 +80,7 @@ def plot_spatial(
     """Plot cells spatially, color by metadata stored in .obs. The function
     creates a plot for each run and saves to a .pdf, with four runs per page.
     """
+    from squidpy.pl import spatial_scatter
 
     with PdfPages(output_path) as pdf:
         for i in range(0, len(samples), 4):
@@ -90,7 +91,7 @@ def plot_spatial(
 
             for i, sample in enumerate(sample_batch):
 
-                sq.pl.spatial_scatter(
+                spatial_scatter(
                     adata[adata.obs["sample"] == sample],
                     color=color_by,
                     size=pt_size,
@@ -122,6 +123,7 @@ def plot_spatial_qc(
     saving them into a PDF.  Each row corresponds to a sample and each column
     to a QC metric.
     """
+    from squidpy.pl import spatial_scatter
 
     rows_per_page = 3
     cols_per_page = len(qc_metrics)
@@ -146,7 +148,7 @@ def plot_spatial_qc(
                 for col_idx, qc_metric in enumerate(qc_metrics):
 
                     ax = axs[row_idx][col_idx]
-                    sq.pl.spatial_scatter(
+                    spatial_scatter(
                         adata[adata.obs['sample'] == sample],
                         color=qc_metric,
                         size=pt_size,

@@ -1,85 +1,32 @@
 import logging
-from typing import List, Optional
+import gc
+import glob
 
+from pathlib import Path
+from typing import Dict, List, Optional
 
 import anndata
 import numpy as np
-import pandas as pd
-import pychromvar as pc
 import scanpy as sc
-import snapatac2 as snap
-
-from pybedtools import BedTool
-from pyjaspar import jaspardb
-
-from wf.utils import ref_dict
+import scipy.sparse as sp
 
 logging.basicConfig(
     format="%(levelname)s - %(asctime)s - %(message)s", level=logging.INFO
 )
 
 
-def annotate_peaks(
-    peaks_df: pd.DataFrame,
-    features: List[pd.DataFrame]
-) -> pd.DataFrame:
-    import pandas as pd
-
-    peaks = make_peak_bed(peaks_df)
-    genes, exons, promoters = [BedTool.from_dataframe(feature)
-                               for feature in features]
-
-    nearest_genes = peaks.closest(genes.sort(), d=True, t="first")
-
-    nearest_df = nearest_genes.to_dataframe(
-        names=["peak_chrom", "peak_start", "peak_end", "peak_id",
-               "gene_chrom", "gene_start", "gene_end", "gene_name",
-               "gene_score", "gene_strand", "distance"]
-    )
-    nearest_df.index = nearest_df["peak_id"]
-
-    # Add distance and nearest gene info to original dataframe
-    peaks_df["distToGeneStart"] = nearest_df["distance"]
-    peaks_df["nearestGene"] = nearest_df["gene_name"]
-
-    # Find overlaps with different features
-    promoter_overlaps = peaks.intersect(promoters, u=True).to_dataframe()
-    gene_overlaps = peaks.intersect(genes, u=True).to_dataframe()
-    exon_overlaps = peaks.intersect(exons, u=True).to_dataframe()
-
-    # Initialize all peaks as Distal
-    peaks_df["peakType"] = "Distal"
-
-    # Create boolean masks for overlaps
-    peak_ids = peaks_df.apply(
-        lambda x: f"{x['chrom']}:{x['start']}-{x['end']}", axis=1
-    )
-
-    # Apply ArchR's logic for peak type classification
-    peaks_in_genes = peak_ids.isin(gene_overlaps.apply(
-        lambda x: f"{x['chrom']}:{x['start']}-{x['end']}", axis=1
-    ))
-    peaks_in_exons = peak_ids.isin(exon_overlaps.apply(
-        lambda x: f"{x['chrom']}:{x['start']}-{x['end']}", axis=1
-    ))
-    peaks_in_promoters = peak_ids.isin(promoter_overlaps.apply(
-        lambda x: f"{x['chrom']}:{x['start']}-{x['end']}", axis=1
-    ))
-
-    # Set peak types following ArchR's logic
-    peaks_df.loc[peaks_in_genes & peaks_in_exons, "peakType"] = "Exonic"
-    peaks_df.loc[peaks_in_genes & ~peaks_in_exons, "peakType"] = "Intronic"
-    peaks_df.loc[peaks_in_promoters, "peakType"] = "Promoter"
-
-    peaks_df = peaks_df.drop("id", axis=1)
-
-    return peaks_df
-
-
 def clean_adata(adata: anndata.AnnData) -> anndata.AnnData:
-
-    obs = ["barcode", "n_genes_by_counts", "log1p_n_genes_by_counts", "total_counts", "log1p_total_counts", "pct_counts_in_top_50_genes", "pct_counts_in_top_100_genes", "pct_counts_in_top_200_genes", "pct_counts_in_top_500_genes", "total_counts_mt", "log1p_total_counts_mt", "pct_counts_mt"]
-    var = ["mt", "n_counts", "n_cells", "n_cells_by_counts", "mean_counts", "log1p_mean_counts", "pct_dropout_by_counts", "total_counts", "log1p_total_counts",  "means", "dispersions", "dispersions_norm"]
+    obs = [
+        "barcode", "n_genes_by_counts", "log1p_n_genes_by_counts", "total_counts",
+        "log1p_total_counts", "pct_counts_in_top_50_genes", "pct_counts_in_top_100_genes",
+        "pct_counts_in_top_200_genes", "pct_counts_in_top_500_genes", "total_counts_mt",
+        "log1p_total_counts_mt", "pct_counts_mt"
+    ]
+    var = [
+        "mt", "n_counts", "n_cells", "n_cells_by_counts", "mean_counts", "log1p_mean_counts",
+        "pct_dropout_by_counts", "total_counts", "log1p_total_counts", "means",
+        "dispersions", "dispersions_norm"
+    ]
 
     rm_obs = [o for o in obs if o in adata.obs.keys()]
     rm_var = [v for v in var if v in adata.var.keys()]
@@ -87,15 +34,14 @@ def clean_adata(adata: anndata.AnnData) -> anndata.AnnData:
     adata.obs.drop(rm_obs, axis=1, inplace=True)
     adata.var.drop(rm_var, axis=1, inplace=True)
 
-    del adata.varm
-    del adata.layers
+    adata.varm.clear()
+    adata.layers.clear()
 
     if adata.raw:
-        del adata.raw
+        adata.raw = None
 
     for uns in ["pca", "log1p"]:
-        if uns in adata.uns.keys():
-            del adata.uns[uns]
+        adata.uns.pop(uns, None)
 
     rm_obsm = [obsm for obsm in adata.obsm.keys()
                if obsm not in ["spatial", "X_umap"]]
@@ -103,407 +49,241 @@ def clean_adata(adata: anndata.AnnData) -> anndata.AnnData:
     for obsm in rm_obsm:
         del adata.obsm[obsm]
 
+    # Sparse to dense conversion
+    if sp.issparse(adata.X):
+        try:
+            adata.X = adata.X.toarray()
+        except Exception as e:
+            logging.warning(f"Could not convert sparse .X to dense: {e}")
+
     try:
         adata.X = adata.X.astype(np.float16)
-    except:
-        logging.warning("Cannot convert .X to float")
+    except Exception as e:
+        logging.warning(f"Cannot convert .X to float16: {e}")
 
     return adata
 
 
-def get_merged_peaks(adata: anndata.AnnData, key: str, chrom_sizes: dict):
-    """Wrapper for snap merge_peaks."""
-
-    peaks = adata.uns[key]
-
-    if not isinstance(peaks, dict):  # Convert to dict for merge_peaks()
-        peaks = {"0": adata.uns[key]}
-
-    return snap.tl.merge_peaks(peaks, chrom_sizes)
+def clean_index_columns(*adatas: anndata.AnnData) -> None:
+    """Remove _index columns from AnnData objects if they exist."""
+    for adata in adatas:
+        if hasattr(adata, 'raw') and adata.raw is not None:
+            if "_index" in adata.raw.var.columns:
+                adata.raw.var.drop(columns=['_index'], inplace=True)
 
 
-def get_motifs(
-    adata: anndata.AnnData, fasta_path: str, release: str = "JASPAR2024"
-) -> anndata.AnnData:
-    """With the python implementation of chromVAR, pychromvar, map motifs to
-    peaks; return the AnnData with peak sequences (uns.['peak_seq']), sequence
-    gc (.var['gc_bias']), background peaks (.varm['bg_peaks']), and motifs
-    (varm['motif_match']).
-    """
-    jdb_obj = jaspardb(release=release)
-    motifs = jdb_obj.fetch_motifs(collection="CORE", tax_group=["vertebrates"])
+def load_and_combine_data(suffix: str) -> anndata.AnnData:
+    """Load and combine AnnData objects."""
+    logging.info("Reading and combining gene AnnData...")
+    files = glob.glob(f"*{suffix}.h5ad")
+    adatas = [anndata.read_h5ad(file) for file in files]
+    adata = sc.concat(adatas)
 
-    pc.add_peak_seq(adata, genome_file=fasta_path, delimiter=":|-")
-    pc.add_gc_bias(adata)
-    pc.get_bg_peaks(adata)
+    # Clean up memory
+    del adatas
+    gc.collect()
 
-    pc.match_motif(adata, motifs=motifs)
+    # Clean up index columns if they exist
+    clean_index_columns(adata)
 
     return adata
 
 
-def make_peakmatrix(
-    adata: anndata.AnnData, genome: str, key: str, log_norm: bool = True
-) -> anndata.AnnData:
-    """Given an AnnData object with macs2 peak calls stored in .uns[key],
-    returns a new AnnData object with X a peak count matrix.
-    """
-    merged_peaks = get_merged_peaks(adata, key, ref_dict[genome][0])
-
-    adata_p = snap.pp.make_peak_matrix(adata, use_rep=merged_peaks["Peaks"])
-
-    # Copy over cell data
-    adata_p.obs = adata.obs
-    adata_p.obsm = adata.obsm
-
-    if log_norm:  # Shold add normalization, save the raw counts
-        adata_p.layers["raw_counts"] = adata_p.X.copy()
-        sc.pp.log1p(adata_p)
-
-    return adata_p
-
-
-def make_geneadata(
+def load_analysis_results(
     adata: anndata.AnnData,
-    genome: str,
-    min_counts: int = 1,
-    min_cells: int = 1,
-) -> anndata.AnnData:
-    """Create an AnnData object where X is a Gene Expression Matrix (GEM); .obs
-    is inherited from input AnnData; filter genes with low cells, counts.
-    Parameters recapitulate ArchR defaults.  snap.pp.make_gene_matrix() first
-    creates a GEM of putative raw counts.  This matrix is normalized, log
-    transformed, and imputed with MAGIC.  In the returned AnnData object, .X is
-    the imputated matrix, .raw.X is the log transformed, normalized matrix; raw
-    counts are stored in .layers["raw_counts"].
-    """
+    type: str,
+    groups: List[str]
+) -> None:
+    """Load various analysis results into AnnData objects."""
+    # Load differential analysis results
+    if type == "gene":
+        load_ranked_genes(adata)
+    elif type == "motif":
+        load_enriched_motifs(adata)
 
-    # New AnnData, parameters to match ArchR
-    logging.info("Creating gene matrix...")
-    adata_ge = snap.pp.make_gene_matrix(
-        adata,
-        gene_anno=ref_dict[genome][1],
-        upstream=5000,  # ArchR default
-        downstream=0,  # ArchR default
-        include_gene_body=True,  # Use genebody, not TSS, per ArchR
+    # Load heatmap data
+    load_heatmaps(adata, type)
+
+    # Load volcano plots if condition analysis was performed
+    if "condition" in groups:
+        load_volcano_plots(adata, type)
+
+
+def load_csv_files_to_uns(
+    pattern: str,
+    target_uns: Dict,
+    dtype_spec: Optional[Dict] = None,
+    index_col: Optional[int] = None,
+    name_transform: Optional[callable] = None
+) -> None:
+    import pandas as pd
+    """Generic function to load CSV files matching a pattern into uns
+    dictionary."""
+    try:
+        files = glob.glob(pattern)
+        for file in files:
+            name = Path(file).stem
+            if name_transform:
+                name = name_transform(name, file)
+            df = pd.read_csv(file, dtype=dtype_spec, index_col=index_col)
+            target_uns[name] = df
+    except Exception as e:
+        logging.warning(f"Error loading files matching {pattern}: {e}")
+
+
+def load_enriched_motifs(adata_motif: anndata.AnnData) -> None:
+    """Load enriched motifs data."""
+    logging.info("Adding enriched motifs...")
+    load_csv_files_to_uns(
+        "enrichedMotifs_*.csv", adata_motif.uns, dtype_spec={"group_name": str}
     )
 
-    # Save raw counts in layers
-    adata_ge.layers["raw_counts"] = adata_ge.X.copy()
 
-    # Copy adata .obsm
-    for obsm in ["X_umap", "X_spectral_harmony", "spatial"]:
-        try:
-            adata_ge.obsm[obsm] = adata.obsm[obsm]
-        except Exception as e:
-            logging.warning(
-                f"Exception {e}: no annotation {obsm} found for observations."
-            )
-
-    # Copy data for neighborhood enrichment plots
-        try:
-            adata_ge.obsp["spatial_connectivities"] = adata.obsp["spatial_connectivities"]
-            adata_ge.uns["cluster_nhood_enrichment"] = adata.uns["cluster_nhood_enrichment"]
-        except Exception as e:
-            logging.warning(
-                f"Exception {e}: Could not copy neighborhood enrichment data."
-            )
-
-    # Remove genes with no cells, counts; per sc, one metric per call...
-    logging.info("Removing mitochondtrial genes, filtering...")
-
-    logging.info(f"Pre-filtering shape: {adata_ge.shape}")
-    adata_ge.var["mt"] = adata_ge.var_names.str.startswith(("MT-", "Mt-", "mt-"))
-    adata_ge = adata_ge[:, ~adata_ge.var["mt"]].copy()
-    logging.info(f"post-filtering shape: {adata_ge.shape}")
-
-    sc.pp.filter_genes(adata_ge, min_counts=min_counts)
-    sc.pp.filter_genes(adata_ge, min_cells=min_cells)
-
-    logging.info("Normalizing matrix and computing log...")
-    sc.pp.normalize_total(adata_ge)
-    sc.pp.log1p(adata_ge)
-
-    logging.info("Batch correction with MAGIC...")
-    sc.external.pp.magic(adata_ge, solver="approximate", n_jobs=-1)
-
-    logging.info("Calculating variable features...")
-    sc.pp.highly_variable_genes(adata_ge, n_top_genes=2000)
-
-    return adata_ge
-
-
-def make_motifmatrix(adata: anndata.AnnData, n_jobs: int = -1) -> anndata.AnnData:
-    """Return a AnnData object with X as a motif deviation matrix."""
-    if adata.X.dtype != "float64":
-        adata.X = adata.X.astype(np.float64)
-
-    return pc.compute_deviations(adata, n_jobs=n_jobs)
-
-
-def make_peak_bed(peaks_df: pd.DataFrame, sort: bool = True) -> BedTool:
-
-    columns = ["chrom", "start", "end", "id"]
-
-    try:
-        peaks_df[columns]
-    except KeyError as e:
-        logging.warning(f"Error {e}: Expected column names missing.")
-
-    bed = BedTool.from_dataframe(peaks_df[columns])
-
-    return bed.sort() if sort else bed
-
-
-def make_plotting_peaks(
+def load_heatmaps(
     adata: anndata.AnnData,
-    key: str,
-    genome: str,
-    features: List[pd.DataFrame],
-) -> pd.DataFrame:
-    """
-    Annotate all peaks for a stacked bar graph.
-    Parameters:
-    - adata (anndata.AnnData): The AnnData object containing peak data.
-    - group (str): The group name used in peak annotation.
-    - genome (str): The genome reference key in utils.ref_dict.
-    Returns:
-    - pd.DataFrame: Annotated peaks ready for plotting.
-    """
+    type: str
+) -> None:
+    """Load heatmap data for both genes and motifs."""
+    logging.info("Adding heatmaps...")
 
-    try:
-
-        # Convert peaks to DataFrame
-        all_peaks = peaks_to_df(adata, key)
-
-        # Get merged peaks (union peaks)
-        union_peaks = get_merged_peaks(adata, key, ref_dict[genome][0])
-        union_peaks = reformat_peak_df(
-            union_peaks, "Peaks", add_group="Union", drop_cols=True
+    if type == "gene":
+        # Gene heatmaps
+        load_csv_files_to_uns(
+            "genes_per_*_hm.csv",
+            adata.uns,
+            dtype_spec={"cluster": str},
+            index_col=0
         )
 
-        # Combine all peaks and union peaks
-        plotting_peaks = pd.concat([all_peaks, union_peaks])
-
-        return annotate_peaks(plotting_peaks, features)
-
-    except Exception as e:
-        logging.error(f"Unexpected error in annotate_and_plot_peaks: {e}")
-
-    return None
+    elif type == "motif":
+        # Motif heatmaps
+        load_csv_files_to_uns(
+            "motif_per_*_hm.csv",
+            adata.uns,
+            index_col=0
+        )
 
 
-def peaks_to_df(
-    adata: anndata.AnnData, peaks_key: str, drop_cols: bool = True
-) -> pd.DataFrame:
-    """
-    Converts peak information stored in adata.uns[peaks_key] into a Pandas DataFrame.
-    Parameters:
-        adata (anndata.AnnData): The AnnData object containing peak information.
-        peaks_key (str): The key in `adata.uns` where peak data is stored.
-        drop_cols (bool): If True, drops unnecessary columns (except 'chrom',
-            'start', 'end', 'group').
-    Returns:
-        pd.DataFrame: Reformatted DataFrame with an 'id' column and set index.
-    """
-
-    if peaks_key not in adata.uns.keys():
-        logging.error(f"Peaks {peaks_key} not found in adata; aborting merge.")
-        return None
-
-    peaks_dict = {
-        k: v.assign(group=k) for k, v in adata.uns[peaks_key].items()
-    }
-
-    # Drop unwanted columns if requested
-    if drop_cols:
-        keep_cols = {"chrom", "start", "end", "group"}
-        for df in peaks_dict.values():
-            df.drop(
-                columns=[col for col in df.columns if col not in keep_cols],
-                errors="ignore",
-                inplace=True
-            )
-
-    peaks_df = pd.concat(peaks_dict.values(), ignore_index=True)
-
-    # Create 'id' column
-    peaks_df["id"] = (peaks_df["group"] + ":" + peaks_df["chrom"] + ":" +
-                      peaks_df["start"].astype(str) + "-" +
-                      peaks_df["end"].astype(str))
-
-    # Set the 'id' column as index
-    peaks_df.set_index("id", inplace=True, drop=False)
-
-    return peaks_df
+def load_ranked_genes(adata_gene: anndata.AnnData) -> None:
+    """Load ranked genes data."""
+    logging.info("Adding ranked genes...")
+    load_csv_files_to_uns(
+        "ranked_genes_*.csv", adata_gene.uns, dtype_spec={"group_name": str}
+    )
 
 
-def rank_features(
+def load_volcano_plots(
+    adata: anndata.AnnData, type: str
+) -> None:
+    """Load volcano plot data for genes and motifs."""
+    if type == "gene":
+        logging.info("Adding gene volcanos...")
+        load_csv_files_to_uns(
+            "volcanoMarkers_genes_*.csv",
+            adata.uns,
+            dtype_spec={"cluster": str},
+            name_transform=lambda name, file: volcano_name_transform(name, file, "genes")
+        )
+
+    elif type == "motif":
+        logging.info("Adding motif volcanos...")
+        load_csv_files_to_uns(
+            "volcanoMarkers_motifs_*.csv",
+            adata.uns,
+            dtype_spec={"cluster": str},
+            name_transform=lambda name,
+            file: volcano_name_transform(name, file, "motifs")
+        )
+
+
+def save_anndata_objects(
     adata: anndata.AnnData,
-    groups: List[str],
-    feature_type: str,
-    save: Optional[str],
-    use_raw: bool = False,
-    pval_cutoff: float = 0.05,
-    logfoldchange_cutoff: float = 0.1,
-):
-    """For each metadata cell grouping provided, add gene ranking information;
-    if 'save' is a string, a csv of the rank data is saved to a directory
-    specified by the string.
-    """
+    suffix: str,
+    base_dir: Path
+) -> None:
+    """Save full and reduced AnnData objects."""
+    logging.info("Saving full adata...")
+    # Save full objects
+    adata.write(f"{base_dir}/combined{suffix}.h5ad")
+
+    # Create and save reduced objects
+    logging.info("Making reduced adata...")
+    sm_adata = clean_adata(adata)
+
+    logging.info("Saving reduced adata...")
+    sm_adata.write(f"{base_dir}/combined_sm{suffix}.h5ad")
+
+
+def transfer_auxiliary_data(
+    adata: anndata.AnnData,
+    data_paths: Dict[str, str],
+    groups: List[str]
+) -> None:
+    """Transfer observation, UMAP, and spatial data to AnnData objects."""
+    logging.info("Transferring auxiliary data...")
+
+    # Transfer observation data
+    transfer_obs_data(adata, data_paths['obs'], groups)
+
+    # Transfer UMAP coordinates
+    transfer_embedding_data(
+        adata, data_paths['umap'], 'X_umap'
+    )
+
+    # Transfer spatial coordinates
+    transfer_embedding_data(
+        adata, data_paths['spatial'], 'spatial'
+    )
+
+
+def transfer_embedding_data(
+    adata: anndata.AnnData,
+    data_path: str,
+    obsm_key: str
+) -> None:
+    """Transfer embedding data (UMAP/spatial) to AnnData objects."""
     import pandas as pd
 
-    for group in groups:
-        logging.info(f"Finding marker genes for {group}s...")
-        sc.tl.rank_genes_groups(
-            adata,
-            groupby=group,
-            method="t-test",
-            key_added=f"{group}_{feature_type}",
-            use_raw=use_raw,
-        )
-        df = sc.get.rank_genes_groups_df(
-            adata, group=None, key=f"{group}_{feature_type}"
-        )
+    logging.info(f"Transferring {obsm_key}...")
 
-        # Write ranked features to csv
-        df.to_csv(f"{save}/ranked_{feature_type}_per_{group}.csv", index=False)
+    try:
+        df = pd.read_csv(data_path, index_col=0)
+        aligned_data = df.loc[adata.obs_names].values
 
-        # Filter and summarize marker features
-        df = df[df["pvals_adj"] <= pval_cutoff]
-        df = df[abs(df["logfoldchanges"]) > logfoldchange_cutoff]
+        adata.obsm[obsm_key] = aligned_data
 
-        counts = df.groupby("group").agg("count")["names"]
-        counts["total"] = counts.sum()
-        counts = pd.DataFrame(counts).reset_index()
-
-        counts.rename(
-            columns={
-                "group": f"{group}",
-                "names": f"number differential {feature_type}",
-            },
-            inplace=True,
-        )
-        counts.to_csv(
-            f"{save}/differential_{feature_type}_per_{group}_counts.csv", index=False
-        )
+    except (FileNotFoundError, KeyError) as e:
+        logging.warning(f"Error loading {obsm_key} data: {e}")
 
 
-def reformat_peak_df(
-    peaks_df: pd.DataFrame,
-    peak_col: str,
-    add_group: Optional[str] = None,
-    group_col: Optional[str] = None,
-    drop_cols: bool = False
-) -> pd.DataFrame:
-    """
-    Reformat a DataFrame to be compatible with BedTools by extracting chromosome,
-    start, and end positions from a peak column ('chrom:start-stop') and adding
-    an identifier column 'id'.
-    Parameters:
-    - peaks_df (pd.DataFrame): Input DataFrame with a column containing peak strings.
-    - peak_col (str): Column name containing peaks in 'chrom:start-stop' format.
-    - add_group (Optional[str]): If provided, assigns a fixed group name to 'group' column.
-    - group_col (Optional[str]): Column name containing group identifiers for peaks.
-    - drop+cols (bool): Whether to drop columns not in ['chrom', 'start', 'end',
-        'group', 'id'].
-    Returns:
-    - pd.DataFrame: Reformatted DataFrame with 'chrom', 'start', 'end', and 'id' columns.
-    """
+def transfer_obs_data(
+    adata: anndata.AnnData,
+    obs_path: str,
+    groups: List[str]
+) -> None:
+    """Transfer observation data to AnnData objects."""
+    import pandas as pd
 
-    if not isinstance(peaks_df, pd.DataFrame):
-        logging.info(f"Peaks DataFrame of class {type(peaks_df)}; \
-                        attempting to convert to pandas.")
-        try:
-            peaks_df = peaks_df.to_pandas()
-        except Exception as e:
-            logging.error(f"Error {e}: could not convert peaks_df to pandas")
-            return None
+    logging.info("Transferring observation data...")
+    try:
+        obs = pd.read_csv(obs_path, index_col=0)
+        if obs.empty:
+            return
 
-    if peak_col not in peaks_df.columns:
-        logging.error(f"Expected peak column {peak_col} missing.")
-        return None
+        obs_aligned = obs.reindex(adata.obs.index)
+        adata.obs = obs_aligned
 
-    peaks_df = peaks_df.copy()
+        # Ensure group columns are strings
+        for group in groups:
+            if group in adata.obs.columns and adata.obs[group].dtype != object:
+                adata.obs[group] = adata.obs[group].astype(str)
 
-    peaks_df[["chrom", "range"]] = peaks_df[peak_col].str.split(":", expand=True)
-    peaks_df[["start", "end"]] = peaks_df["range"].str.split("-", expand=True)
-
-    # Drop the intermediate 'range' column
-    peaks_df.drop(columns=["range"], inplace=True)
-
-    if add_group:
-        peaks_df["group"] = add_group
-    elif group_col and group_col in peaks_df.columns:
-        peaks_df["group"] = peaks_df[group_col].astype(str)
-    else:
-        logging.info("No group information provided; skipping 'id' column.")
-        return peaks_df
-
-    # Create 'id' column
-    peaks_df["id"] = peaks_df["group"] + ":" + peaks_df[peak_col]
-
-    # Set the 'id' column as index
-    peaks_df.set_index("id", inplace=True, drop=False)
-
-    if drop_cols:
-        to_drop = [col for col in peaks_df.columns
-                   if col not in ["chrom", "start", "end", "group", "id"]]
-        peaks_df.drop(to_drop, axis=1, inplace=True)
-
-    return peaks_df
+    except FileNotFoundError:
+        logging.warning(f"File not found: {obs_path}")
 
 
-def process_group(
-    group: str, adata_p: anndata.AnnData, grouping: str
-) -> tuple:
-    logging.info(f"Processing group {group}")
-
-    # Create boolean masks for the group and rest
-    g_cells = adata_p.obs[grouping] == group
-    rest = adata_p.obs[grouping] != group
-
-    # Perform differential peak testing
-    g_peaks = snap.tl.diff_test(
-        adata_p,
-        g_cells,
-        rest,
-        features=None,
-        covariates=None,
-        direction="both",
-        min_log_fc=0.1,
-        min_pct=0.04,
-    )
-
-    g_peaks = g_peaks.to_pandas()
-    g_peaks["group"] = group
-    if "feature name" in g_peaks.columns:
-        g_peaks = g_peaks.rename(columns={"feature name": "names"})
-
-    return group, g_peaks
-
-
-def sequential_differential_peaks(
-    adata_p: anndata.AnnData, grouping: str
-) -> dict:
-    groups = adata_p.obs[grouping].unique()
-    sig_peaks = {}
-    for group in groups:
-        logging.info(f"Processing group {group} sequentially")
-        group_name, peaks = process_group(group, adata_p, grouping)
-        sig_peaks[group_name] = peaks
-    return sig_peaks
-
-
-def rank_differential_peaks(
-    adata_p: anndata.AnnData, grouping: str
-) -> pd.DataFrame:
-
-    # Perform differential peak testing in parallel
-    sig_peaks = sequential_differential_peaks(
-        adata_p, grouping=grouping
-    )
-
-    all_sig_peaks = pd.concat(sig_peaks, ignore_index=True)
-
-    return all_sig_peaks
+def volcano_name_transform(name: str, file: str, data_type: str) -> str:
+    """Transform volcano plot file names."""
+    file_name = Path(file).name
+    treatment = file_name.replace(f"volcanoMarkers_{data_type}_", "").replace(".csv", "")
+    return f"volcano_{treatment}"

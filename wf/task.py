@@ -1,27 +1,20 @@
 import glob
 import logging
 import os
-import pickle
 import subprocess
 from typing import List
 
-import anndata
-import numpy as np
-import pychromvar as pc
-import scanpy as sc
 import snapatac2 as snap
-import squidpy as sq
 from latch import message
 from latch.registry.table import Table
-from latch.resources.tasks import custom_task, large_gpu_task, small_task
-from latch.types import LatchDir, LatchFile
+from latch.resources.tasks import custom_task, small_task
+from latch.types import LatchDir
 
 import wf.features as ft
 import wf.plotting as pl
 import wf.preprocessing as pp
 import wf.spatial as sp
 import wf.utils as utils
-from wf.peaks import call_peaks_macs3_gpu
 
 
 @custom_task(cpu=62, memory=512, storage_gib=1000)
@@ -144,304 +137,147 @@ def make_adata(
         pt_size=utils.pt_sizes[channels]["qc"],
     )
 
-    # # Neighbrohood enrichment plot, Ripley's plot
-    adata = sp.squidpy_analysis(adata)
-
-    group_dict = dict()
-    group_dict["all"] = None
-
-    for group in group_dict.keys():
-        pl.plot_neighborhoods(
-            adata, group, group_dict[group], outdir=figures_dir
-        )
-
-    sq.pl.ripley(adata, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
-
     subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
+
+    # Save critical data for gene matrix
+    adata.obs.to_csv(f"{tables_dir}/obs.csv", index=True)
+
+    umap_df = pd.DataFrame(adata.obsm["X_umap"], index=adata.obs_names)
+    umap_df.to_csv(f"{tables_dir}/X_umap.csv")
+
+    spatial_df = pd.DataFrame(adata.obsm["spatial"], index=adata.obs_names)
+    spatial_df.to_csv(f"{tables_dir}/spatial.csv")
+
     adata.write(f"{out_dir}/combined.h5ad")
 
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}"), groups
 
 
-@custom_task(cpu=124, memory=500, storage_gib=1000)
-def make_adata_gene(
+@custom_task(cpu=50, memory=975, storage_gib=2000)
+def genes_task(
+    runs: List[utils.Run],
     outdir: LatchDir,
     project_name: str,
-    genome: utils.Genome,
-) -> LatchDir:
-
-    data_path = LatchFile(f"{outdir.remote_path}/combined.h5ad")
-    adata = anndata.read_h5ad(data_path.local_path)
-    genome = genome.value
-
-    out_dir = f"/root/{project_name}"
-    os.makedirs(out_dir, exist_ok=True)
-
-    figures_dir = f"{out_dir}/figures"
-    os.makedirs(figures_dir, exist_ok=True)
-
-    tables_dir = f"{out_dir}/tables"
-    os.makedirs(tables_dir, exist_ok=True)
-
-    logging.info("Making gene matrix...")
-    adata_gene = ft.make_geneadata(adata, genome)
-    adata_gene.obs.to_csv(f"{tables_dir}/gene_metadata.csv")
-
-    adata_gene.write(f"{out_dir}/combined_ge.h5ad")
-
-    return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
-
-
-@custom_task(cpu=62, memory=975, storage_gib=1000)
-def rank_genes(
-    outdir: LatchDir,
-    project_name: str,
-    genome: utils.Genome,
     groups: List[str],
-) -> LatchDir:
-
-    data_path = LatchFile(f"{outdir.remote_path}/combined_ge.h5ad")
-    adata_gene = anndata.read_h5ad(data_path.local_path)
-    genome = genome.value
-
-    out_dir = f"/root/{project_name}"
-    os.makedirs(out_dir, exist_ok=True)
-
-    figures_dir = f"{out_dir}/figures"
-    os.makedirs(figures_dir, exist_ok=True)
-
-    tables_dir = f"{out_dir}/tables"
-    os.makedirs(tables_dir, exist_ok=True)
-
-    logging.info("Ranking genes...")
-
-    ft.rank_features(adata_gene, groups=groups, feature_type="genes", save=tables_dir)
-    logging.info("Finished ranking genes...")
-
-    # # Plot heatmap for genes
-    sc.pl.rank_genes_groups_matrixplot(
-        adata_gene,
-        n_genes=5,
-        groupby="cluster",
-        values_to_plot="scores",
-        key="cluster_genes",
-        min_logfoldchange=0.1,
-        save="genes",
-    )
-
-    # Select only protein-coding and ArchR genes for plots
-    with open(utils.ref_dict[genome][5], "r") as f:
-        select_genes = f.readline().strip().split(",")
-    selected_adata = adata_gene[:, adata_gene.var_names.isin(select_genes)].copy()
-    sm_adata = ft.clean_adata(selected_adata)
-
-    adata_gene.write(f"{out_dir}/combined_ge.h5ad")
-    sm_adata.write(f"{out_dir}/combined_sm_ge.h5ad")
-
-    return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
-
-
-@large_gpu_task
-def call_peaks(
-    outdir: LatchDir,
-    project_name: str,
     genome: utils.Genome,
-    groups: List[str],
 ) -> LatchDir:
-    import pandas as pd
+
+    # Read in data tables
+    data_paths = utils.get_data_paths(outdir)
 
     genome = genome.value
 
-    data_path = LatchFile(f"{outdir.remote_path}/combined.h5ad")
-    adata = anndata.read_h5ad(data_path.local_path)
+    # Create output dirs
+    dirs = utils.create_output_directories(project_name)
 
-    out_dir = f"/root/{project_name}"
-    os.makedirs(out_dir, exist_ok=True)
+    logging.info("Running ArchR analysis...")
+    # run subprocess R script to make .h5ad file
+    _archr_cmd = [
+        'Rscript',
+        '/root/wf/R/archr_genes.R',
+        project_name,
+        genome,
+        data_paths['obs'],
+    ]
 
-    figures_dir = f"{out_dir}/figures"
-    os.makedirs(figures_dir, exist_ok=True)
-
-    tables_dir = f"{out_dir}/tables"
-    os.makedirs(tables_dir, exist_ok=True)
-
-    peak_mats = {}
-    for group in groups:
-        logging.info(f"Calling peaks for {group}s...")
-        adata = call_peaks_macs3_gpu(
-            adata=adata,
-            groupby_key=group,
-            d_treat=150,
-            d_ctrl=10000,
-            max_gap=30,
-            peak_amp=150,
-            q_thresh=0.1,
+    runs = [
+        (
+            f'{run.run_id},'
+            f'{run.fragments_file.local_path},'
+            f'{run.condition},'
+            f'{utils.get_LatchFile(run.spatial_dir, "tissue_positions_list.csv").local_path},'
+            f'{run.spatial_dir.local_path},'
         )
+        for run in runs
+    ]
+    _archr_cmd.extend(runs)
+    subprocess.run(_archr_cmd, check=True)
 
-        # Annotate all peaks for stacked bargraph
-        logging.info("Annotating and plotting all peaks...")
+    # Load and combine data
+    adata_gene = ft.load_and_combine_data("g_converted")
 
-        # Load reference features from CSV files
-        feat_paths = utils.ref_dict[genome][2:5]
-        feats = [pd.read_csv(feat) for feat in feat_paths]
+    # Transfer auxiliary data to combined AnnData
+    ft.transfer_auxiliary_data(adata_gene, data_paths, groups)
 
-        all_peaks = ft.make_plotting_peaks(
-            adata, f"{group}_peaks", genome, feats
-        )
-        pl.plot_stacked_peaks(
-            all_peaks,
-            "group",
-            "peakType",
-            group,
-            f"{figures_dir}/{group}Peaks_stackedBar.pdf"
-        )
+    # Run spatial analysis
+    adata_gene = sp.run_squidpy_analysis(adata_gene, dirs["figures"])
 
-        logging.info("Making peak matrix AnnData...")
-        anndata_peak = ft.make_peakmatrix(
-            adata, genome, f"{group}_peaks", log_norm=False
-        )
+    # Load differential analysis results
+    ft.load_analysis_results(adata_gene, "gene", groups)
 
-        logging.info("Writing peak matrix...")
-        anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData
+    # Organize outputs
+    utils.organize_outputs(project_name, dirs)
 
-        peak_mats[group] = anndata_peak
+    # Save AnnData
+    ft.save_anndata_objects(adata_gene, "_ge", dirs['base'])
 
-        logging.info("Writing combined anndata with peaks info...")
-        peaks = list(peak_mats["cluster"].var_names)
-        snap.metrics.frip(adata, {"cluster_peaks": peaks})
-
-        adata.write(f"{out_dir}/combined.h5ad")
-
-        logging.info("Writing all peaks to disk...")
-        peaks_path = f"{out_dir}/peaks.pkl"
-        with open(peaks_path, "wb") as f:
-            pickle.dump(peak_mats, f)
-
-    return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
+    logging.info("Uploading data to Latch...")
+    return LatchDir(str(dirs['base']), f"latch:///snap_outs/{project_name}")
 
 
-@custom_task(cpu=124, memory=192, storage_gib=1000)
-def rank_peaks(
-    outdir: LatchDir,
-    project_name: str,
-    genome: utils.Genome,
-    groups: List[str],
-) -> LatchDir:
-    import pandas as pd
-
-    out_dir = f"/root/{project_name}"
-    os.makedirs(out_dir, exist_ok=True)
-
-    figures_dir = f"{out_dir}/figures"
-    os.makedirs(figures_dir, exist_ok=True)
-
-    tables_dir = f"{out_dir}/tables"
-    os.makedirs(tables_dir, exist_ok=True)
-
-    genome = genome.value
-    feats = [pd.read_csv(feat) for feat in utils.ref_dict[genome][2:5]]
-
-    for group in groups:
-        data_path = LatchFile(f"{outdir.remote_path}/{group}_peaks.h5ad")
-        anndata_peak = anndata.read_h5ad(data_path.local_path)
-
-        logging.info(f"Finding marker peaks {group}...")
-
-        peaks_df = ft.rank_differential_peaks(anndata_peak, group)
-        anndata_peak.uns["rank_peaks_groups"] = peaks_df
-
-        logging.info("Writing marker peaks to .csv ...")
-        peaks_df = peaks_df[peaks_df["adjusted p-value"] <= 0.05]
-        peaks_df = ft.reformat_peak_df(peaks_df, "names", group_col="group")
-        peaks_df = ft.annotate_peaks(peaks_df, feats)
-        peaks_df.to_csv(f"{tables_dir}/marker_peaks_per_{group}.csv", index=False)
-
-        logging.info("Writing ranked peak matrix...")
-        anndata_peak.write(f"{out_dir}/{group}_peaks.h5ad")  # Save AnnData
-
-    return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
-
-
-@custom_task(cpu=62, memory=512, storage_gib=1000)
+@custom_task(cpu=50, memory=975, storage_gib=2000)
 def motifs_task(
+    runs: List[utils.Run],
     outdir: LatchDir,
     project_name: str,
     groups: List[str],
     genome: utils.Genome,
 ) -> LatchDir:
 
+    # Read in data tables
+    data_paths = utils.get_data_paths(outdir)
+
     genome = genome.value
-    data_path = LatchFile(f"{outdir.remote_path}/combined.h5ad")
-    adata = anndata.read_h5ad(data_path.local_path)
-    peaks_path = LatchFile(f"{outdir.remote_path}/peaks.pkl")
-    with open(peaks_path.local_path, "rb") as f:
-        peak_mats = pickle.load(f)
-    out_dir = f"/root/{project_name}"
-    os.makedirs(out_dir, exist_ok=True)
 
-    figures_dir = f"{out_dir}/figures"
-    os.makedirs(figures_dir, exist_ok=True)
+    # Create output dirs
+    dirs = utils.create_output_directories(project_name)
 
-    tables_dir = f"{out_dir}/tables"
-    os.makedirs(tables_dir, exist_ok=True)
+    # Download ArchRProject
+    archrproj_path = LatchDir(
+        f"{outdir.remote_path}/{project_name}_ArchRProject"
+    ).local_path
 
-    # Calculate the medians for each sample, create a DataFrame
-    grouped = adata.obs.groupby("sample")
+    logging.info("Running ArchR analysis...")
+    # run subprocess R script to make .h5ad file
+    _archr_cmd = [
+        'Rscript',
+        '/root/wf/R/archr_motifs.R',
+        project_name,
+        genome,
+        data_paths['obs'],
+        archrproj_path,
+    ]
 
-    medians_df = grouped.agg(
-        {"n_fragment": "median", "tsse": "median", "cluster_peaks": "median"}
-    ).reset_index()
-    # Rename columns to match the desired output
-    medians_df.rename(
-        columns={"sample": "run_id", "tsse": "tss", "cluster_peaks": "frip"},
-        inplace=True,
-    )
-    medians_df.to_csv(f"{tables_dir}/medians.csv", index=False)
+    runs = [
+        (
+            f'{run.run_id},'
+            f'{run.fragments_file.local_path},'
+            f'{run.condition},'
+            f'{utils.get_LatchFile(run.spatial_dir, "tissue_positions_list.csv").local_path},'
+            f'{run.spatial_dir.local_path},'
+        )
+        for run in runs
+    ]
+    _archr_cmd.extend(runs)
+    subprocess.run(_archr_cmd, check=True)
 
-    # Motifs ------------------------------------------------------------------
-    # Get Anndata object with motifs matrix from cluster peak matrix.
-    cluster_peaks = peak_mats["cluster"]
+    # Load and combine data
+    adata_motif = ft.load_and_combine_data("m_converted")
 
-    logging.info("Preparing peak matrix for motifs...")
-    fasta = utils.get_genome_fasta(genome)
+    # Transfer auxiliary data to combined AnnData
+    ft.transfer_auxiliary_data(adata_motif, data_paths, groups)
 
-    cluster_peaks = ft.get_motifs(cluster_peaks, fasta.local_path)
-    cluster_peaks.write(f"{out_dir}/cluster_peaks.h5ad")
+    # Load differential analysis results
+    ft.load_analysis_results(adata_motif, "motif", groups)
 
-    # Have to convert X to float64 for pc.compute_deviations
-    cluster_peaks.X = cluster_peaks.X.astype(np.float64)
+    # Organize outputs
+    utils.organize_outputs(project_name, dirs)
 
-    logging.info("Computing motif deviation matrix...")
-    adata_motif = pc.compute_deviations(cluster_peaks, n_jobs=1, chunk_size=10000)
+    # Save AnnData
+    ft.save_anndata_objects(adata_motif, "_motifs", dirs['base'])
 
-    # Copy over cell data
-    adata_motif.obs = cluster_peaks.obs
-    adata_motif.obsm = cluster_peaks.obsm
-
-    ft.rank_features(adata_motif, groups=groups, feature_type="motifs", save=tables_dir)
-
-    # Plot heatmap for motifs
-    sc.pl.rank_genes_groups_matrixplot(
-        adata_motif,
-        n_genes=5,
-        groupby="cluster",
-        values_to_plot="scores",
-        key="cluster_motifs",
-        min_logfoldchange=0.1,
-        save="motifs",
-    )
-
-    sm_adata = ft.clean_adata(adata_motif)
-
-    adata_motif.write(f"{out_dir}/combined_motifs.h5ad")
-    sm_adata.write(f"{out_dir}/combined_sm_motifs.h5ad")
-
-    # Upload data -----------------------------------------------------------
-
-    logging.info("Uploading data to Latch ...")
-
-    # Move scanpy plots
-    subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)
-    return LatchDir(out_dir, f"latch:///snap_outs/{project_name}")
+    logging.info("Uploading data to Latch...")
+    return LatchDir(str(dirs['base']), f"latch:///snap_outs/{project_name}")
 
 
 @small_task(cache=True)

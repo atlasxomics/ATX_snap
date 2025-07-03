@@ -7,12 +7,9 @@ from latch.types.metadata import (
 
 # from wf.task import registry_task, snap_task
 from wf.task import (
-    call_peaks,
-    make_adata,
-    make_adata_gene,
-    rank_genes,
+    genes_task,
     motifs_task,
-    rank_peaks,
+    make_adata,
     registry_task,
 )
 from wf.utils import Genome, Run
@@ -254,38 +251,20 @@ def snap_workflow(
         clustering_iters=clustering_iters,
     )
 
-    outdir_ge1 = make_adata_gene(
+    outdir_ge = genes_task(
+        runs=runs,
         outdir=outdir,
         project_name=project_name,
         genome=genome,
-    )
-
-    outdir_ge2 = rank_genes(
-        outdir=outdir_ge1,
-        project_name=project_name,
-        genome=genome,
-        groups=groups,
-    )
-
-    outdir_peaks = call_peaks(
-        outdir=outdir,
-        project_name=project_name,
-        genome=genome,
-        groups=groups,
-    )
-
-    outdir_ranked_peaks = rank_peaks(
-        outdir=outdir_peaks,
-        project_name=project_name,
-        genome=genome,
-        groups=groups,
+        groups=groups
     )
 
     outdir_motifs = motifs_task(
-        outdir=outdir_peaks,
+        runs=runs,
+        outdir=outdir_ge,
         project_name=project_name,
-        genome=genome,
         groups=groups,
+        genome=genome,
     )
 
     uploaded_results = registry_task(runs=runs, results=outdir_motifs)
@@ -295,11 +274,17 @@ def snap_workflow(
 
 if __name__ == "__main__":
 
-    from latch.types import LatchDir
+    from latch.types import LatchDir, LatchFile
 
-    outdir = call_peaks(
-        outdir=LatchDir("latch://13502.account/snap_outs/demo_001001"),
-        groups=["cluster"],
+    genes_task(
+        runs=[Run(
+            run_id="demo",
+            fragments_file=LatchFile("latch://13502.account/atac_outs/ds_D01033_NG01681/outs/ds_D01033_NG01681_fragments.tsv.gz"),
+            spatial_dir=LatchDir("latch://atx-illumina.mount/Images_spatial/D1033/spatial/"),
+            condition="control",
+        )],
+        outdir="latch://13502.account/snap_outs/demo_001716",
         genome=Genome("hg38"),
-        project_name="develop_peaks",
+        groups=["cluster"],
+        project_name="develop_archrGenes",
     )
