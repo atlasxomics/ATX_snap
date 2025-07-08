@@ -8,7 +8,9 @@ getDeviation_ArchR <- function(
   useAssay = "z",
   log2Norm = TRUE
 ) {
-  motif_se <- getMatrixFromProject(ArchRProj, useMatrix = "MotifMatrix")
+  motif_se <- getMatrixFromProject(
+    ArchRProj, useMatrix = "MotifMatrix", asMatrix = TRUE, useSpam64 = FALSE
+  )
   mat <- assay(motif_se, useAssay)
 
   motif_names <- rowData(motif_se)$name

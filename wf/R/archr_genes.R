@@ -182,7 +182,8 @@ impute_weights <- getImputeWeights(proj)
 gene_matrix <- ArchR::getMatrixFromProject(
   ArchRProj = proj,
   useMatrix = "GeneScoreMatrix",
-  asMatrix = TRUE
+  asMatrix = FALSE,
+  useSpam64 = TRUE
 )
 gene_row_names <- gene_matrix@elementMetadata$name
 
