@@ -77,7 +77,8 @@ RUN R -e "remotes::install_github('bnprks/BPCells/r', ref = 'a3096e5', upgrade =
 RUN R -e "remotes::install_github('mojaveazure/seurat-disk', ref = '877d4e1', upgrade = 'never')"
 
 RUN R -e "BiocManager::install('sparseMatrixStats')"
-RUN echo "hi"
+
+RUN R -e "install.packages('https://cran.r-project.org/src/contrib/spam64_2.10-0.tar.gz', repos = NULL, type = 'source')"
 RUN R -e "remotes::install_github('jpmcga/ArchR', ref = 'master')"
 
 COPY . /root/
