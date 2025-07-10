@@ -17,6 +17,7 @@ library("readr")
 library("Seurat")
 library("seqLogo")
 library("ShinyCell")
+library("spam")
 library("tidyverse")
 
 source("/root/wf/R/archr.R")
@@ -189,12 +190,10 @@ gene_row_names <- gene_matrix@elementMetadata$name
 
 # Identify empty features for filtering volcano plots --
 print("Identifying empty features...")
-empty_feat_idx <- which(Matrix::rowSums(
-  SummarizedExperiment::assay(gene_matrix, "GeneScoreMatrix")
-) == 0)
+rowpointers <- gene_matrix@assays@data@listData$GeneScoreMatrix@rowpointers
+empty_feat_idx <- which(diff(rowpointers) == 0)
 empty_feat <- gene_row_names[empty_feat_idx]
 print(paste("Found", length(empty_feat), "empty features"))
-
 
 matrix <- ArchR::imputeMatrix(
   mat = SummarizedExperiment::assay(gene_matrix),
