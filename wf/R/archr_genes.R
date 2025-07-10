@@ -196,7 +196,7 @@ empty_feat <- gene_row_names[empty_feat_idx]
 print(paste("Found", length(empty_feat), "empty features"))
 
 matrix <- ArchR::imputeMatrix(
-  mat = SummarizedExperiment::assay(gene_matrix),
+  mat = gene_matrix@assays@data@listData$GeneScoreMatrix,
   imputeWeights = impute_weights
 )
 
