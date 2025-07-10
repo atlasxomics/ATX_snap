@@ -536,9 +536,9 @@ performPairwiseMarkerComparisons <- function(
         threads = threads,
         verbose = FALSE
       )
-      
+
       markers_df <- processMarkerFeatures(markerFeatures, group1, ArchRProj)
-      
+
       pairwiseResults[[comparisonName]] <- markerFeatures
       rawResults[[comparisonName]] <- markers_df
       
@@ -550,9 +550,9 @@ performPairwiseMarkerComparisons <- function(
       rawResults[[comparisonName]] <- NULL
     })
   }
-  
+
   # Filter same-signed reciprocals if requested
-  if(removeSameSignReciprocals && length(rawResults) > 0) {
+  if (removeSameSignReciprocals && length(rawResults) > 0) {
     if(verbose) {
       cat("Filtering same-signed reciprocal features...\n")
     }
@@ -569,14 +569,14 @@ performPairwiseMarkerComparisons <- function(
             group2 <- splitResult[2]
             filename <- paste0(group1, "-vs-", group2, "_filtered.csv")
             write.csv(
-              filteredResults[[comparisonName]], 
-              file.path(outputDir, filename), 
+              filteredResults[[comparisonName]],
+              file.path(outputDir, filename),
               row.names = FALSE
             )
           }
         }
       }
-      
+
       # Save summary of filtering
       filteringSummary <- generateFilteringSummary(rawResults, filteredResults)
       write.csv(
@@ -586,7 +586,7 @@ performPairwiseMarkerComparisons <- function(
       )
     }
   }
-  
+
   # Save raw results regardless
   if(saveResults) {
     for(comparisonName in names(rawResults)) {
@@ -597,24 +597,23 @@ performPairwiseMarkerComparisons <- function(
           group2 <- splitResult[2]
           filename <- paste0(group1, "-vs-", group2, "_raw.csv")
           write.csv(
-            rawResults[[comparisonName]], 
-            file.path(outputDir, filename), 
+            rawResults[[comparisonName]],
+            file.path(outputDir, filename),
             row.names = FALSE
           )
         }
       }
     }
-    
     saveRDS(pairwiseResults, file.path(outputDir, "all_directional_pairwise_comparisons.rds"))
   }
   
-  if(verbose) {
+  if (verbose) {
     cat("Completed all directional pairwise comparisons!\n")
     cat("Results saved to:", outputDir, "\n")
   }
 
   # Return filtered results if filtering was applied, otherwise raw results
-  if(removeSameSignReciprocals && exists("filteredResults")) {
+  if (removeSameSignReciprocals && exists("filteredResults")) {
     return(list(raw = pairwiseResults, filtered = filteredResults))
   } else {
     return(pairwiseResults)
@@ -623,7 +622,7 @@ performPairwiseMarkerComparisons <- function(
 
 # Function to filter same-signed reciprocal features
 filterSameSignReciprocals <- function(rawResults, verbose = TRUE) {
-  
+
   filteredResults <- list()
   comparisonNames <- names(rawResults)
   
