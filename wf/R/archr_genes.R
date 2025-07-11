@@ -151,6 +151,24 @@ proj <- addIterativeLSI(
   force = TRUE
 )
 
+lsi_cells <- rownames(getReducedDims(proj, reducedDims = "IterativeLSI"))
+
+if (!setequal(lsi_cells, proj$cellNames)) {
+  removed <- length(setdiff(proj$cellNames, lsi_cells))
+  message(
+    sprintf(
+      "[WARNING] %d cell%s had zero counts in the variable tiles and were dropped by LSI; ",
+      removed,
+      ifelse(removed == 1, "", "s")
+    ),
+    "ArchRProject is being subset to keep the remaining ",
+    length(lsi_cells), " cells."
+  )
+  proj <- proj[lsi_cells, ]     # subset ArchRProj
+} else {
+  message("[INFO] All cells passed LSI filtering; no subsetting needed.")
+}
+
 proj <- ArchR::addImputeWeights(proj)
 
 saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
