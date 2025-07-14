@@ -121,14 +121,36 @@ def load_csv_files_to_uns(
     dictionary."""
     try:
         files = glob.glob(pattern)
+        if not files:
+            logging.warning(
+                f"[load_csv_files_to_uns] No files matched pattern '{pattern}'"
+                )
+            return
+
         for file in files:
-            name = Path(file).stem
-            if name_transform:
-                name = name_transform(name, file)
+            key = Path(file).stem
+            if name_transform is not None:
+                key = name_transform(key, file)
+
             df = pd.read_csv(file, dtype=dtype_spec, index_col=index_col)
-            target_uns[name] = df
+
+            # Drop rows with any NaNs
+            n_before = len(df)
+            df = df.dropna(how="any")
+            n_dropped = n_before - len(df)
+            if n_dropped > 0:
+                logging.warning(
+                    f"[load_csv_files_to_uns] '{file}': "
+                    f"dropped {n_dropped} row(s) containing NaNs"
+                )
+
+            target_uns[key] = df
+
     except Exception as e:
-        logging.warning(f"Error loading files matching {pattern}: {e}")
+        logging.warning(
+            f"[load_csv_files_to_uns] Error while processing \
+             pattern '{pattern}': {e}"
+        )
 
 
 def load_enriched_motifs(adata_motif: anndata.AnnData) -> None:
@@ -196,23 +218,6 @@ def load_volcano_plots(
         )
 
 
-def find_bad_uns(adata: anndata.AnnData):
-    import pandas as pd
-
-    bad_keys = []
-    for k, v in adata.uns.items():
-        if isinstance(v, pd.DataFrame):
-            # any column with object dtype that contains non-str values?
-            bad_cols = [c for c in v.columns
-                        if v[c].dtype == "object"
-                        and not v[c].apply(lambda x: isinstance(x, str) or pd.isna(x)).all()]
-            if bad_cols:
-                bad_keys.append((k, bad_cols))
-        elif isinstance(v, (list, tuple, np.ndarray)) and v and not all(isinstance(x, str) for x in v):
-            bad_keys.append((k, "(sequence)"))
-    return bad_keys
-
-
 def save_anndata_objects(
     adata: anndata.AnnData,
     suffix: str,
@@ -220,20 +225,8 @@ def save_anndata_objects(
 ) -> None:
     """Save full and reduced AnnData objects."""
     logging.info("Saving full adata...")
-
-    bad = find_bad_uns(adata)
-    print("Problematic entries in `uns`:", bad)
-
-    for k, cols in bad:
-        if isinstance(cols, list):               # DataFrame with bad cols
-            adata.uns[k][cols] = adata.uns[k][cols].astype(str)
-        else:                                    # plain list/ndarray
-            adata.uns[k] = np.asarray(adata.uns[k], dtype=str)
-
-    # Save full objects
     adata.write(f"{base_dir}/combined{suffix}.h5ad")
 
-    # Create and save reduced objects
     logging.info("Making reduced adata...")
     sm_adata = clean_adata(adata)
 
