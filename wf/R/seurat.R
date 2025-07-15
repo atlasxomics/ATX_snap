@@ -17,7 +17,9 @@ build_atlas_seurat_object <- function(
   run_id,
   matrix,
   metadata,
-  spatial_path
+  spatial_path,
+  gene_names,
+  cell_names = NULL
 ) {
   #' Prepare and combine gene matrix, metadata, and image for SeuratObject
   #' for runs within a project.
@@ -34,13 +36,17 @@ build_atlas_seurat_object <- function(
   # Filter metadata
   metadata <- metadata[metadata$Sample == run_id, ]
 
-  mat_colnames <- colnames(matrix)
-  col_indices <- grep(pattern = run_id, mat_colnames)
-
-  # Handle different matrix types
   is_spam <- inherits(matrix, "spam")
 
+  # Handle different matrix types
+
   if (is_spam) {
+
+    if (is.null(cell_names)) {
+      stop("Cell names must be provided for spam matrices")
+    }
+
+    col_indices <- grep(pattern = run_id, cell_names)
 
     message("Subsetting spam matrix...")
     matrix_subset <- matrix[, col_indices, drop = FALSE]
@@ -58,6 +64,8 @@ build_atlas_seurat_object <- function(
       index1 = TRUE  # spam uses 1-based indexing
     )
 
+    colnames(matrix_sparse) <- cell_names[col_indices]
+
     # Clean up spam objects
     rm(matrix_subset, spam_triplet)
 
@@ -65,7 +73,10 @@ build_atlas_seurat_object <- function(
 
     message("Working with Matrix sparse matrix...")
     message("Subsetting matrix and converting to sparse format...")
+    mat_colnames <- colnames(matrix)
+    col_indices <- grep(pattern = run_id, mat_colnames)
     matrix_sparse <- as(matrix[, col_indices], "dgCMatrix")
+    colnames(matrix_sparse) <- rownames(metadata)[col_indices]
   }
 
   # Immediately remove references to free memory
@@ -73,7 +84,7 @@ build_atlas_seurat_object <- function(
   gc(verbose = FALSE, full = TRUE)
 
   # Set column names
-  colnames(matrix_sparse) <- rownames(metadata)
+  rownames(matrix_sparse) <- gene_names
 
   # Create assay object and immediately remove the source matrix
   message("Creating Seurat assay object...")

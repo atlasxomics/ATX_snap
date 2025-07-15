@@ -187,6 +187,7 @@ gene_matrix <- ArchR::getMatrixFromProject(
   useSpam64 = TRUE
 )
 gene_row_names <- gene_matrix@elementMetadata$name
+cell_names <- colnames(gene_matrix)
 
 # Identify empty features for filtering volcano plots --
 print("Identifying empty features...")
@@ -197,13 +198,13 @@ print(paste("Found", length(empty_feat), "empty features"))
 
 matrix <- ArchR::imputeMatrix(
   mat = gene_matrix@assays@data@listData$GeneScoreMatrix,
+  mat_colnames = cell_names,
+  mat_rownames = gene_row_names,
   imputeWeights = impute_weights
 )
 
 rm(gene_matrix, impute_weights)
 gc()
-
-rownames(matrix) <- gene_row_names
 
 # Create and save SeuratObjects --
 print("Creating SeuratObjects...")
@@ -215,12 +216,17 @@ for (run in runs) {
     run_id = run[1],
     matrix = matrix,
     metadata = metadata,
-    spatial_path = run[5]
+    spatial_path = run[5],
+    cell_names = cell_names,
+    gene_names = gene_row_names
   )
 
   saveRDS(obj, file = paste0(run[1], "_SeuratObj.rds"))
   seurat_objs <- c(seurat_objs, obj)
 }
+
+rm(matrix)
+gc()
 
 print("Available SeuratObjects:")
 seurat_objs

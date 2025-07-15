@@ -243,6 +243,8 @@ dev_score3 <- Matrix(as.matrix(dev_score2), sparse = TRUE)
 empty_feat_idx_m <- which(rowSums(dev_score3) == 0)
 empty_feat_m <- rownames(dev_score3)[empty_feat_idx_m]
 
+motif_names <- rownames(dev_score3)
+
 # Create motif seurat objects --
 seurat_objs_m <- c()
 for (run in runs) {
@@ -251,7 +253,8 @@ for (run in runs) {
     run_id = run[1],
     matrix = dev_score3,
     metadata = metadata,
-    spatial_path = run[5]
+    spatial_path = run[5],
+    motif_names
   )
 
   saveRDS(obj, file = paste0(run[1], "_SeuratObjMotif.rds"))
