@@ -162,16 +162,16 @@ saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
 # Extract metadata for Seurat object --
 metadata <- getCellColData(ArchRProj = proj)
 
-# Set metadata rownames to barcodes
-rownames(metadata) <- str_split_fixed(
-  str_split_fixed(
-    row.names(metadata),
-    "#",
-    2
-  )[, 2],
-  "-",
-  2
-)[, 1]
+# # Set metadata rownames to barcodes
+# rownames(metadata) <- str_split_fixed(
+#   str_split_fixed(
+#     row.names(metadata),
+#     "#",
+#     2
+#   )[, 2],
+#   "-",
+#   2
+# )[, 1]
 
 # Create col for log10 of fragment counts
 metadata["log10_nFrags"] <- log(metadata$nFrags)

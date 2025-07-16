@@ -76,7 +76,7 @@ build_atlas_seurat_object <- function(
     mat_colnames <- colnames(matrix)
     col_indices <- grep(pattern = run_id, mat_colnames)
     matrix_sparse <- as(matrix[, col_indices], "dgCMatrix")
-    colnames(matrix_sparse) <- rownames(metadata)[col_indices]
+    colnames(matrix_sparse) <- colnames(matrix)[col_indices]
   }
 
   # Immediately remove references to free memory
@@ -106,6 +106,13 @@ build_atlas_seurat_object <- function(
 
   # Add image
   message("Adding spatial image...")
+
+  # Strip suffix and prefix off barcode to match image
+  clean <- sub("^[^#]+#", "", colnames(object))
+  clean <- sub("-\\d+$", "", clean)
+  object <- Seurat::RenameCells(object, new.names = clean)
+  rownames(object@meta.data) <- clean
+
   image <- image[Seurat::Cells(x = object)]
   Seurat::DefaultAssay(object = image) <- "Spatial"
   object[["slice1"]] <- image
