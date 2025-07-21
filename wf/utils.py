@@ -45,7 +45,10 @@ hg38_chrsizes = {
     "chr22": 50818468, "chrX": 156040895, "chrY": 57227415, "chrM": 16569
 }
 
-ref_dict = {"mm10": [mm10_chrsizes], "hg38": [hg38_chrsizes,]}
+ref_dict = {
+    "mm10": [mm10_chrsizes, "/root/references/gencode_vM25_GRCm38.gff3.gz"],
+    "hg38": [hg38_chrsizes, "/root/references/gencode_v41_GRCh38.gff3.gz"]
+}
 
 
 class Genome(Enum):

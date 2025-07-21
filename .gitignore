@@ -10,5 +10,6 @@ venv/
 **/*.h5ad
 
 references/*_exons.csv
+references/*.gff3.gz
 
 renv/
