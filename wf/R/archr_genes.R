@@ -162,17 +162,6 @@ saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
 # Extract metadata for Seurat object --
 metadata <- getCellColData(ArchRProj = proj)
 
-# # Set metadata rownames to barcodes
-# rownames(metadata) <- str_split_fixed(
-#   str_split_fixed(
-#     row.names(metadata),
-#     "#",
-#     2
-#   )[, 2],
-#   "-",
-#   2
-# )[, 1]
-
 # Create col for log10 of fragment counts
 metadata["log10_nFrags"] <- log(metadata$nFrags)
 
@@ -191,15 +180,17 @@ cell_names <- colnames(gene_matrix)
 
 # Identify empty features for filtering volcano plots --
 print("Identifying empty features...")
+
 rowpointers <- gene_matrix@assays@data@listData$GeneScoreMatrix@rowpointers
 empty_feat_idx <- which(diff(rowpointers) == 0)
 empty_feat <- gene_row_names[empty_feat_idx]
 print(paste("Found", length(empty_feat), "empty features"))
 
+message(sprintf("Found %d empty features", length(empty_feat)))
+
 matrix <- ArchR::imputeMatrix(
   mat = gene_matrix@assays@data@listData$GeneScoreMatrix,
   mat_colnames = cell_names,
-  mat_rownames = gene_row_names,
   imputeWeights = impute_weights
 )
 

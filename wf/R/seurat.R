@@ -111,7 +111,6 @@ build_atlas_seurat_object <- function(
   clean <- sub("^[^#]+#", "", colnames(object))
   clean <- sub("-\\d+$", "", clean)
   object <- Seurat::RenameCells(object, new.names = clean)
-  rownames(object@meta.data) <- clean
 
   image <- image[Seurat::Cells(x = object)]
   Seurat::DefaultAssay(object = image) <- "Spatial"
