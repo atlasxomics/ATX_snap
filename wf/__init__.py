@@ -236,20 +236,23 @@ def snap_workflow(
 
     """
 
-    outdir, groups = make_adata(
-        runs=runs,
-        genome=genome,
-        project_name=project_name,
-        resolution=resolution,
-        leiden_iters=leiden_iters,
-        n_comps=n_comps,
-        min_cluster_size=min_cluster_size,
-        min_tss=min_tss,
-        min_frags=min_frags,
-        tile_size=tile_size,
-        n_features=n_features,
-        clustering_iters=clustering_iters,
-    )
+    # outdir, groups = make_adata(
+    #     runs=runs,
+    #     genome=genome,
+    #     project_name=project_name,
+    #     resolution=resolution,
+    #     leiden_iters=leiden_iters,
+    #     n_comps=n_comps,
+    #     min_cluster_size=min_cluster_size,
+    #     min_tss=min_tss,
+    #     min_frags=min_frags,
+    #     tile_size=tile_size,
+    #     n_features=n_features,
+    #     clustering_iters=clustering_iters,
+    # )
+    from latch.types import LatchDir
+    outdir = LatchDir("latch://13502.account/snap_outs/Pieper_154_brain_ArchRFull_10Core")
+    groups = ["sample", "cluster", "condition"]
 
     outdir_ge = genes_task(
         runs=runs,
@@ -258,18 +261,19 @@ def snap_workflow(
         genome=genome,
         groups=groups
     )
+    return outdir_ge
 
-    outdir_motifs = motifs_task(
-        runs=runs,
-        outdir=outdir_ge,
-        project_name=project_name,
-        groups=groups,
-        genome=genome,
-    )
+    # outdir_motifs = motifs_task(
+    #     runs=runs,
+    #     outdir=outdir_ge,
+    #     project_name=project_name,
+    #     groups=groups,
+    #     genome=genome,
+    # )
 
-    uploaded_results = registry_task(runs=runs, results=outdir_motifs)
+    # uploaded_results = registry_task(runs=runs, results=outdir_motifs)
 
-    return uploaded_results
+    # return uploaded_results
 
 
 if __name__ == "__main__":

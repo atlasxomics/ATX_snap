@@ -193,23 +193,23 @@ def genes_task(
     _archr_cmd.extend(runs)
     subprocess.run(_archr_cmd, check=True)
 
-    # Load and combine data
-    adata_gene = ft.load_and_combine_data("g_converted")
+    # # Load and combine data
+    # adata_gene = ft.load_and_combine_data("g_converted")
 
-    # Transfer auxiliary data to combined AnnData
-    ft.transfer_auxiliary_data(adata_gene, data_paths, groups)
+    # # Transfer auxiliary data to combined AnnData
+    # ft.transfer_auxiliary_data(adata_gene, data_paths, groups)
 
-    # Run spatial analysis
-    adata_gene = sp.run_squidpy_analysis(adata_gene, dirs["figures"])
+    # # Run spatial analysis
+    # adata_gene = sp.run_squidpy_analysis(adata_gene, dirs["figures"])
 
-    # Load differential analysis results
-    ft.load_analysis_results(adata_gene, "gene", groups)
+    # # Load differential analysis results
+    # ft.load_analysis_results(adata_gene, "gene", groups)
 
-    # Organize outputs
-    utils.organize_outputs(project_name, dirs)
+    # # Organize outputs
+    # utils.organize_outputs(project_name, dirs)
 
-    # Save AnnData
-    ft.save_anndata_objects(adata_gene, "_ge", dirs['base'])
+    # # Save AnnData
+    # ft.save_anndata_objects(adata_gene, "_ge", dirs['base'])
 
     logging.info("Uploading data to Latch...")
     return LatchDir(str(dirs['base']), f"latch:///snap_outs/{project_name}")

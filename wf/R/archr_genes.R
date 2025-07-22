@@ -186,193 +186,224 @@ empty_feat_idx <- which(diff(rowpointers) == 0)
 empty_feat <- gene_row_names[empty_feat_idx]
 print(paste("Found", length(empty_feat), "empty features"))
 
-message(sprintf("Found %d empty features", length(empty_feat)))
+# Chunked imputation parameters
+chunk_size <- 2000
+total_features <- nrow(gene_matrix@assays@data@listData$GeneScoreMatrix)
+n_chunks <- ceiling(total_features / chunk_size)
 
-matrix <- ArchR::imputeMatrix(
-  mat = gene_matrix@assays@data@listData$GeneScoreMatrix,
-  mat_colnames = cell_names,
-  imputeWeights = impute_weights
-)
+print(paste(Sys.time(), "Starting chunked imputation..."))
+print(paste("Processing", total_features, "cells in", n_chunks, "chunks of size", chunk_size))
 
-rm(gene_matrix, impute_weights)
-gc()
+imputed_chunks <- vector("list", n_chunks)
+
+for (i in 1:n_chunks) {
+
+  start_idx <- (i - 1) * chunk_size + 1
+  end_idx <- min(i * chunk_size, total_features)
+
+  print(paste(Sys.time(), "Processing chunk", i, "of", n_chunks))
+  chunk_feats <- gene_row_names[start_idx:end_idx]
+  mat_chunk <- gene_matrix@assays@data@listData$GeneScoreMatrix[start_idx:end_idx, , drop = FALSE]
+
+  imputed_chunk <- ArchR::imputeMatrix(
+    mat = mat_chunk,
+    imputeWeights = impute_weights
+  )
+
+  imputed_chunks[[i]] <- imputed_chunk
+  rm(mat_chunk, imputed_chunk)
+
+  print(paste(
+    "Completed", i, "Mem:", format(object.size(imputed_chunks), units = "MB")
+  ))
+}
+
+print(paste(Sys.time(), "Combining chunks..."))
+matrix <- do.call(cbind, imputed_chunks)
+
+# Clean up chunk list
+rm(imputed_chunks)
+gc(verbose = FALSE)
+print(paste(Sys.time(), "Imputation complete!"))
 
 # Create and save SeuratObjects --
-print("Creating SeuratObjects...")
+print(paste(Sys.time(), "Creating SeuratObjects..."))
 
-seurat_objs <- c()
-for (run in runs) {
+# seurat_objs <- c()
+# for (run in runs) {
 
-  obj <- build_atlas_seurat_object( # from seurat.R
-    run_id = run[1],
-    matrix = matrix,
-    metadata = metadata,
-    spatial_path = run[5],
-    cell_names = cell_names,
-    gene_names = gene_row_names
-  )
+#   print(paste(Sys.time(), "Making object for", run))
 
-  saveRDS(obj, file = paste0(run[1], "_SeuratObj.rds"))
-  seurat_objs <- c(seurat_objs, obj)
-}
+#   obj <- build_atlas_seurat_object( # from seurat.R
+#     run_id = run[1],
+#     matrix = matrix,
+#     metadata = metadata,
+#     spatial_path = run[5],
+#     cell_names = cell_names,
+#     gene_names = gene_row_names
+#   )
 
-rm(matrix)
-gc()
+#   saveRDS(obj, file = paste0(run[1], "_SeuratObj.rds"))
+#   seurat_objs <- c(seurat_objs, obj)
+# }
 
-print("Available SeuratObjects:")
-seurat_objs
+# rm(matrix)
+# gc()
 
-all <- rename_cells(seurat_objs)  # from seurat.R
-rm(seurat_objs)
-gc()
+# print("Available SeuratObjects:")
+# seurat_objs
 
-# Convert Seurat to h5ad and save ----
-for (obj in all) {
-  seurat_to_h5ad(obj, FALSE, paste0(unique(obj$Sample), "_g"))  # from utils.R
-}
-rm(all)
-gc()
+# all <- rename_cells(seurat_objs)  # from seurat.R
+# rm(seurat_objs)
+# gc()
 
-# Identify marker genes ----
-# Marker genes per cluster, save marker gene rds, csv, heatmap.csv --
-n_clust <- length(unique(proj$Clusters))
+# # Convert Seurat to h5ad and save ----
+# for (obj in all) {
+#   seurat_to_h5ad(obj, FALSE, paste0(unique(obj$Sample), "_g"))  # from utils.R
+# }
+# rm(all)
+# gc()
 
-cluster_marker_genes <- get_marker_genes( # from archr.R
-  proj,
-  group_by = "Clusters",
-  markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
-  heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
-  rd_name = "IterativeLSI"
-)
+# # Identify marker genes ----
+# # Marker genes per cluster, save marker gene rds, csv, heatmap.csv --
+# n_clust <- length(unique(proj$Clusters))
 
-saveRDS(cluster_marker_genes$markers_gs, "markersGS_clusters.rds")
-write.csv(
-  cluster_marker_genes$marker_list,
-  "ranked_genes_per_cluster.csv",
-  row.names = FALSE
-)
-write.csv(cluster_marker_genes$heatmap_gs, "genes_per_cluster_hm.csv")
+# cluster_marker_genes <- get_marker_genes( # from archr.R
+#   proj,
+#   group_by = "Clusters",
+#   markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
+#   heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
+#   rd_name = "IterativeLSI"
+# )
 
-# Marker genes per sample, save marker gene rds, csv, heatmap.csv --
-if (n_samples > 1) {
+# saveRDS(cluster_marker_genes$markers_gs, "markersGS_clusters.rds")
+# write.csv(
+#   cluster_marker_genes$marker_list,
+#   "ranked_genes_per_cluster.csv",
+#   row.names = FALSE
+# )
+# write.csv(cluster_marker_genes$heatmap_gs, "genes_per_cluster_hm.csv")
 
-  sample_marker_genes <- get_marker_genes(
-    proj,
-    group_by = "Sample",
-    markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
-    heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
-    rd_name = "IterativeLSI"
-  )
+# # Marker genes per sample, save marker gene rds, csv, heatmap.csv --
+# if (n_samples > 1) {
 
-  saveRDS(sample_marker_genes$markers_gs, "markersGS_sample.rds")
-  write.csv(
-    sample_marker_genes$marker_list,
-    "ranked_genes_per_sample.csv",
-    row.names = FALSE
-  )
-  write.csv(sample_marker_genes$heatmap_gs, "genes_per_sample_hm.csv")
+#   sample_marker_genes <- get_marker_genes(
+#     proj,
+#     group_by = "Sample",
+#     markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
+#     heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
+#     rd_name = "IterativeLSI"
+#   )
 
-}
+#   saveRDS(sample_marker_genes$markers_gs, "markersGS_sample.rds")
+#   write.csv(
+#     sample_marker_genes$marker_list,
+#     "ranked_genes_per_sample.csv",
+#     row.names = FALSE
+#   )
+#   write.csv(sample_marker_genes$heatmap_gs, "genes_per_sample_hm.csv")
 
-# Marker genes per treatment, save marker gene rds, csv, heatmap.csv --
-if (n_cond > 1) {
+# }
 
-  for (i in seq_along(treatment)) {
+# # Marker genes per treatment, save marker gene rds, csv, heatmap.csv --
+# if (n_cond > 1) {
 
-    treatment_marker_genes <- get_marker_genes(
-      proj,
-      group_by = treatment[i],
-      markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
-      heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
-      rd_name = "IterativeLSI"
-    )
+#   for (i in seq_along(treatment)) {
 
-    saveRDS(
-      treatment_marker_genes$markers_gs,
-      paste0("markersGS_condition_", i, ".rds")
-    )
-    write.csv(
-      treatment_marker_genes$marker_list,
-      paste0("ranked_genes_per_condition_", i, ".csv"),
-      row.names = FALSE
-    )
-    write.csv(
-      treatment_marker_genes$heatmap_gs,
-      paste0("genes_per_condition_", i, "_hm.csv")
-    )
-  }
-}
+#     treatment_marker_genes <- get_marker_genes(
+#       proj,
+#       group_by = treatment[i],
+#       markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
+#       heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
+#       rd_name = "IterativeLSI"
+#     )
 
-# Volcano plots for genes ----
-if (n_cond > 1) {
-  for (j in seq_along(treatment)) {
+#     saveRDS(
+#       treatment_marker_genes$markers_gs,
+#       paste0("markersGS_condition_", i, ".rds")
+#     )
+#     write.csv(
+#       treatment_marker_genes$marker_list,
+#       paste0("ranked_genes_per_condition_", i, ".csv"),
+#       row.names = FALSE
+#     )
+#     write.csv(
+#       treatment_marker_genes$heatmap_gs,
+#       paste0("genes_per_condition_", i, "_hm.csv")
+#     )
+#   }
+# }
 
-    # Get gene markers df for all clusters together --
-    marker_genes_df <- get_marker_df(
-      proj = proj,
-      group_by = treatment[j],
-      matrix = "GeneScoreMatrix",
-      seq_names = NULL,
-      max_cells = n_cells,  # Equals total cells in project
-      test_method = "ttest",
-      diff_metric = "Log2FC"
-    )
+# # Volcano plots for genes ----
+# if (n_cond > 1) {
+#   for (j in seq_along(treatment)) {
 
-    # Create a merged marker genes df for clusters for which no condition is
-    # >90% of all cells --
-    req_clusters <- get_required_clusters(proj, treatment[j])
-    marker_genes_by_cluster_df <- get_marker_df_clusters(
-      proj = proj,
-      clusters = req_clusters,
-      group_by = treatment[j],
-      seq_names = "z",
-      matrix = "GeneScoreMatrix",
-      test_method = "ttest",
-      diff_metric = "Log2FC"
-    )
+#     # Get gene markers df for all clusters together --
+#     marker_genes_df <- get_marker_df(
+#       proj = proj,
+#       group_by = treatment[j],
+#       matrix = "GeneScoreMatrix",
+#       seq_names = NULL,
+#       max_cells = n_cells,  # Equals total cells in project
+#       test_method = "ttest",
+#       diff_metric = "Log2FC"
+#     )
 
-    # Per condition, merge dfs and cleanup data --
-    conditions <- sort(unique(proj@cellColData[treatment[j]][, 1]))
-    for (cond in conditions) {
+#     # Create a merged marker genes df for clusters for which no condition is
+#     # >90% of all cells --
+#     req_clusters <- get_required_clusters(proj, treatment[j])
+#     marker_genes_by_cluster_df <- get_marker_df_clusters(
+#       proj = proj,
+#       clusters = req_clusters,
+#       group_by = treatment[j],
+#       seq_names = "z",
+#       matrix = "GeneScoreMatrix",
+#       test_method = "ttest",
+#       diff_metric = "Log2FC"
+#     )
 
-      volcano_table <- get_volcano_table( # from archr.R
-        marker_genes_df,
-        marker_genes_by_cluster_df,
-        cond,
-        "gene",
-        empty_feat,
-        fc_col = "Log2FC"
-      )
+#     # Per condition, merge dfs and cleanup data --
+#     conditions <- sort(unique(proj@cellColData[treatment[j]][, 1]))
+#     for (cond in conditions) {
 
-      write.table(
-        volcano_table,
-        paste0(
-          "volcanoMarkers_genes_", j, "_", cond, ".csv"
-        ),
-        sep = ",",
-        quote = FALSE,
-        row.names = FALSE
-      )
-      print(paste0("volcanoMarkers_genes_", j, "_", cond, ".csv is done!"))
+#       volcano_table <- get_volcano_table( # from archr.R
+#         marker_genes_df,
+#         marker_genes_by_cluster_df,
+#         cond,
+#         "gene",
+#         empty_feat,
+#         fc_col = "Log2FC"
+#       )
 
-      features <- unique(volcano_table$cluster)
-      others <- paste(conditions[conditions != cond], collapse = "|")
-      volcano_plots <- list()
-      for (i in seq_along(features)) {
-        volcano_plots[[i]] <- scvolcano(
-          volcano_table, cond, others, features[[i]], fc_col = "Log2FC"
-        )
-      }
+#       write.table(
+#         volcano_table,
+#         paste0(
+#           "volcanoMarkers_genes_", j, "_", cond, ".csv"
+#         ),
+#         sep = ",",
+#         quote = FALSE,
+#         row.names = FALSE
+#       )
+#       print(paste0("volcanoMarkers_genes_", j, "_", cond, ".csv is done!"))
 
-      pdf(paste0("volcano_plots_", cond, ".pdf"))
-      for (plot in volcano_plots) {
-        print(plot)
-      }
-      dev.off()
-    }
-  }
-} else {
-  print("There are not enough conditions to be compared with!")
-}
+#       features <- unique(volcano_table$cluster)
+#       others <- paste(conditions[conditions != cond], collapse = "|")
+#       volcano_plots <- list()
+#       for (i in seq_along(features)) {
+#         volcano_plots[[i]] <- scvolcano(
+#           volcano_table, cond, others, features[[i]], fc_col = "Log2FC"
+#         )
+#       }
+
+#       pdf(paste0("volcano_plots_", cond, ".pdf"))
+#       for (plot in volcano_plots) {
+#         print(plot)
+#       }
+#       dev.off()
+#     }
+#   }
+# } else {
+#   print("There are not enough conditions to be compared with!")
+# }
 
 saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
