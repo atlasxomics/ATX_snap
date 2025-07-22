@@ -194,11 +194,45 @@ empty_feat_idx <- which(Matrix::rowSums(
 empty_feat <- gene_row_names[empty_feat_idx]
 print(paste("Found", length(empty_feat), "empty features"))
 
+# Chunked imputation parameters
+chunk_size <- 2000
+total_features <- nrow(gene_matrix@assays@data@listData$GeneScoreMatrix)
+n_chunks <- ceiling(total_features / chunk_size)
 
-matrix <- ArchR::imputeMatrix(
-  mat = SummarizedExperiment::assay(gene_matrix),
-  imputeWeights = impute_weights
-)
+print(paste(Sys.time(), "Starting chunked imputation..."))
+print(paste("Processing", total_features, "cells in", n_chunks, "chunks of size", chunk_size))
+
+imputed_chunks <- vector("list", n_chunks)
+
+for (i in 1:n_chunks) {
+
+  start_idx <- (i - 1) * chunk_size + 1
+  end_idx <- min(i * chunk_size, total_features)
+
+  print(paste(Sys.time(), "Processing chunk", i, "of", n_chunks))
+  chunk_feats <- gene_row_names[start_idx:end_idx]
+  mat_chunk <- gene_matrix@assays@data@listData$GeneScoreMatrix[start_idx:end_idx, , drop = FALSE]
+
+  imputed_chunk <- ArchR::imputeMatrix(
+    mat = mat_chunk,
+    imputeWeights = impute_weights
+  )
+
+  imputed_chunks[[i]] <- imputed_chunk
+  rm(mat_chunk, imputed_chunk)
+
+  print(paste(
+    "Completed", i, "Mem:", format(object.size(imputed_chunks), units = "MB")
+  ))heck
+}
+
+print(paste(Sys.time(), "Combining chunks..."))
+matrix <- do.call(rbind, imputed_chunks)
+
+# Clean up chunk list
+rm(imputed_chunks)
+gc(verbose = FALSE)
+print(paste(Sys.time(), "Imputation complete!"))
 
 rm(gene_matrix, impute_weights)
 gc()
