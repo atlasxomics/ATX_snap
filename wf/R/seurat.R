@@ -22,6 +22,7 @@ build_atlas_seurat_object <- function(
   #' Prepare and combine gene matrix, metadata, and image for SeuratObject
   #' for runs within a project.
 
+
   # First garbage collect to free up memory before starting
   gc(verbose = FALSE, full = TRUE)
 
@@ -34,42 +35,20 @@ build_atlas_seurat_object <- function(
   # Filter metadata
   metadata <- metadata[metadata$Sample == run_id, ]
 
-  mat_colnames <- colnames(matrix)
-  col_indices <- grep(pattern = run_id, mat_colnames)
+  # Find indices for subsetting instead of creating a temporary vector with grep
+  col_indices <- grep(pattern = run_id, colnames(matrix))
 
-  # Handle different matrix types
-  is_spam <- inherits(matrix, "spam")
+  # Create sparse matrix directly from the subset to minimize memory usage
+  message("Subsetting matrix and converting to sparse format...")
 
-  if (is_spam) {
-
-    message("Subsetting spam matrix...")
-    matrix_subset <- matrix[, col_indices, drop = FALSE]
-
-    message("Converting spam matrix to Matrix format for Seurat...")
-    # Extract spam matrix components
-    spam_triplet <- spam::triplet(matrix_subset)
-
-    # Create Matrix sparse matrix
-    matrix_sparse <- Matrix::sparseMatrix(
-      i = spam_triplet$indices[, 1],
-      j = spam_triplet$indices[, 2],
-      x = spam_triplet$values,
-      dims = dim(matrix_subset),
-      index1 = TRUE  # spam uses 1-based indexing
-    )
-
-    # Clean up spam objects
-    rm(matrix_subset, spam_triplet)
-
-  } else {
-
-    message("Working with Matrix sparse matrix...")
-    message("Subsetting matrix and converting to sparse format...")
-    matrix_sparse <- as(matrix[, col_indices], "dgCMatrix")
-  }
+  # Option 1: If matrix is already in memory and very large
+  matrix_sparse <- as(matrix[, col_indices], "dgCMatrix")
 
   # Immediately remove references to free memory
   rm(col_indices)
+  # Don't remove matrix here as it's an input argument
+
+  # Force garbage collection
   gc(verbose = FALSE, full = TRUE)
 
   # Set column names
