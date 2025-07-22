@@ -172,17 +172,18 @@ impute_weights <- getImputeWeights(proj)
 gene_matrix <- ArchR::getMatrixFromProject(
   ArchRProj = proj,
   useMatrix = "GeneScoreMatrix",
-  asMatrix = FALSE,
-  useSpam64 = TRUE
+  asMatrix = TRUE,
 )
 gene_row_names <- gene_matrix@elementMetadata$name
-cell_names <- colnames(gene_matrix)
 
 # Identify empty features for filtering volcano plots --
 print("Identifying empty features...")
 
-rowpointers <- gene_matrix@assays@data@listData$GeneScoreMatrix@rowpointers
-empty_feat_idx <- which(diff(rowpointers) == 0)
+# Identify empty features for filtering volcano plots --
+print("Identifying empty features...")
+empty_feat_idx <- which(Matrix::rowSums(
+  SummarizedExperiment::assay(gene_matrix, "GeneScoreMatrix")
+) == 0)
 empty_feat <- gene_row_names[empty_feat_idx]
 print(paste("Found", length(empty_feat), "empty features"))
 
@@ -219,12 +220,17 @@ for (i in 1:n_chunks) {
 }
 
 print(paste(Sys.time(), "Combining chunks..."))
-matrix <- do.call(cbind, imputed_chunks)
+matrix <- do.call(rbind, imputed_chunks)
 
 # Clean up chunk list
 rm(imputed_chunks)
 gc(verbose = FALSE)
 print(paste(Sys.time(), "Imputation complete!"))
+
+rm(gene_matrix, impute_weights)
+gc()
+
+rownames(matrix) <- gene_row_names
 
 # Create and save SeuratObjects --
 print(paste(Sys.time(), "Creating SeuratObjects..."))
