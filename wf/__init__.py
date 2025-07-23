@@ -283,7 +283,7 @@ if __name__ == "__main__":
             spatial_dir=LatchDir("latch://atx-illumina.mount/Images_spatial/D1033/spatial/"),
             condition="control",
         )],
-        outdir="latch://13502.account/snap_outs/demo_001716",
+        outdir="latch://13502.account/snap_outs/demo_002000",
         genome=Genome("hg38"),
         groups=["cluster"],
         project_name="develop_archrGenes",
