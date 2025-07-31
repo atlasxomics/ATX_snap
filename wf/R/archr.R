@@ -276,11 +276,10 @@ get_marker_genes <- function(
     useMatrix = "GeneScoreMatrix",
     groupBy = group_by,
     bias = c("TSSEnrichment", "log10(nFrags)"),
-    testMethod = "ttest"
+    testMethod = "ttest",
+    threads = 2
   )
-  marker_list <- ArchR::getMarkers(markers_gs, cutOff = markers_cutoff)
-
-  proj <- ArchR::addImputeWeights(proj, reducedDims = rd_name)
+  # marker_list <- ArchR::getMarkers(markers_gs, cutOff = markers_cutoff)
 
   heatmap_gs <- ArchR::plotMarkerHeatmap(
     seMarker = markers_gs,
@@ -291,7 +290,7 @@ get_marker_genes <- function(
   return(
     list(
       markers_gs = markers_gs,
-      marker_list = marker_list,
+      # marker_list = marker_list,
       heatmap_gs = heatmap_gs
     )
   )

@@ -81,6 +81,8 @@ RUN R -e "BiocManager::install('sparseMatrixStats')"
 RUN R -e "install.packages('https://cran.r-project.org/src/contrib/spam64_2.10-0.tar.gz', repos = NULL, type = 'source')"
 RUN R -e "remotes::install_github('jpmcga/ArchR', ref = '964e71e')"
 
+RUN R -e "install.packages('peakRAM', repos = 'https://cloud.r-project.org')"
+
 COPY . /root/
 
 # Latch workflow registration metadata
