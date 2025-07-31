@@ -30,6 +30,23 @@ add_motif_annotations <- function(proj, genome) {
   return(proj)
 }
 
+add_lsi <- function(proj, iterations, var_features) {
+  proj <- addIterativeLSI(
+    ArchRProj = proj,
+    useMatrix = "TileMatrix",
+    name = "IterativeLSI",
+    iterations = iterations,
+    clusterParams = list(
+      resolution = c(resolution), sampleCells = 10000, n.start = 10
+    ),
+    varFeatures = var_features,
+    dimsToUse = 1:30,
+    force = TRUE
+  )
+  return(proj)
+}
+
+
 create_archrproject <- function(
   inputs, genome, min_tss, min_frags, tile_size, out_dir
 ) {
@@ -268,7 +285,7 @@ get_marker_df_clusters <- function(
 }
 
 get_marker_genes <- function(
-  proj, group_by, markers_cutoff, heatmap_cutoff, rd_name
+  proj, group_by, markers_cutoff, heatmap_cutoff
 ) {
 
   markers_gs <- ArchR::getMarkerFeatures(
@@ -279,8 +296,6 @@ get_marker_genes <- function(
     testMethod = "ttest"
   )
   marker_list <- ArchR::getMarkers(markers_gs, cutOff = markers_cutoff)
-
-  proj <- ArchR::addImputeWeights(proj, reducedDims = rd_name)
 
   heatmap_gs <- ArchR::plotMarkerHeatmap(
     seMarker = markers_gs,

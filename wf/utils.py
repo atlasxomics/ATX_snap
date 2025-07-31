@@ -116,9 +116,10 @@ def get_data_paths(outdir: LatchDir) -> Dict[str, str]:
     """Get paths to required data files."""
     base_path = outdir.remote_path
     return {
-        'obs': LatchFile(f"{base_path}/tables/obs.csv").local_path,
-        'spatial': LatchFile(f"{base_path}/tables/spatial.csv").local_path,
-        'umap': LatchFile(f"{base_path}/tables/X_umap.csv").local_path,
+        "obs": LatchFile(f"{base_path}/tables/obs.csv").local_path,
+        "spatial": LatchFile(f"{base_path}/tables/spatial.csv").local_path,
+        "umap": LatchFile(f"{base_path}/tables/X_umap.csv").local_path,
+        "spectral": LatchFile(f"{base_path}/tables/spectral.csv")
     }
 
 

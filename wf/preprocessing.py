@@ -1,7 +1,7 @@
 import logging
 import math
 
-from typing import List, Union
+from typing import List, Tuple, Union
 from pathlib import Path
 
 import anndata
@@ -22,7 +22,7 @@ def add_clusters(
     n_comps: int,
     leiden_iters: int,
     min_cluster_size: int,
-) -> anndata.AnnData:
+) -> Tuple[anndata.AnnData, str]:
     """Perform dimensionality reduction, batch correction, umap, clustering."""
 
     # First reduce to n_comps demensions
@@ -53,7 +53,7 @@ def add_clusters(
         key_added="cluster",
     )
 
-    return adata
+    return adata, rep
 
 
 def add_metadata(

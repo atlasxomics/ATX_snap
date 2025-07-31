@@ -102,7 +102,9 @@ def make_adata(
     snap.pp.select_features(adata, n_features=n_features, max_iter=clustering_iters)
 
     logging.info("Performing dimensionality reduction...")
-    adata = pp.add_clusters(adata, resolution, n_comps, leiden_iters, min_cluster_size)
+    adata, spectral_key = pp.add_clusters(
+        adata, resolution, n_comps, leiden_iters, min_cluster_size
+    )
 
     adata = sp.add_spatial(adata)  # Add spatial coordinates to tixels
 
@@ -148,6 +150,9 @@ def make_adata(
     spatial_df = pd.DataFrame(adata.obsm["spatial"], index=adata.obs_names)
     spatial_df.to_csv(f"{tables_dir}/spatial.csv")
 
+    spectral_df = pd.DataFrame(adata.obsm[spectral_key], index=adata.obs_names)
+    spectral_df.to_csv(f"{tables_dir}/spectral.csv")
+
     adata.write(f"{out_dir}/combined.h5ad")
 
     return LatchDir(out_dir, f"latch:///snap_outs/{project_name}"), groups
@@ -178,6 +183,7 @@ def genes_task(
         project_name,
         genome,
         data_paths['obs'],
+        data_paths['spectral']
     ]
 
     runs = [

@@ -33,15 +33,13 @@ print(args)
 project_name <- args[1]
 genome <- args[2]
 metadata_path <- args[3]
+embedding_path <- args[4]
 tile_size <- 5000
 min_tss <- 0  # Use filtering from SnapATAC2
 min_frags <- 0  # Use filtering from SnapATAC2
-lsi_iterations <- 2
-lsi_resolution <- 0.7
-lsi_varfeatures <- 25000
-num_threads <- 10
+num_threads <- 50
 
-runs <- strsplit(args[4:length(args)], ",")
+runs <- strsplit(args[5:length(args)], ",")
 runs
 
 inputs <- c()  # Inputs for ArrowFiles (run_id : fragment_file path)
@@ -135,23 +133,46 @@ n_cells <- length(proj$cellNames)
 
 saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
 
-# Dimensionality reduction and clustering ----
-proj <- addIterativeLSI(
-  ArchRProj = proj,
-  useMatrix = "TileMatrix",
-  name = "IterativeLSI",
-  iterations = lsi_iterations,
-  clusterParams = list(
-    resolution = c(lsi_resolution),
-    sampleCells = 10000,
-    n.start = 10
-  ),
-  varFeatures = lsi_varfeatures,
-  dimsToUse = 1:30,
-  force = TRUE
-)
+# Copy reduced dims from Snap or compute new ----------------------------------
 
-proj <- ArchR::addImputeWeights(proj)
+if (file.exists(embedding_path)) {
+
+  message("Using previously computed embeddings from Snap...")
+  embedding <- as.matrix(
+    read.csv(embedding_path, row.names = 1, header = FALSE)
+  )
+  archr_cells <- proj@cellColData@rownames
+  common <- intersect(archr_cells, rownames(embedding))
+
+  if (length(common) == 0) {
+    stop("No overlapping cell names between embedding and ArchR project!")
+  }
+
+  # Reorder embedding to match ArchR cell order
+  embedding <- embedding[common, , drop = FALSE]
+  embedding <- embedding[
+    match(archr_cells, rownames(embedding)), , drop = FALSE
+  ]
+
+  missing <- sum(is.na(rownames(embedding)))
+  if (missing > 0) {
+    warning(missing, " ArchR cells have no embedding; filled with NA rows.")
+  }
+
+  rd <- SimpleList(
+    matDR = embedding, date = Sys.time(), scaleDims = NA, corToDepth = NA
+  )
+  proj@reducedDims[["Spectral"]] <- rd
+  rd_name <- "Spectral"
+
+} else {
+  message("No precomputed embedding found. Running IterativeLSI...")
+  proj <- add_lsi(proj, 2, 0.7, 25000)
+  rd_name <- "IterativeLSI"
+}
+
+# Impute weights --------------------------------------------------------------
+proj <- ArchR::addImputeWeights(proj, reducedDims = rd_name)
 
 saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
 
@@ -244,8 +265,7 @@ cluster_marker_genes <- get_marker_genes( # from archr.R
   proj,
   group_by = "Clusters",
   markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
-  heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
-  rd_name = "IterativeLSI"
+  heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10"
 )
 
 saveRDS(cluster_marker_genes$markers_gs, "markersGS_clusters.rds")
@@ -263,8 +283,7 @@ if (n_samples > 1) {
     proj,
     group_by = "Sample",
     markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
-    heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
-    rd_name = "IterativeLSI"
+    heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10"
   )
 
   saveRDS(sample_marker_genes$markers_gs, "markersGS_sample.rds")
@@ -286,8 +305,7 @@ if (n_cond > 1) {
       proj,
       group_by = treatment[i],
       markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
-      heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
-      rd_name = "IterativeLSI"
+      heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10"
     )
 
     saveRDS(
