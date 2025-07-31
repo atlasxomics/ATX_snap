@@ -223,7 +223,7 @@ for (i in 1:n_chunks) {
 
   print(paste(
     "Completed", i, "Mem:", format(object.size(imputed_chunks), units = "MB")
-  ))heck
+  ))
 }
 
 print(paste(Sys.time(), "Combining chunks..."))
@@ -274,6 +274,8 @@ gc()
 # Marker genes per cluster, save marker gene rds, csv, heatmap.csv --
 n_clust <- length(unique(proj$Clusters))
 
+library(peakRAM)
+peakRAM({
 cluster_marker_genes <- get_marker_genes( # from archr.R
   proj,
   group_by = "Clusters",
@@ -281,13 +283,13 @@ cluster_marker_genes <- get_marker_genes( # from archr.R
   heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
   rd_name = "IterativeLSI"
 )
-
+})
 saveRDS(cluster_marker_genes$markers_gs, "markersGS_clusters.rds")
-write.csv(
-  cluster_marker_genes$marker_list,
-  "ranked_genes_per_cluster.csv",
-  row.names = FALSE
-)
+# write.csv(
+#   cluster_marker_genes$marker_list,
+#   "ranked_genes_per_cluster.csv",
+#   row.names = FALSE
+# )
 write.csv(cluster_marker_genes$heatmap_gs, "genes_per_cluster_hm.csv")
 
 # Marker genes per sample, save marker gene rds, csv, heatmap.csv --
