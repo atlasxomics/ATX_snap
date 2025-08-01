@@ -34,12 +34,6 @@ project_name <- args[1]
 genome <- args[2]
 metadata_path <- args[3]
 archrproj_path <- args[4]
-tile_size <- 5000
-min_tss <- 0  # Use filtering from SnapATAC2
-min_frags <- 0  # Use filtering from SnapATAC2
-lsi_iterations <- 2
-lsi_resolution <- 0.7
-lsi_varfeatures <- 25000
 num_threads <- 50
 
 runs <- strsplit(args[5:length(args)], ",")
@@ -64,6 +58,17 @@ archrproj_dir <- paste0(project_name, "_ArchRProject")
 addArchRThreads(threads = 50)
 
 proj <- loadArchRProject(archrproj_path)
+
+rd_names <- names(proj@reducedDims@listData)
+if (length(rd_names) == 0) {
+  warning("No reduced dims found for ArchRProjects; adding LSI.")
+  proj <- add_lsi(proj, 2, 0.7, 25000)
+}
+if ("Spectral" %in% names(proj@reducedDims@listData)) {
+  rd_name <- "Spectral"
+} else {
+  rd_name <- "IterativeLSI"
+}
 
 # Add Conditions to CellColData ----
 for (run in runs) {
@@ -218,7 +223,7 @@ if (length(motifs) > 1) {
   motifs <- unlist(motifs)
   motifs <- unique(motifs)
 
-  proj <- addImputeWeights(proj)
+  proj <- addImputeWeights(proj, reducedDims = rd_name)
 
   dev_score <- getDeviation_ArchR(
     ArchRProj = proj,
