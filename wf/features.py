@@ -222,8 +222,8 @@ def transfer_auxiliary_data(
     """Transfer observation, UMAP, and spatial data to AnnData objects."""
     logging.info("Transferring auxiliary data...")
 
-    # Transfer observation data
-    transfer_obs_data(adata, data_paths['obs'], groups)
+    # # Transfer observation data
+    # transfer_obs_data(adata, data_paths['obs'], groups)
 
     # Transfer UMAP coordinates
     transfer_embedding_data(

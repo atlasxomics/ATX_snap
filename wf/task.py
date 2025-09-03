@@ -250,7 +250,7 @@ def motifs_task(
         '/root/wf/R/archr_motifs.R',
         project_name,
         genome,
-        data_paths['obs'],
+       # data_paths['obs'],
         archrproj_path,
     ]
 
@@ -275,6 +275,8 @@ def motifs_task(
 
     # Load differential analysis results
     ft.load_analysis_results(adata_motif, "motif", groups)
+
+    adata_motif = utils.rename_obs_columns(adata_motif)
 
     # Organize outputs
     utils.organize_outputs(project_name, dirs)

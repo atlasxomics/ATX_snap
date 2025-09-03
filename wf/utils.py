@@ -116,10 +116,10 @@ def get_data_paths(outdir: LatchDir) -> Dict[str, str]:
     """Get paths to required data files."""
     base_path = outdir.remote_path
     return {
-        "obs": LatchFile(f"{base_path}/tables/obs.csv").local_path,
+        # "obs": LatchFile(f"{base_path}/tables/obs.csv").local_path,
         "spatial": LatchFile(f"{base_path}/tables/spatial.csv").local_path,
-        "umap": LatchFile(f"{base_path}/tables/X_umap.csv").local_path,
-        "spectral": LatchFile(f"{base_path}/tables/spectral.csv")
+        "umap": LatchFile(f"{base_path}/tables/UMAPHarmony.csv").local_path,
+        # "spectral": LatchFile(f"{base_path}/tables/spectral.csv")
     }
 
 
@@ -200,3 +200,18 @@ def organize_outputs(project_name: str, dirs: Dict[str, Path]) -> None:
     figures = [fig for fig in glob.glob('*.pdf') if fig != 'Rplots.pdf']
     if figures:
         subprocess.run(['mv'] + figures + [str(dirs['figures'])])
+
+
+def rename_obs_columns(adata: anndata):
+    rename_map = {
+        "Clusters": "cluster",
+        "Condition": "condition",
+        "Sample": "sample",
+        "nFrags": "n_fragment"
+    }
+
+    for old_name, new_name in rename_map.items():
+        if old_name in adata.obs.columns:
+            adata.obs.rename(columns={old_name: new_name}, inplace=True)
+
+    return adata

@@ -32,11 +32,11 @@ print(args)
 
 project_name <- args[1]
 genome <- args[2]
-metadata_path <- args[3]
-archrproj_path <- args[4]
+# metadata_path <- args[3]
+archrproj_path <- args[3]
 num_threads <- 50
 
-runs <- strsplit(args[5:length(args)], ",")
+runs <- strsplit(args[4:length(args)], ",")
 runs
 
 inputs <- c()  # Inputs for ArrowFiles (run_id : fragment_file path)

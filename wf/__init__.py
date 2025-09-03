@@ -261,8 +261,8 @@ def snap_workflow(
 
     from latch.types import LatchDir
 
-    groups = ["cluster", "sample", "condition"]
-    outdir_ge = LatchDir("latch://13502.account/snap_outs/Ellis_139_242_combined_spectral")
+    groups = ["cluster", "sample"]
+    outdir_ge = LatchDir("latch://13502.account/ArchRProjects/Butler_Lupien_SOW236_TSS_1_5/")
 
     outdir_motifs = motifs_task(
         runs=runs,
