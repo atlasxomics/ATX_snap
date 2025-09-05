@@ -32,7 +32,6 @@ print(args)
 
 project_name <- args[1]
 genome <- args[2]
-# metadata_path <- args[3]
 archrproj_path <- args[3]
 num_threads <- 50
 
@@ -111,10 +110,10 @@ metadata["log10_nFrags"] <- log(metadata$nFrags)
 # decrease theads here, per specification from input parameters ----
 addArchRThreads(threads = num_threads)
 
-# # Peak calling and motif enrichment for clusters ----
-# proj <- get_annotated_peaks(proj, "Clusters", genome_size, genome)
+# Peak calling and motif enrichment for clusters ----
+proj <- get_annotated_peaks(proj, "Clusters", genome_size, genome)
 
-# saveArchRProject(ArchRProj = proj, archrproj_dir)
+saveArchRProject(ArchRProj = proj, archrproj_dir)
 
 # # Save run metrics in medians.csv ----
 # medians <- get_proj_medians(proj)
@@ -190,13 +189,13 @@ addArchRThreads(threads = num_threads)
 
 # Create motif SeuratObjects ----
 # Create motif count matrix --
-# proj <- addBgdPeaks(proj, force = TRUE)
+proj <- addBgdPeaks(proj, force = TRUE)
 
-# proj <- addDeviationsMatrix(
-#   ArchRProj = proj,
-#   peakAnnotation = "Motif",
-#   force = TRUE
-# )
+proj <- addDeviationsMatrix(
+  ArchRProj = proj,
+  peakAnnotation = "Motif",
+  force = TRUE
+)
 
 markers_motifs <- getMarkerFeatures(
   ArchRProj = proj,

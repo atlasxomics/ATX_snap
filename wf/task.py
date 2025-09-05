@@ -225,10 +225,13 @@ def genes_task(
 def motifs_task(
     runs: List[utils.Run],
     outdir: LatchDir,
-    project_name: str,
-    groups: List[str],
     genome: utils.Genome,
 ) -> LatchDir:
+
+    project_name = outdir.remote_path.strip('/').split('/')[-1]
+    top_dir = outdir.remote_path.strip('/').split('/')[-2]
+
+    groups = utils.get_groups(runs)
 
     # Read in data tables
     data_paths = utils.get_data_paths(outdir)
@@ -250,7 +253,7 @@ def motifs_task(
         '/root/wf/R/archr_motifs.R',
         project_name,
         genome,
-       # data_paths['obs'],
+        # data_paths['obs'],
         archrproj_path,
     ]
 
@@ -285,7 +288,7 @@ def motifs_task(
     ft.save_anndata_objects(adata_motif, "_motifs", dirs['base'])
 
     logging.info("Uploading data to Latch...")
-    return LatchDir(str(dirs['base']), f"latch:///snap_outs/{project_name}")
+    return LatchDir(str(dirs['base']), f"latch:///{top_dir}/{project_name}")
 
 
 @small_task(cache=True)

@@ -1,17 +1,10 @@
 from typing import List
 
 from latch.resources.workflow import workflow
-from latch.types.metadata import (
-    LatchAuthor, LatchMetadata, LatchParameter, LatchRule
-)
+from latch.types import LatchDir
+from latch.types.metadata import LatchAuthor, LatchMetadata, LatchParameter
 
-# from wf.task import registry_task, snap_task
-from wf.task import (
-    genes_task,
-    motifs_task,
-    make_adata,
-    registry_task,
-)
+from wf.task import genes_task, motifs_task
 from wf.utils import Genome, Run
 
 metadata = LatchMetadata(
@@ -38,81 +31,10 @@ metadata = LatchMetadata(
             description="Reference genome for runs.",
             batch_table_column=True,
         ),
-        "resolution": LatchParameter(
-            display_name="clustering resolution",
-            description="Clustering resolution for Leiden algorithm; higher \
-                values result in more clusters.",
+        "old_outputs": LatchParameter(
+            display_name="old output directory",
+            description="`ArchRProject` or `snap_outs` output directory for previous project",
             batch_table_column=True,
-        ),
-        "leiden_iters": LatchParameter(
-            display_name="leiden iterations",
-            description="Number of iterations for the leiden algorithm to \
-                perform when assigning labels to clusters. 'Positive values \
-                above 2 define the total number of iterations to perform, -1 \
-                has the algorithm run until it reaches its optimal \
-                clustering.' - SnapATAC2 docs.",
-            batch_table_column=True,
-            hidden=True,
-        ),
-        "min_cluster_size": LatchParameter(
-            display_name="minimum cells per cluster",
-            description="Minimum number of cells in a cluster.",
-            batch_table_column=True,
-            hidden=True,
-        ),
-        "min_tss": LatchParameter(
-            display_name="minimum TSS",
-            description="The minimum numeric transcription start site (TSS) \
-                enrichment score required for a cell to pass filtering.",
-            batch_table_column=True,
-            hidden=True,
-        ),
-        "min_frags": LatchParameter(
-            display_name="minimum fragments",
-            description="The minimum number of mapped fragments required  \
-                per cell to pass filtering.",
-            batch_table_column=True,
-            hidden=True,
-        ),
-        "tile_size": LatchParameter(
-            display_name="tile size",
-            description="The size of the tiles used for binning counts in the \
-                tile matrix.",
-            batch_table_column=True,
-            hidden=True,
-        ),
-        "clustering_iters": LatchParameter(
-            display_name="clustering iterations",
-            description="Iterations performed when selecting variable \
-                features for tile matrix. 'If greater than 1, this function \
-                will perform iterative clustering and feature selection based \
-                on variable features found using previous clustering results. \
-                This is similar to the procedure implemented in ArchR... \
-                Default value is 1, which means no iterative clustering is \
-                 performed.'- SnapATAC2 docs",
-            batch_table_column=True,
-        ),
-        "n_features": LatchParameter(
-            display_name="number of features",
-            description="Number of features to be selected as 'most \
-                accessible' in tile matrix.",
-            batch_table_column=True,
-        ),
-        "n_comps": LatchParameter(
-            display_name="number of components",
-            description="Number of components/dimensions to keep during \
-                dimensionality reduction with `snap.tl.spectral`.",
-            batch_table_column=True,
-        ),
-        "project_name": LatchParameter(
-            display_name="project name",
-            description="Name of output directory in snap_outs/",
-            batch_table_column=True,
-            rules=[
-                LatchRule(
-                    regex="^[^/].*", message="project name cannot start with a '/'"
-                )
-            ],
         ),
     },
 )
@@ -122,16 +44,7 @@ metadata = LatchMetadata(
 def snap_workflow(
     runs: List[Run],
     genome: Genome,
-    project_name: str,
-    resolution: float = 1.0,
-    leiden_iters: int = -1,
-    n_comps: int = 30,
-    min_cluster_size: int = 20,
-    min_tss: float = 2.0,
-    min_frags: int = 10,
-    tile_size: int = 5000,
-    n_features: int = 25000,
-    clustering_iters: int = 1,
+    old_outputs: LatchDir,
 ) -> None:
     """
     SnapATAC2 analysis for DBiT-seq experiments
@@ -236,45 +149,13 @@ def snap_workflow(
 
     """
 
-    # outdir, groups = make_adata(
-    #     runs=runs,
-    #     genome=genome,
-    #     project_name=project_name,
-    #     resolution=resolution,
-    #     leiden_iters=leiden_iters,
-    #     n_comps=n_comps,
-    #     min_cluster_size=min_cluster_size,
-    #     min_tss=min_tss,
-    #     min_frags=min_frags,
-    #     tile_size=tile_size,
-    #     n_features=n_features,
-    #     clustering_iters=clustering_iters,
-    # )
-
-    # outdir_ge = genes_task(
-    #     runs=runs,
-    #     outdir=outdir,
-    #     project_name=project_name,
-    #     genome=genome,
-    #     groups=groups
-    # )
-
-    from latch.types import LatchDir
-
-    groups = ["cluster", "sample"]
-    outdir_ge = LatchDir("latch://13502.account/ArchRProjects/Butler_Lupien_SOW236_TSS_1_5/")
-
     outdir_motifs = motifs_task(
         runs=runs,
-        outdir=outdir_ge,
-        project_name=project_name,
-        groups=groups,
+        outdir=old_outputs,
         genome=genome,
     )
 
-    uploaded_results = registry_task(runs=runs, results=outdir_motifs)
-
-    return uploaded_results
+    return outdir_motifs
 
 
 if __name__ == "__main__":
