@@ -78,8 +78,7 @@ RUN R -e "remotes::install_github('mojaveazure/seurat-disk', ref = '877d4e1', up
 
 RUN R -e "BiocManager::install('sparseMatrixStats')"
 
-RUN R -e "install.packages('https://cran.r-project.org/src/contrib/spam64_2.10-0.tar.gz', repos = NULL, type = 'source')"
-RUN R -e "remotes::install_github('jpmcga/ArchR', ref = '964e71e')"
+RUN R -e "remotes::install_github('jpmcga/ArchR', ref = 'cd7506e')"
 
 COPY . /root/
 

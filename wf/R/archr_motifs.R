@@ -221,15 +221,15 @@ for (i in seq_len(length(marker_motifs_list))) {
 
 if (length(motifs) > 1) {
   motifs <- unlist(motifs)
+  motifs <- paste0("z:", motifs)
   motifs <- unique(motifs)
 
-  proj <- addImputeWeights(proj, reducedDims = rd_name)
+  proj <- addImputeWeights(proj, reducedDims = "Spectral")
 
   dev_score <- getDeviation_ArchR(
     ArchRProj = proj,
     name = motifs,
-    useAssay = "z",  # can be "deviations" or "z"
-    log2Norm = TRUE
+    imputeWeights = getImputeWeights(proj)
   )
 
   dev_score[is.na(dev_score)] <- 0
