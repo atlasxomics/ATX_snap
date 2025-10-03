@@ -1,6 +1,7 @@
 import anndata
 import logging
 from pathlib import Path
+from typing import Optional
 
 import wf.plotting as pl
 
@@ -16,13 +17,12 @@ def add_spatial(
 
 
 def run_squidpy_analysis(
-    adata_gene: anndata.AnnData, figures_dir: Path
+    adata: anndata.AnnData, figures_dir: Path, sample_key: Optional[str] = None
 ) -> anndata.AnnData:
     """Run Squidpy analysis and generate plots."""
-    from squidpy.pl import ripley
 
     logging.info("Running squidpy...")
-    adata_gene = squidpy_analysis(adata_gene)
+    adata = squidpy_analysis(adata, sample_key=sample_key)
 
     # Generate neighborhood plots
     logging.info("Making neighborhood plots...")
@@ -30,28 +30,33 @@ def run_squidpy_analysis(
 
     for group_name, group_value in group_dict.items():
         pl.plot_neighborhoods(
-            adata_gene, group_name, group_value, outdir=str(figures_dir)
+            adata, group_name, group_value, outdir=str(figures_dir)
         )
 
-    # Generate Ripley's plot
-    logging.info("Running ripley...")
-    ripley(adata_gene, cluster_key="cluster", mode="L", save="ripleys_L.pdf")
-
-    return adata_gene
+    return adata
 
 
 def squidpy_analysis(
-    adata: anndata.AnnData, cluster_key: str = "cluster"
+    adata: anndata.AnnData,
+    cluster_key: str = "cluster",
+    sample_key: Optional[str] = None
 ) -> anndata.AnnData:
     """Perform squidpy Neighbors enrichment analysis.
     """
-    from squidpy.gr import nhood_enrichment, ripley, spatial_neighbors
+    from squidpy.gr import nhood_enrichment, spatial_neighbors
 
-    if not adata.obs["cluster"].dtype.name == "category":
-        adata.obs["cluster"] = adata.obs["cluster"].astype("category")
+    if not adata.obs[cluster_key].dtype.name == "category":
+        adata.obs[cluster_key] = adata.obs["cluster"].astype("category")
 
-    spatial_neighbors(adata, coord_type="grid", n_neighs=4, n_rings=1)
-    nhood_enrichment(adata, cluster_key=cluster_key)
-    ripley(adata, cluster_key="cluster", mode="L", max_dist=500)
+    if sample_key:
+        if not adata.obs[sample_key].dtype.name == "category":
+            adata.obs[sample_key] = adata.obs[sample_key].astype("category")
+
+    spatial_neighbors(
+        adata, coord_type="grid", n_neighs=4, n_rings=1, library_key=sample_key
+    )
+    nhood_enrichment(
+        adata, cluster_key=cluster_key, library_key=sample_key, seed=42
+    )
 
     return adata

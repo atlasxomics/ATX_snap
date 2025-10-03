@@ -206,7 +206,10 @@ def genes_task(
     ft.transfer_auxiliary_data(adata_gene, data_paths, groups)
 
     # Run spatial analysis
-    adata_gene = sp.run_squidpy_analysis(adata_gene, dirs["figures"])
+    sample_key = "sample" if "sample" in groups else None
+    adata_gene = sp.run_squidpy_analysis(
+        adata_gene, dirs["figures"], sample_key
+    )
 
     # Load differential analysis results
     ft.load_analysis_results(adata_gene, "gene", groups)
