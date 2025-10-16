@@ -109,7 +109,8 @@ def make_adata(
     adata = sp.add_spatial(adata)  # Add spatial coordinates to tixels
 
     logging.info("Creating coverages for groups...")
-    for group in groups:
+    coverage_groups = groups if "sample" in groups else groups + ["sample"]
+    for group in coverage_groups:
         coverage_dir = f"{out_dir}/{group}_coverages"
         os.makedirs(coverage_dir, exist_ok=True)
         snap.ex.export_coverage(
