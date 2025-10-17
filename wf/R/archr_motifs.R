@@ -184,9 +184,7 @@ enriched_motifs_c <- get_enriched_motifs(
 )
 
 write.csv(enriched_motifs_c$enrich_df, "enrichedMotifs_cluster.csv")
-saveRDS(enriched_motifs_c$enrich_motifs, "enrichMotifs_clusters.rds")
 write.csv(enriched_motifs_c$heatmap_em, "motif_per_cluster_hm.csv")
-
 
 # Create motif SeuratObjects ----
 # Create motif count matrix --
@@ -288,9 +286,7 @@ if (n_samples > 1) {
   )
 
   write.csv(enriched_motifs_s$enrich_df, "enrichedMotifs_sample.csv")
-  saveRDS(enriched_motifs_s$enrich_motifs, "enrichMotifs_sample.rds")
   write.csv(enriched_motifs_s$heatmap_em, "motif_per_sample_hm.csv")
-
 }
 
 # Peak calling and motif enrichment per treatment ----
@@ -318,10 +314,6 @@ if (n_cond > 1) {
     write.csv(
       enriched_motifs_t$enrich_df,
       paste0("enrichedMotifs_condition_", i, ".csv")
-    )
-    saveRDS(
-      enriched_motifs_t$enrich_motifs,
-      paste0("enrichMotifs_condition_", i, ".rds")
     )
     write.csv(
       enriched_motifs_t$heatmap_em,

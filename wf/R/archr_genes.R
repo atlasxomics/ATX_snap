@@ -268,7 +268,6 @@ cluster_marker_genes <- get_marker_genes( # from archr.R
   heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10"
 )
 
-saveRDS(cluster_marker_genes$markers_gs, "markersGS_clusters.rds")
 write.csv(
   cluster_marker_genes$marker_list,
   "ranked_genes_per_cluster.csv",
@@ -286,7 +285,6 @@ if (n_samples > 1) {
     heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10"
   )
 
-  saveRDS(sample_marker_genes$markers_gs, "markersGS_sample.rds")
   write.csv(
     sample_marker_genes$marker_list,
     "ranked_genes_per_sample.csv",
@@ -308,10 +306,6 @@ if (n_cond > 1) {
       heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10"
     )
 
-    saveRDS(
-      treatment_marker_genes$markers_gs,
-      paste0("markersGS_condition_", i, ".rds")
-    )
     write.csv(
       treatment_marker_genes$marker_list,
       paste0("ranked_genes_per_condition_", i, ".csv"),
