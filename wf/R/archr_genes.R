@@ -275,6 +275,38 @@ write.csv(
 )
 write.csv(cluster_marker_genes$heatmap_gs, "genes_per_cluster_hm.csv")
 
+# Recompute gene heatmap for plotting (transpose, plotLog2FC different) --
+cut_off <- "Pval <= 0.05 & Log2FC >= 0.1"
+
+heatmap_gs_plotting <- plotMarkerHeatmap(
+  seMarker = cluster_marker_genes$markers_gs,
+  cutOff = cut_off,
+  transpose = TRUE
+)
+
+# Save for plotting with peaks and motifs --
+gene_hm <- ComplexHeatmap::draw(
+  heatmap_gs_plotting,
+  heatmap_legend_side = "bot",
+  annotation_legend_side = "bot",
+  column_title = paste0("Marker genes (", cut_off, ")"),
+  column_title_gp = gpar(fontsize = 12)
+)
+
+print("Saving gene heatmap...")
+pdf("heatmap_genes.pdf")
+print(gene_hm)
+dev.off()
+
+# Save for plotting with peaks and motifs --
+gene_hm <- ComplexHeatmap::draw(
+  heatmap_gs_plotting,
+  heatmap_legend_side = "bot",
+  annotation_legend_side = "bot",
+  column_title = paste0("Marker genes (", cut_off, ")"),
+  column_title_gp = gpar(fontsize = 12)
+)
+
 # Marker genes per sample, save marker gene rds, csv, heatmap.csv --
 if (n_samples > 1) {
 

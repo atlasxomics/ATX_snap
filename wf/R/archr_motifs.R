@@ -264,6 +264,54 @@ for (run in runs) {
 print("Available seurat_objMotifs:")
 seurat_objs_m
 
+# Plot peak, motif heatmaps by cluster, generate heatmaps PDF ----
+# Initiate heatmaps list --
+heatmaps <- list()
+cut_off <- "Pval <= 0.05 & Log2FC >= 0.1"
+
+# Create peak heatmap by cluster --
+heatmap_peaks <- plotMarkerHeatmap(
+  seMarker = marker_peaks_c$marker_peaks,
+  cutOff = cut_off,
+  transpose = TRUE
+)
+
+peak_hm <- ComplexHeatmap::draw(
+  heatmap_peaks,
+  heatmap_legend_side = "bot",
+  annotation_legend_side = "bot",
+  column_title = paste0("Marker peaks (", cut_off, ")"),
+  column_title_gp = gpar(fontsize = 12)
+)
+
+heatmaps[[1]] <- peak_hm
+
+# Create motif heatmap by cluster --
+heatmap_plot <- plotEnrichHeatmap(
+  enriched_motifs_c$enrich_motifs,
+  transpose = TRUE,
+  n = 50,
+  cutOff = 2
+)
+
+heatmap_motifs <- ComplexHeatmap::draw(
+  heatmap_plot,
+  heatmap_legend_side = "bot",
+  column_title = paste0("Marker motifs (", cut_off, ")"),
+  column_title_gp = gpar(fontsize = 12)
+)
+
+heatmaps[[2]] <- heatmap_motifs
+
+# Save heatmaps to disk as pdf (per cluster: peaks, motifs) --
+print("Saving peak, motif heatmaps...")
+
+pdf("heatmaps_peaks-motifs.pdf")
+for (i in seq_along(heatmaps)) {
+  print(heatmaps[[i]])
+}
+dev.off()
+
 # Peak calling and motifs for Sample ----
 if (n_samples > 1) {
 
