@@ -79,6 +79,7 @@ RUN R -e "remotes::install_github('mojaveazure/seurat-disk', ref = '877d4e1', up
 RUN R -e "BiocManager::install('sparseMatrixStats')"
 
 RUN R -e "remotes::install_github('jpmcga/ArchR', ref = 'cd7506e')"
+RUN R -e 'remotes::install_version("ggplot2", version = "3.4.1", repos = "https://cran.r-project.org")'
 
 COPY . /root/
 
