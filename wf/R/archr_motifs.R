@@ -394,7 +394,7 @@ if (n_cond > 1) {
       group_by =  treatment[j],
       seq_names = "z",
       matrix = "MotifMatrix",
-      test_method = "ttest",
+      test_method = "wilcoxon",
       diff_metric = "MeanDiff"
     )
 

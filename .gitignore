@@ -5,7 +5,7 @@ __pycache__/
 env/
 venv/
 
-.latch/.logs
+.latch/
 
 **/*.h5ad
 
