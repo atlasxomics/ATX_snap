@@ -281,6 +281,10 @@ cut_off <- "Pval <= 0.05 & Log2FC >= 0.1"
 heatmap_gs_plotting <- plotMarkerHeatmap(
   seMarker = cluster_marker_genes$markers_gs,
   cutOff = cut_off,
+  log2Norm = TRUE,
+  scaleTo = 10^4,
+  scaleRows = TRUE,
+  plotLog2FC = FALSE,
   transpose = TRUE
 )
 

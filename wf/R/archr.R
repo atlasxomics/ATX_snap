@@ -300,7 +300,10 @@ get_marker_genes <- function(
   heatmap_gs <- ArchR::plotMarkerHeatmap(
     seMarker = markers_gs,
     cutOff = heatmap_cutoff,
-    plotLog2FC = TRUE,
+    log2Norm = TRUE,
+    scaleTo = 10^4,
+    scaleRows = TRUE,
+    plotLog2FC = FALSE,
     returnMatrix = TRUE
   )
   return(
