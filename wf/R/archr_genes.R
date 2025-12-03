@@ -261,11 +261,19 @@ gc()
 # Marker genes per cluster, save marker gene rds, csv, heatmap.csv --
 n_clust <- length(unique(proj$Clusters))
 
+if (n_clust > 2) {  # Whether to show log2fc in _hm table
+  plot_log2fc <- FALSE
+} else {
+  plot_log2fc <- TRUE
+}
+print(paste0("Setting plotLog2FC to ", plot_log2fc, " for Clusters."))
+
 cluster_marker_genes <- get_marker_genes( # from archr.R
   proj,
   group_by = "Clusters",
   markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
-  heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10"
+  heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
+  plot_log2fc  # Whether to show log2fc in _hm table
 )
 
 write.csv(
@@ -314,11 +322,20 @@ gene_hm <- ComplexHeatmap::draw(
 # Marker genes per sample, save marker gene rds, csv, heatmap.csv --
 if (n_samples > 1) {
 
+  if (n_samples > 2) {  # Whether to show log2fc in _hm table
+    plot_log2fc <- FALSE
+  } else {
+    plot_log2fc <- TRUE
+  }
+
+  print(paste0("Setting plotLog2FC to ", plot_log2fc, " for Samples."))
+
   sample_marker_genes <- get_marker_genes(
     proj,
     group_by = "Sample",
     markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
-    heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10"
+    heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
+    plot_log2fc
   )
 
   write.csv(
@@ -335,11 +352,20 @@ if (n_cond > 1) {
 
   for (i in seq_along(treatment)) {
 
+    if (n_cond > 2) {  # Whether to show log2fc in _hm table
+      plot_log2fc <- FALSE
+    } else {
+      plot_log2fc <- TRUE
+    }
+
+    print(paste0("Setting plotLog2FC to ", plot_log2fc, " for Conditions."))
+
     treatment_marker_genes <- get_marker_genes(
       proj,
       group_by = treatment[i],
       markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
-      heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10"
+      heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
+      plot_log2fc
     )
 
     write.csv(

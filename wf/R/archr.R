@@ -285,7 +285,7 @@ get_marker_df_clusters <- function(
 }
 
 get_marker_genes <- function(
-  proj, group_by, markers_cutoff, heatmap_cutoff
+  proj, group_by, markers_cutoff, heatmap_cutoff, plot_log2fc
 ) {
 
   markers_gs <- ArchR::getMarkerFeatures(
@@ -303,7 +303,7 @@ get_marker_genes <- function(
     log2Norm = TRUE,
     scaleTo = 10^4,
     scaleRows = TRUE,
-    plotLog2FC = FALSE,
+    plotLog2FC = plot_log2fc,
     returnMatrix = TRUE
   )
   return(
