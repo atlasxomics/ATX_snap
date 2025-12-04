@@ -48,20 +48,17 @@ for (run in runs) {
 }
 inputs
 
-out_dir <- paste0(project_name, "_ArchRProject")
-
 # Set genome size for peak calling ----
 genome_sizes <- list("hg38" = 3.3e+09, "mm10" = 3.0e+09, "rnor6" = 2.9e+09)
 genome_size <- genome_sizes[[genome]]
 
-tempdir <- "/root"
 archrproj_dir <- paste0(project_name, "_ArchRProject")
 
 # Create ArchRProject ---------------------------------------------------------
 addArchRThreads(threads = num_threads)
 
 proj <- create_archrproject( # from archr.R
-  inputs, genome, min_tss, min_frags, tile_size, out_dir
+  inputs, genome, min_tss, min_frags, tile_size, archrproj_dir
 )
 
 # Add Conditions to CellColData ----

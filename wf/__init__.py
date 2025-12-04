@@ -276,15 +276,27 @@ if __name__ == "__main__":
 
     from latch.types import LatchDir, LatchFile
 
-    genes_task(
+    # genes_task(
+    #     runs=[Run(
+    #         run_id="demo",
+    #         fragments_file=LatchFile("latch://13502.account/atac_outs/ds_D01033_NG01681/outs/ds_D01033_NG01681_fragments.tsv.gz"),
+    #         spatial_dir=LatchDir("latch://atx-illumina.mount/Images_spatial/D1033/spatial/"),
+    #         condition="control",
+    #     )],
+    #     outdir="latch://13502.account/snap_outs/demo_001716",
+    #     genome=Genome("hg38"),
+    #     groups=["cluster"],
+    #     project_name="develop_archrGenes",
+    # )
+    motifs_task(
         runs=[Run(
             run_id="demo",
-            fragments_file=LatchFile("latch://13502.account/atac_outs/ds_D01033_NG01681/outs/ds_D01033_NG01681_fragments.tsv.gz"),
+            fragments_file=LatchFile("latch://13502.account/atx-archive-latch-1762285824.0858006/atac_outs/ds_D01033_NG01681/outs/ds_D01033_NG01681_fragments.tsv.gz"),
             spatial_dir=LatchDir("latch://atx-illumina.mount/Images_spatial/D1033/spatial/"),
-            condition="control",
+            condition="demo",
         )],
-        outdir="latch://13502.account/snap_outs/demo_001716",
-        genome=Genome("hg38"),
+        outdir=LatchDir("latch://13502.account/snap_outs/demo_002212"),
+        project_name="demo_002212",
         groups=["cluster"],
-        project_name="develop_archrGenes",
+        genome=Genome("hg38"),
     )

@@ -2,6 +2,7 @@ import anndata
 import glob
 import json
 import logging
+import os
 import subprocess
 
 from dataclasses import dataclass
@@ -77,6 +78,29 @@ class Run:
     fragments_file: LatchFile
     spatial_dir: LatchDir
     condition: str = "None"
+
+
+def copy_peak_files(project_name: str, dirs: Dict[str, Path]) -> None:
+
+    table_dir = f"/root/{project_name}/{project_name}_ArchRProject/PeakCalls/"
+    plot_dir = f"/root/{project_name}/{project_name}_ArchRProject/Plots/"
+    if os.path.exists(table_dir):
+        peak_csvs = glob.glob(f"{table_dir}/*.csv")
+        if not peak_csvs:
+            logging.warning(f"No peaks csv files found in {table_dir}")
+        else:
+            subprocess.run(["cp"] + peak_csvs + [str(dirs['tables'])])
+    else:
+        logging.warning(f"No {table_dir} found")
+
+    if os.path.exists(plot_dir):
+        peaks_pdfs = glob.glob(f"{plot_dir}/*.pdf")
+        if not peaks_pdfs:
+            logging.warning(f"No peaks csv files found in {plot_dir}")
+        else:
+            subprocess.run(["cp"] + peaks_pdfs + [str(dirs['figures'])])
+    else:
+        logging.warning(f"No {plot_dir} found")
 
 
 def create_output_directories(project_name: str) -> Dict[str, Path]:

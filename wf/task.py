@@ -286,6 +286,9 @@ def motifs_task(
     # Save AnnData
     ft.save_anndata_objects(adata_motif, "_motifs", dirs['base'])
 
+    logging.info("Copying ArchR peak files to top directory...")
+    utils.copy_peak_files(project_name, dirs)
+
     logging.info("Uploading data to Latch...")
     return LatchDir(str(dirs['base']), f"latch:///snap_outs/{project_name}")
 
