@@ -85,6 +85,7 @@ COPY . /root/
 
 # Latch workflow registration metadata
 # DO NOT CHANGE
+RUN python3 -m pip install --upgrade latch
 ARG tag
 # DO NOT CHANGE
 ENV FLYTE_INTERNAL_IMAGE $tag
