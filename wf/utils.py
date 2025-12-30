@@ -46,22 +46,24 @@ hg38_chrsizes = {
     "chr22": 50818468, "chrX": 156040895, "chrY": 57227415, "chrM": 16569
 }
 
+rnor6_chrsizes = {
+    "chr1": 282763074, "chr2": 266435125, "chr4": 184226339, "chr3": 177699992,
+    "chr5": 173707219, "chrX": 159970021, "chr6": 147991367, "chr7": 145729302,
+    "chr8": 133307652, "chr9": 122095297, "chr14": 115493446, "chr13": 114033958,
+    "chr10": 112626471, "chr15": 111246239, "chr17": 90843779, "chr16": 90668790,
+    "chr11": 90463843, "chr18": 88201929, "chr19": 62275575, "chr20": 56205956,
+    "chr12": 52716770, "chrY": 3310458, "chrM": 16313,
+}
+
 ref_dict = {
     "mm10": [
-        mm10_chrsizes,
-        "/root/references/gencode_vM25_GRCm38.gff3.gz",
-        "/root/references/mm10_genes.csv",
-        "/root/references/mm10_exons.csv",
-        "/root/references/mm10_promoters.csv",
-        "/root/references/mm10_selectGenes.txt",
+        mm10_chrsizes, "/root/references/gencode_vM25_GRCm38.gff3.gz",
     ],
     "hg38": [
-        hg38_chrsizes,
-        "/root/references/gencode_v41_GRCh38.gff3.gz",
-        "/root/references/hg38_genes.csv",
-        "/root/references/hg38_exons.csv",
-        "/root/references/hg38_promoters.csv",
-        "/root/references/hg38_selectGenes.txt",
+        hg38_chrsizes, "/root/references/gencode_v41_GRCh38.gff3.gz",
+    ],
+    "rnor6": [
+        rnor6_chrsizes, "/root/references/rn6_liftoff_mm10_RefSeq.gff3.gz"
     ]
 }
 
