@@ -298,7 +298,7 @@ def motifs_task(
         bindings=PlotsArtifactBindings(
             plot_templates=[
                 PlotsArtifactTemplate(
-                    template_id="530",
+                    template_id="537",
                     widgets=[
                         Widget(
                             transform_id="120027",
@@ -306,7 +306,7 @@ def motifs_task(
                             value=f"latch:///snap_outs/{project_name}"
                         ),
                         Widget(
-                            transform_id="120170",
+                            transform_id="129103",
                             key="coverages_genome",
                             value=genome
                         )
