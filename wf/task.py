@@ -301,12 +301,12 @@ def motifs_task(
                     template_id="537",
                     widgets=[
                         Widget(
-                            transform_id="120027",
+                            transform_id="131091",
                             key="data_path",
                             value=f"latch:///snap_outs/{project_name}"
                         ),
                         Widget(
-                            transform_id="129103",
+                            transform_id="131100",
                             key="coverages_genome",
                             value=genome
                         )
