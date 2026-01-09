@@ -1,4 +1,5 @@
 import glob
+import json
 import logging
 import os
 import subprocess
@@ -9,6 +10,9 @@ from latch import message
 from latch.registry.table import Table
 from latch.resources.tasks import custom_task, small_task
 from latch.types import LatchDir
+from latch.types.plots import (
+    PlotsArtifactBindings, PlotsArtifactTemplate, PlotsArtifact, Widget
+)
 
 import wf.features as ft
 import wf.plotting as pl
@@ -288,6 +292,33 @@ def motifs_task(
 
     logging.info("Copying ArchR peak files to top directory...")
     utils.copy_peak_files(project_name, dirs)
+
+    logging.info("Making Plots Artifact...")
+    artifact = PlotsArtifact(
+        bindings=PlotsArtifactBindings(
+            plot_templates=[
+                PlotsArtifactTemplate(
+                    template_id="537",
+                    widgets=[
+                        Widget(
+                            transform_id="131091",
+                            key="data_path",
+                            value=f"latch:///snap_outs/{project_name}"
+                        ),
+                        Widget(
+                            transform_id="131100",
+                            key="coverages_genome",
+                            value=genome
+                        )
+                    ],
+                )
+            ]
+        )
+    )
+
+    artifact_dict = artifact.asdict()
+    with open(f"{str(dirs['base'])}/artifact.json", "w") as f:
+        json.dump(artifact_dict, f, indent=2)
 
     logging.info("Uploading data to Latch...")
     return LatchDir(str(dirs['base']), f"latch:///snap_outs/{project_name}")
