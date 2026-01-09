@@ -38,10 +38,49 @@ metadata = LatchMetadata(
             description="Reference genome for runs.",
             batch_table_column=True,
         ),
+        "project_name": LatchParameter(
+            display_name="project name",
+            description="Name of output directory in snap_outs/",
+            batch_table_column=True,
+            rules=[
+                LatchRule(
+                    regex="^[^/].*", message="project name cannot start with a '/'"
+                )
+            ],
+        ),
+        "tile_size": LatchParameter(
+            display_name="tile size",
+            description="The size of the tiles used for binning counts in the \
+                tile matrix.",
+            batch_table_column=True,
+        ),
+        "n_features": LatchParameter(
+            display_name="number of features",
+            description="Number of features to be selected as 'most \
+                accessible' in tile matrix.",
+            batch_table_column=True,
+        ),
+        "n_comps": LatchParameter(
+            display_name="number of components",
+            description="Number of components/dimensions to keep during \
+                dimensionality reduction with `snap.tl.spectral`.",
+            batch_table_column=True,
+        ),
         "resolution": LatchParameter(
             display_name="clustering resolution",
             description="Clustering resolution for Leiden algorithm; higher \
                 values result in more clusters.",
+            batch_table_column=True,
+        ),
+        "clustering_iters": LatchParameter(
+            display_name="clustering iterations",
+            description="Iterations performed when selecting variable \
+                features for tile matrix. 'If greater than 1, this function \
+                will perform iterative clustering and feature selection based \
+                on variable features found using previous clustering results. \
+                This is similar to the procedure implemented in ArchR... \
+                Default value is 1, which means no iterative clustering is \
+                 performed.'- SnapATAC2 docs",
             batch_table_column=True,
         ),
         "leiden_iters": LatchParameter(
@@ -74,46 +113,6 @@ metadata = LatchMetadata(
             batch_table_column=True,
             hidden=True,
         ),
-        "tile_size": LatchParameter(
-            display_name="tile size",
-            description="The size of the tiles used for binning counts in the \
-                tile matrix.",
-            batch_table_column=True,
-            hidden=True,
-        ),
-        "clustering_iters": LatchParameter(
-            display_name="clustering iterations",
-            description="Iterations performed when selecting variable \
-                features for tile matrix. 'If greater than 1, this function \
-                will perform iterative clustering and feature selection based \
-                on variable features found using previous clustering results. \
-                This is similar to the procedure implemented in ArchR... \
-                Default value is 1, which means no iterative clustering is \
-                 performed.'- SnapATAC2 docs",
-            batch_table_column=True,
-        ),
-        "n_features": LatchParameter(
-            display_name="number of features",
-            description="Number of features to be selected as 'most \
-                accessible' in tile matrix.",
-            batch_table_column=True,
-        ),
-        "n_comps": LatchParameter(
-            display_name="number of components",
-            description="Number of components/dimensions to keep during \
-                dimensionality reduction with `snap.tl.spectral`.",
-            batch_table_column=True,
-        ),
-        "project_name": LatchParameter(
-            display_name="project name",
-            description="Name of output directory in snap_outs/",
-            batch_table_column=True,
-            rules=[
-                LatchRule(
-                    regex="^[^/].*", message="project name cannot start with a '/'"
-                )
-            ],
-        ),
     },
 )
 
@@ -123,15 +122,15 @@ def snap_workflow(
     runs: List[Run],
     genome: Genome,
     project_name: str,
-    resolution: float = 1.0,
-    leiden_iters: int = -1,
+    tile_size: int = 5000,
+    n_features: int = 25000,
     n_comps: int = 30,
+    resolution: float = 1.0,
+    clustering_iters: int = 1,
+    leiden_iters: int = -1,
     min_cluster_size: int = 20,
     min_tss: float = 2.0,
     min_frags: int = 10,
-    tile_size: int = 5000,
-    n_features: int = 25000,
-    clustering_iters: int = 1,
 ) -> None:
     """
     SnapATAC2 analysis for DBiT-seq experiments
