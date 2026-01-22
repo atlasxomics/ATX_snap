@@ -263,7 +263,7 @@ def snap_workflow(
 
     results_ge = genes_task(
         runs=runs,
-        outdir=results,
+        results_dir=results,
         project_name=project_name,
         genome=genome,
         groups=groups
@@ -271,7 +271,7 @@ def snap_workflow(
 
     outdir_motifs = motifs_task(
         runs=runs,
-        outdir=results_ge,
+        results_dir=results_ge,
         project_name=project_name,
         groups=groups,
         genome=genome,
