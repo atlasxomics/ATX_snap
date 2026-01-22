@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import shutil
 import subprocess
 
 from pathlib import Path
@@ -115,9 +114,6 @@ def make_adata(
 
     adata = sp.add_spatial(adata)  # Add spatial coordinates to tixels
 
-    artifacts_dir = Path(out_dir) / "Launch_Plots"
-    artifacts_dir.mkdir(parents=True, exist_ok=True)
-
     logging.info("Creating coverages for groups...")
     coverage_groups = groups if "sample" in groups else groups + ["sample"]
     for group in coverage_groups:
@@ -132,10 +128,6 @@ def make_adata(
             output_format="bigwig",
             out_dir=coverage_dir
         )
-
-        # Copy for Latch Artifacts (Plots)
-        dest = artifacts_dir / coverage_dir.name
-        shutil.copytree(coverage_dir, dest, dirs_exist_ok=True)
 
     logging.info("Finished coverages for groups...")
 
@@ -236,15 +228,6 @@ def genes_task(
     # Save AnnData
     ft.save_anndata_objects(adata_gene, "_ge", dirs["base"])
 
-    artifacts_dir = dirs["base"] / "Launch_Plots"
-    artifacts_dir.mkdir(parents=True, exist_ok=True)
-
-    sm_file = dirs["base"] / "combined_sm_ge.h5ad"
-    if sm_file.exists():
-        shutil.copy(sm_file, artifacts_dir)
-    else:
-        logging.warning(f"Could not find {sm_file}")
-
     logging.info("Uploading data to Latch...")
     return LatchDir(str(dirs['base']), f"latch:///snap_outs/{project_name}")
 
@@ -310,15 +293,6 @@ def motifs_task(
     # Save AnnData
     ft.save_anndata_objects(adata_motif, "_motifs", dirs['base'])
 
-    artifacts_dir = dirs["base"] / "Launch_Plots"
-    artifacts_dir.mkdir(parents=True, exist_ok=True)
-
-    sm_file = dirs["base"] / "combined_sm_motifs.h5ad"
-    if sm_file.exists():
-        shutil.copy(sm_file, artifacts_dir)
-    else:
-        logging.warning(f"Could not find {sm_file}!")
-
     logging.info("Copying ArchR peak files to top directory...")
     utils.copy_peak_files(project_name, dirs)
 
@@ -346,6 +320,9 @@ def motifs_task(
     )
 
     artifact_dict = artifact.asdict()
+
+    artifacts_dir = dirs["base"] / "Launch_Plots"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
     with open(artifacts_dir / "artifact.json", "w") as f:
         json.dump(artifact_dict, f, indent=2)
 
