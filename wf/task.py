@@ -37,6 +37,7 @@ def make_adata(
     tile_size: int,
     n_features: int,
     clustering_iters: int,
+    output_dir: LatchDir
 ) -> tuple[LatchDir, List[str]]:
     import pandas as pd
 
@@ -52,13 +53,13 @@ def make_adata(
 
     genome = genome.value  # Convert to str
 
-    out_dir = f"/root/{project_name}"
-    os.makedirs(out_dir, exist_ok=True)
+    result_dir = f"/root/{project_name}"
+    os.makedirs(result_dir, exist_ok=True)
 
-    figures_dir = f"{out_dir}/figures"
+    figures_dir = f"{result_dir}/figures"
     os.makedirs(figures_dir, exist_ok=True)
 
-    tables_dir = f"{out_dir}/tables"
+    tables_dir = f"{result_dir}/tables"
     os.makedirs(tables_dir, exist_ok=True)
 
     # Save input parameters to csv
@@ -117,7 +118,7 @@ def make_adata(
     logging.info("Creating coverages for groups...")
     coverage_groups = groups if "sample" in groups else groups + ["sample"]
     for group in coverage_groups:
-        coverage_dir = Path(out_dir) / f"{group}_coverages"
+        coverage_dir = Path(result_dir) / f"{group}_coverages"
         coverage_dir.mkdir(parents=True, exist_ok=True)
 
         snap.ex.export_coverage(
@@ -161,22 +162,22 @@ def make_adata(
     spectral_df = pd.DataFrame(adata.obsm[spectral_key], index=adata.obs_names)
     spectral_df.to_csv(f"{tables_dir}/spectral.csv")
 
-    adata.write(f"{out_dir}/combined.h5ad")
+    adata.write(f"{result_dir}/combined.h5ad")
 
-    return LatchDir(out_dir, f"latch:///snap_outs/{project_name}"), groups
+    return LatchDir(result_dir, output_dir.remote_path), groups
 
 
 @custom_task(cpu=50, memory=975, storage_gib=2000)
 def genes_task(
     runs: List[utils.Run],
-    outdir: LatchDir,
+    results_dir: LatchDir,
     project_name: str,
     groups: List[str],
     genome: utils.Genome,
 ) -> LatchDir:
 
     # Read in data tables
-    data_paths = utils.get_data_paths(outdir)
+    data_paths = utils.get_data_paths(results_dir)
 
     genome = genome.value
 
@@ -229,20 +230,20 @@ def genes_task(
     ft.save_anndata_objects(adata_gene, "_ge", dirs["base"])
 
     logging.info("Uploading data to Latch...")
-    return LatchDir(str(dirs['base']), f"latch:///snap_outs/{project_name}")
+    return LatchDir(str(dirs['base']), results_dir.remote_path)
 
 
 @custom_task(cpu=50, memory=975, storage_gib=2000)
 def motifs_task(
     runs: List[utils.Run],
-    outdir: LatchDir,
+    results_dir: LatchDir,
     project_name: str,
     groups: List[str],
     genome: utils.Genome,
 ) -> LatchDir:
 
     # Read in data tables
-    data_paths = utils.get_data_paths(outdir)
+    data_paths = utils.get_data_paths(results_dir)
 
     genome = genome.value
 
@@ -251,7 +252,7 @@ def motifs_task(
 
     # Download ArchRProject
     archrproj_path = LatchDir(
-        f"{outdir.remote_path}/{project_name}_ArchRProject"
+        f"{results_dir.path}/{project_name}_ArchRProject"
     ).local_path
 
     logging.info("Running ArchR analysis...")
@@ -306,7 +307,7 @@ def motifs_task(
                         Widget(
                             transform_id="133384",
                             key="data_path",
-                            value=f"latch:///snap_outs/{project_name}"
+                            value=results_dir.path
                         ),
                         Widget(
                             transform_id="133383",
@@ -327,7 +328,7 @@ def motifs_task(
         json.dump(artifact_dict, f, indent=2)
 
     logging.info("Uploading data to Latch...")
-    return LatchDir(str(dirs['base']), f"latch:///snap_outs/{project_name}")
+    return LatchDir(str(dirs['base']), results_dir.remote_path)
 
 
 @small_task(cache=True)

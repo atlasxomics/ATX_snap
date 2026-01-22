@@ -1,6 +1,7 @@
 from typing import List
 
 from latch.resources.workflow import workflow
+from latch.types import LatchDir
 from latch.types.metadata import (
     LatchAuthor, LatchMetadata, LatchParameter, LatchRule
 )
@@ -40,7 +41,7 @@ metadata = LatchMetadata(
         ),
         "project_name": LatchParameter(
             display_name="project name",
-            description="Name of output directory in snap_outs/",
+            description="Name of subfolder in output directory.",
             batch_table_column=True,
             rules=[
                 LatchRule(
@@ -113,6 +114,14 @@ metadata = LatchMetadata(
             batch_table_column=True,
             hidden=True,
         ),
+        "output_dir": LatchParameter(
+            display_name="output directory",
+            description="Folder in Latch Data to save outputs; defaults to \
+                'snap_outs'. Outputs will be saved in a subfolder named with \
+                the project name defined above.",
+            batch_table_column=True,
+            hidden=True,
+        )
     },
 )
 
@@ -131,6 +140,7 @@ def snap_workflow(
     min_cluster_size: int = 20,
     min_tss: float = 2.0,
     min_frags: int = 10,
+    output_dir: LatchDir = LatchDir("latch:///snap_outs/"),
 ) -> None:
     """
     SnapATAC2 analysis for DBiT-seq experiments
@@ -235,7 +245,7 @@ def snap_workflow(
 
     """
 
-    outdir, groups = make_adata(
+    results, groups = make_adata(
         runs=runs,
         genome=genome,
         project_name=project_name,
@@ -248,11 +258,12 @@ def snap_workflow(
         tile_size=tile_size,
         n_features=n_features,
         clustering_iters=clustering_iters,
+        output_dir=output_dir
     )
 
-    outdir_ge = genes_task(
+    results_ge = genes_task(
         runs=runs,
-        outdir=outdir,
+        outdir=results,
         project_name=project_name,
         genome=genome,
         groups=groups
@@ -260,7 +271,7 @@ def snap_workflow(
 
     outdir_motifs = motifs_task(
         runs=runs,
-        outdir=outdir_ge,
+        outdir=results_ge,
         project_name=project_name,
         groups=groups,
         genome=genome,
