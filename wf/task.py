@@ -1,11 +1,13 @@
-import glob
 import json
 import logging
 import os
 import subprocess
+
+from pathlib import Path
 from typing import List
 
 import snapatac2 as snap
+
 from latch import message
 from latch.registry.table import Table
 from latch.resources.tasks import custom_task, small_task
@@ -35,8 +37,11 @@ def make_adata(
     tile_size: int,
     n_features: int,
     clustering_iters: int,
+    output_dir: LatchDir
 ) -> tuple[LatchDir, List[str]]:
     import pandas as pd
+
+    output_dir = output_dir.remote_path + "/" + project_name
 
     samples = [run.run_id for run in runs]
 
@@ -50,13 +55,13 @@ def make_adata(
 
     genome = genome.value  # Convert to str
 
-    out_dir = f"/root/{project_name}"
-    os.makedirs(out_dir, exist_ok=True)
+    result_dir = f"/root/{project_name}"
+    os.makedirs(result_dir, exist_ok=True)
 
-    figures_dir = f"{out_dir}/figures"
+    figures_dir = f"{result_dir}/figures"
     os.makedirs(figures_dir, exist_ok=True)
 
-    tables_dir = f"{out_dir}/tables"
+    tables_dir = f"{result_dir}/tables"
     os.makedirs(tables_dir, exist_ok=True)
 
     # Save input parameters to csv
@@ -115,17 +120,18 @@ def make_adata(
     logging.info("Creating coverages for groups...")
     coverage_groups = groups if "sample" in groups else groups + ["sample"]
     for group in coverage_groups:
-        coverage_dir = f"{out_dir}/{group}_coverages"
-        os.makedirs(coverage_dir, exist_ok=True)
+        coverage_dir = Path(result_dir) / f"{group}_coverages"
+        coverage_dir.mkdir(parents=True, exist_ok=True)
+
         snap.ex.export_coverage(
             adata,
             groupby=group,
             suffix=f"{group}.bw",
             bin_size=10,
             output_format="bigwig",
+            out_dir=coverage_dir
         )
-        bws = glob.glob("*.bw")
-        subprocess.run(["mv"] + bws + [coverage_dir])
+
     logging.info("Finished coverages for groups...")
 
     pl.plot_umaps(adata, groups, f"{figures_dir}/umap.pdf")
@@ -158,22 +164,22 @@ def make_adata(
     spectral_df = pd.DataFrame(adata.obsm[spectral_key], index=adata.obs_names)
     spectral_df.to_csv(f"{tables_dir}/spectral.csv")
 
-    adata.write(f"{out_dir}/combined.h5ad")
+    adata.write(f"{result_dir}/combined.h5ad")
 
-    return LatchDir(out_dir, f"latch:///snap_outs/{project_name}"), groups
+    return LatchDir(result_dir, output_dir), groups
 
 
 @custom_task(cpu=50, memory=975, storage_gib=2000)
 def genes_task(
     runs: List[utils.Run],
-    outdir: LatchDir,
+    results_dir: LatchDir,
     project_name: str,
     groups: List[str],
     genome: utils.Genome,
 ) -> LatchDir:
 
     # Read in data tables
-    data_paths = utils.get_data_paths(outdir)
+    data_paths = utils.get_data_paths(results_dir)
 
     genome = genome.value
 
@@ -223,23 +229,23 @@ def genes_task(
     utils.organize_outputs(project_name, dirs)
 
     # Save AnnData
-    ft.save_anndata_objects(adata_gene, "_ge", dirs['base'])
+    ft.save_anndata_objects(adata_gene, "_ge", dirs["base"])
 
     logging.info("Uploading data to Latch...")
-    return LatchDir(str(dirs['base']), f"latch:///snap_outs/{project_name}")
+    return LatchDir(str(dirs['base']), results_dir.remote_path)
 
 
 @custom_task(cpu=50, memory=975, storage_gib=2000)
 def motifs_task(
     runs: List[utils.Run],
-    outdir: LatchDir,
+    results_dir: LatchDir,
     project_name: str,
     groups: List[str],
     genome: utils.Genome,
 ) -> LatchDir:
 
     # Read in data tables
-    data_paths = utils.get_data_paths(outdir)
+    data_paths = utils.get_data_paths(results_dir)
 
     genome = genome.value
 
@@ -247,9 +253,8 @@ def motifs_task(
     dirs = utils.create_output_directories(project_name)
 
     # Download ArchRProject
-    archrproj_path = LatchDir(
-        f"{outdir.remote_path}/{project_name}_ArchRProject"
-    ).local_path
+    archrproj_path = f"{results_dir.remote_path}/{project_name}_ArchRProject"
+    archrproj_path = LatchDir(archrproj_path).local_path
 
     logging.info("Running ArchR analysis...")
     # run subprocess R script to make .h5ad file
@@ -303,7 +308,7 @@ def motifs_task(
                         Widget(
                             transform_id="133384",
                             key="data_path",
-                            value=f"latch:///snap_outs/{project_name}"
+                            value=results_dir.path
                         ),
                         Widget(
                             transform_id="133383",
@@ -317,11 +322,14 @@ def motifs_task(
     )
 
     artifact_dict = artifact.asdict()
-    with open(f"{str(dirs['base'])}/artifact.json", "w") as f:
+
+    artifacts_dir = dirs["base"] / "Launch_Plots"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    with open(artifacts_dir / "artifact.json", "w") as f:
         json.dump(artifact_dict, f, indent=2)
 
     logging.info("Uploading data to Latch...")
-    return LatchDir(str(dirs['base']), f"latch:///snap_outs/{project_name}")
+    return LatchDir(str(dirs['base']), results_dir.remote_path)
 
 
 @small_task(cache=True)
