@@ -305,8 +305,8 @@ if __name__ == "__main__":
             spatial_dir=LatchDir("latch://atx-illumina.mount/Images_spatial/D1033/spatial/"),
             condition="demo",
         )],
-        outdir=LatchDir("latch://13502.account/snap_outs/demo_002212"),
-        project_name="demo_002212",
-        groups=["cluster"],
+        results_dir=LatchDir("latch://13502.account/Processed_Data/demo_002307_snap"),
+        project_name="demo_002307_snap",
+        groups=["cluster", "sample"],
         genome=Genome("hg38"),
     )

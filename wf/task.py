@@ -41,6 +41,8 @@ def make_adata(
 ) -> tuple[LatchDir, List[str]]:
     import pandas as pd
 
+    output_dir = output_dir.remote_path + "/" + project_name
+
     samples = [run.run_id for run in runs]
 
     # Get channels for specifying plot point size, use max for now...
@@ -164,7 +166,7 @@ def make_adata(
 
     adata.write(f"{result_dir}/combined.h5ad")
 
-    return LatchDir(result_dir, output_dir.remote_path), groups
+    return LatchDir(result_dir, output_dir), groups
 
 
 @custom_task(cpu=50, memory=975, storage_gib=2000)
@@ -251,9 +253,8 @@ def motifs_task(
     dirs = utils.create_output_directories(project_name)
 
     # Download ArchRProject
-    archrproj_path = LatchDir(
-        f"{results_dir.path}/{project_name}_ArchRProject"
-    ).local_path
+    archrproj_path = f"{results_dir.remote_path}/{project_name}_ArchRProject"
+    archrproj_path = LatchDir(archrproj_path).local_path
 
     logging.info("Running ArchR analysis...")
     # run subprocess R script to make .h5ad file
