@@ -308,7 +308,7 @@ def motifs_task(
                         Widget(
                             transform_id="133384",
                             key="data_path",
-                            value=results_dir.path
+                            value=results_dir.remote_path
                         ),
                         Widget(
                             transform_id="133383",
