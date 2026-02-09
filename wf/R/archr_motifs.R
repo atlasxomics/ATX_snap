@@ -70,6 +70,7 @@ if ("Spectral" %in% names(proj@reducedDims@listData)) {
 # Add Conditions to CellColData ----
 for (run in runs) {
   proj$Condition[proj$Sample == run[1]] <- run[3]
+  proj$sample_name[proj$Sample == run[1]] <- run[6]  
 }
 
 # Parse conditions into 'treatments', add as columns to CellColData ----

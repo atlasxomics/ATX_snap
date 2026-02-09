@@ -204,6 +204,7 @@ def genes_task(
             f'{run.condition},'
             f'{utils.get_LatchFile(run.spatial_dir, "tissue_positions_list.csv").local_path},'
             f'{run.spatial_dir.local_path},'
+            f'{run.sample_name}'
         )
         for run in runs
     ]
@@ -274,6 +275,7 @@ def motifs_task(
             f'{run.condition},'
             f'{utils.get_LatchFile(run.spatial_dir, "tissue_positions_list.csv").local_path},'
             f'{run.spatial_dir.local_path},'
+            f'{run.sample_name}'
         )
         for run in runs
     ]

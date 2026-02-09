@@ -77,6 +77,7 @@ class Genome(Enum):
 @dataclass
 class Run:
     run_id: str
+    sample_name: str
     fragments_file: LatchFile
     spatial_dir: LatchDir
     condition: str = "None"

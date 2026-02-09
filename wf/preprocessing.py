@@ -73,9 +73,10 @@ def add_metadata(
     adata.obs["barcode"] = adata.obs.index
     adata.obs = adata.obs.merge(positions, on="barcode", how="left")
 
-    # Set run_id, condition
+    # Set run_id, condition, sample_name
     adata.obs["sample"] = run.run_id
     adata.obs["condition"] = run.condition
+    adata.obs["sample_name"] = run.sample_name
 
     # Ensure obs_names unique
     adata.obs_names = [
