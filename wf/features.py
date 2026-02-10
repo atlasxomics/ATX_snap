@@ -64,6 +64,54 @@ def clean_adata(adata: anndata.AnnData) -> anndata.AnnData:
     return adata
 
 
+def _sanitize_dataframe_for_h5ad(df) -> None:
+    """Ensure object columns can be written as H5AD string arrays."""
+    import pandas as pd
+
+    obj_cols = df.select_dtypes(include=["object"]).columns
+    if len(obj_cols) == 0:
+        return
+
+    for col in obj_cols:
+        series = df[col]
+        non_null = series.dropna()
+        if non_null.empty:
+            df[col] = series.astype(str)
+            continue
+
+        # If all non-null values are numeric, keep as numeric.
+        if non_null.map(
+            lambda x: isinstance(x, (int, float, np.integer, np.floating))
+        ).all():
+            df[col] = pd.to_numeric(series, errors="coerce")
+            continue
+
+        # If all non-null values are already strings, keep as strings.
+        if non_null.map(lambda x: isinstance(x, str)).all():
+            df[col] = series.astype(str)
+            continue
+
+        # Fallback: coerce to string to avoid h5py conversion errors.
+        df[col] = series.astype(str)
+
+
+def _sanitize_uns_for_h5ad(uns: Dict) -> None:
+    """Recursively sanitize .uns contents for H5AD writing."""
+    import pandas as pd
+
+    for _, value in list(uns.items()):
+        if isinstance(value, pd.DataFrame):
+            _sanitize_dataframe_for_h5ad(value)
+        elif isinstance(value, dict):
+            _sanitize_uns_for_h5ad(value)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                if isinstance(item, pd.DataFrame):
+                    _sanitize_dataframe_for_h5ad(item)
+                elif isinstance(item, dict):
+                    _sanitize_uns_for_h5ad(item)
+
+
 def clean_index_columns(*adatas: anndata.AnnData) -> None:
     """Remove _index columns from AnnData objects if they exist."""
     for adata in adatas:
@@ -126,6 +174,7 @@ def load_csv_files_to_uns(
             if name_transform:
                 name = name_transform(name, file)
             df = pd.read_csv(file, dtype=dtype_spec, index_col=index_col)
+            _sanitize_dataframe_for_h5ad(df)
             target_uns[name] = df
     except Exception as e:
         logging.warning(f"Error loading files matching {pattern}: {e}")
@@ -203,6 +252,7 @@ def save_anndata_objects(
 ) -> None:
     """Save full and reduced AnnData objects."""
     logging.info("Saving full adata...")
+    _sanitize_uns_for_h5ad(adata.uns)
     # Save full objects
     adata.write(f"{base_dir}/combined{suffix}.h5ad")
 
@@ -211,6 +261,7 @@ def save_anndata_objects(
     sm_adata = clean_adata(adata)
 
     logging.info("Saving reduced adata...")
+    _sanitize_uns_for_h5ad(sm_adata.uns)
     sm_adata.write(f"{base_dir}/combined_sm{suffix}.h5ad")
 
 
