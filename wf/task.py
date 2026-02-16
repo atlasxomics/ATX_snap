@@ -227,7 +227,7 @@ def genes_task(
     ft.load_analysis_results(adata_gene, "gene", groups)
 
     # Organize outputs
-    utils.organize_outputs(project_name, dirs)
+    utils.organize_outputs(project_name, dirs, exclude_pattern="*_hm.csv")
 
     # Save AnnData
     ft.save_anndata_objects(adata_gene, "_ge", dirs["base"])
@@ -292,7 +292,7 @@ def motifs_task(
     ft.load_analysis_results(adata_motif, "motif", groups)
 
     # Organize outputs
-    utils.organize_outputs(project_name, dirs)
+    utils.organize_outputs(project_name, dirs, exclude_pattern="*_hm.csv")
 
     # Save AnnData
     ft.save_anndata_objects(adata_motif, "_motifs", dirs['base'])

@@ -1,4 +1,5 @@
 import anndata
+import fnmatch
 import glob
 import json
 import logging
@@ -210,7 +211,9 @@ def move_files_to_directory(patterns: List[str], target_dir: Path) -> None:
         subprocess.run(['mv'] + files_to_move + [str(target_dir)])
 
 
-def organize_outputs(project_name: str, dirs: Dict[str, Path]) -> None:
+def organize_outputs(
+    project_name: str, dirs: Dict[str, Path], exclude_pattern: str = None
+) -> None:
     """Move output files to appropriate directories."""
     logging.info("Moving outputs to output directory...")
 
@@ -220,6 +223,11 @@ def organize_outputs(project_name: str, dirs: Dict[str, Path]) -> None:
 
     # Move tables
     csv_files = glob.glob('*.csv')
+    if exclude_pattern:
+        csv_files = [
+            f for f in csv_files
+            if not fnmatch.fnmatch(f, exclude_pattern)
+        ]
     if csv_files:
         subprocess.run(['mv'] + csv_files + [str(dirs['tables'])])
 
