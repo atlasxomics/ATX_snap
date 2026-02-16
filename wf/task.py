@@ -80,7 +80,7 @@ def make_adata(
     ]
 
     pd.DataFrame(parameters, columns=["parameter", "value"]).to_csv(
-        f"{tables_dir}/metadata.csv", index=False
+        f"{tables_dir}/input_parameters.csv", index=False
     )
 
     if min_frags == 0:
@@ -305,15 +305,15 @@ def motifs_task(
         bindings=PlotsArtifactBindings(
             plot_templates=[
                 PlotsArtifactTemplate(
-                    template_id="546",
+                    template_id="597",
                     widgets=[
                         Widget(
-                            transform_id="165716",
+                            transform_id="265017",
                             key="data_path",
                             value=results_dir.remote_path
                         ),
                         Widget(
-                            transform_id="165695",
+                            transform_id="265012",
                             key="coverages_genome",
                             value=genome
                         )
