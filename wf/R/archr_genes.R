@@ -48,6 +48,28 @@ for (run in runs) {
 }
 inputs
 
+# Map run_id -> optional sample_name (if provided)
+sample_name_map <- c()
+for (run in runs) {
+  run_id <- run[1]
+  sample_name <- if (length(run) >= 6) trimws(run[6]) else ""
+  if (!is.na(sample_name) && nzchar(sample_name) &&
+      tolower(sample_name) != "none") {
+    sample_name_map[run_id] <- sample_name
+  }
+}
+
+remap_sample_ids <- function(values, sample_name_map) {
+  remapped <- values
+  for (i in seq_along(values)) {
+    value <- as.character(values[[i]])
+    if (value %in% names(sample_name_map)) {
+      remapped[[i]] <- sample_name_map[[value]]
+    }
+  }
+  return(remapped)
+}
+
 # Set genome size for peak calling ----
 genome_sizes <- list("hg38" = 3.3e+09, "mm10" = 3.0e+09, "rnor6" = 2.9e+09)
 genome_size <- genome_sizes[[genome]]
@@ -321,6 +343,37 @@ if (n_samples > 1) {
     row.names = FALSE
   )
   write.csv(sample_marker_genes$heatmap_gs, "genes_per_sample_hm.csv")
+
+  if (length(sample_name_map) > 0) {
+    sample_marker_list_named <- sample_marker_genes$marker_list
+    marker_groups <- names(sample_marker_list_named)
+    if (!is.null(marker_groups)) {
+      names(sample_marker_list_named) <- remap_sample_ids(
+        marker_groups, sample_name_map
+      )
+    }
+    write.csv(
+      sample_marker_list_named,
+      "ranked_genes_per_sample_name.csv",
+      row.names = FALSE
+    )
+
+    sample_heatmap_named <- sample_marker_genes$heatmap_gs
+    if (!is.null(colnames(sample_heatmap_named))) {
+      colnames(sample_heatmap_named) <- remap_sample_ids(
+        colnames(sample_heatmap_named), sample_name_map
+      )
+    }
+    if (!is.null(rownames(sample_heatmap_named))) {
+      rownames(sample_heatmap_named) <- remap_sample_ids(
+        rownames(sample_heatmap_named), sample_name_map
+      )
+    }
+    write.csv(
+      sample_heatmap_named,
+      "genes_per_sample_name_hm.csv"
+    )
+  }
 
 }
 

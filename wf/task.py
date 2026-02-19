@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import shutil
 import subprocess
 
 from pathlib import Path
@@ -131,6 +132,43 @@ def make_adata(
             output_format="bigwig",
             out_dir=coverage_dir
         )
+
+    # Optionally duplicate sample coverages with user-provided sample names.
+    sample_name_map = {}
+    for run in runs:
+        sample_name = str(run.sample_name).strip() if run.sample_name is not None else ""
+        if sample_name and sample_name.lower() != "none":
+            safe_sample_name = sample_name.replace("/", "_")
+            if safe_sample_name != sample_name:
+                logging.warning(
+                    f"Replacing '/' with '_' in sample_name '{sample_name}'."
+                )
+            sample_name_map[run.run_id] = safe_sample_name
+
+    if sample_name_map:
+        sample_cov_dir = Path(result_dir) / "sample_coverages"
+        for source_bw in sample_cov_dir.glob("*.bw"):
+            matched_run = None
+            for run_id in sample_name_map:
+                if source_bw.name.startswith(f"{run_id}."):
+                    matched_run = run_id
+                    break
+
+            if matched_run is None:
+                continue
+
+            target_name = (
+                f"{sample_name_map[matched_run]}"
+                f"{source_bw.name[len(matched_run):]}"
+            )
+            target_bw = sample_cov_dir / target_name
+            if target_bw.exists():
+                logging.warning(
+                    f"Skipping sample_name coverage copy; {target_name} already exists."
+                )
+                continue
+
+            shutil.copy2(source_bw, target_bw)
 
     logging.info("Finished coverages for groups...")
 
