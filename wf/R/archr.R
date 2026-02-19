@@ -296,6 +296,40 @@ get_marker_genes <- function(
     testMethod = "ttest"
   )
   marker_list <- ArchR::getMarkers(markers_gs, cutOff = markers_cutoff)
+  marker_pvals <- tryCatch(
+    SummarizedExperiment::assay(markers_gs, "Pval"),
+    error = function(e) NULL
+  )
+
+  if (!is.null(marker_pvals)) {
+    marker_names <- SummarizedExperiment::rowData(markers_gs)$name
+    marker_groups <- names(marker_list)
+    if (is.null(marker_groups)) {
+      marker_groups <- seq_along(marker_list)
+    }
+
+    for (group in marker_groups) {
+      marker_group <- marker_list[[group]]
+      if (nrow(marker_group) == 0) {
+        marker_list[[group]]$Pval <- numeric(0)
+        next
+      }
+
+      pval_col <- if (is.character(group)) {
+        match(group, colnames(marker_pvals))
+      } else {
+        as.integer(group)
+      }
+
+      if (is.na(pval_col)) {
+        next
+      }
+
+      marker_list[[group]]$Pval <- marker_pvals[
+        match(marker_group$name, marker_names), pval_col
+      ]
+    }
+  }
 
   heatmap_gs <- ArchR::plotMarkerHeatmap(
     seMarker = markers_gs,
