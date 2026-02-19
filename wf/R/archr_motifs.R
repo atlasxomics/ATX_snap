@@ -194,6 +194,9 @@ enriched_motifs_c <- get_enriched_motifs(
 
 write.csv(enriched_motifs_c$enrich_df, "enrichedMotifs_cluster.csv")
 write.csv(enriched_motifs_c$heatmap_em, "motif_per_cluster_hm.csv")
+if (!isTRUE(enriched_motifs_c$has_enrichment)) {
+  message("No enrichments found; wrote empty motif_per_cluster_hm.csv.")
+}
 
 # Create motif SeuratObjects ----
 # Create motif count matrix --
@@ -296,21 +299,25 @@ peak_hm <- ComplexHeatmap::draw(
 heatmaps[[1]] <- peak_hm
 
 # Create motif heatmap by cluster --
-heatmap_plot <- plotEnrichHeatmap(
-  enriched_motifs_c$enrich_motifs,
-  transpose = TRUE,
-  n = 50,
-  cutOff = 2
-)
+if (isTRUE(enriched_motifs_c$has_enrichment)) {
+  heatmap_plot <- plotEnrichHeatmap(
+    enriched_motifs_c$enrich_motifs,
+    transpose = TRUE,
+    n = 50,
+    cutOff = 2
+  )
 
-heatmap_motifs <- ComplexHeatmap::draw(
-  heatmap_plot,
-  heatmap_legend_side = "bot",
-  column_title = paste0("Marker motifs (", cut_off, ")"),
-  column_title_gp = gpar(fontsize = 12)
-)
+  heatmap_motifs <- ComplexHeatmap::draw(
+    heatmap_plot,
+    heatmap_legend_side = "bot",
+    column_title = paste0("Marker motifs (", cut_off, ")"),
+    column_title_gp = gpar(fontsize = 12)
+  )
 
-heatmaps[[2]] <- heatmap_motifs
+  heatmaps[[2]] <- heatmap_motifs
+} else {
+  message("Skipping motif heatmap plot: no enrichments found.")
+}
 
 # Save heatmaps to disk as pdf (per cluster: peaks, motifs) --
 print("Saving peak, motif heatmaps...")
@@ -344,6 +351,9 @@ if (n_samples > 1) {
 
   write.csv(enriched_motifs_s$enrich_df, "enrichedMotifs_sample.csv")
   write.csv(enriched_motifs_s$heatmap_em, "motif_per_sample_hm.csv")
+  if (!isTRUE(enriched_motifs_s$has_enrichment)) {
+    message("No enrichments found; wrote empty motif_per_sample_hm.csv.")
+  }
 }
 
 # Peak calling and motif enrichment per treatment ----
@@ -376,6 +386,13 @@ if (n_cond > 1) {
       enriched_motifs_t$heatmap_em,
       paste0("motif_per_condition_", i, "_hm.csv")
     )
+    if (!isTRUE(enriched_motifs_t$has_enrichment)) {
+      message(
+        "No enrichments found; wrote empty ",
+        paste0("motif_per_condition_", i, "_hm.csv"),
+        "."
+      )
+    }
   }
 }
 
