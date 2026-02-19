@@ -80,7 +80,7 @@ def make_adata(
     ]
 
     pd.DataFrame(parameters, columns=["parameter", "value"]).to_csv(
-        f"{tables_dir}/metadata.csv", index=False
+        f"{tables_dir}/input_parameters.csv", index=False
     )
 
     if min_frags == 0:
@@ -204,6 +204,7 @@ def genes_task(
             f'{run.condition},'
             f'{utils.get_LatchFile(run.spatial_dir, "tissue_positions_list.csv").local_path},'
             f'{run.spatial_dir.local_path},'
+            f'{run.sample_name}'
         )
         for run in runs
     ]
@@ -226,7 +227,7 @@ def genes_task(
     ft.load_analysis_results(adata_gene, "gene", groups)
 
     # Organize outputs
-    utils.organize_outputs(project_name, dirs)
+    utils.organize_outputs(project_name, dirs, exclude_pattern="*_hm.csv")
 
     # Save AnnData
     ft.save_anndata_objects(adata_gene, "_ge", dirs["base"])
@@ -274,6 +275,7 @@ def motifs_task(
             f'{run.condition},'
             f'{utils.get_LatchFile(run.spatial_dir, "tissue_positions_list.csv").local_path},'
             f'{run.spatial_dir.local_path},'
+            f'{run.sample_name}'
         )
         for run in runs
     ]
@@ -290,7 +292,7 @@ def motifs_task(
     ft.load_analysis_results(adata_motif, "motif", groups)
 
     # Organize outputs
-    utils.organize_outputs(project_name, dirs)
+    utils.organize_outputs(project_name, dirs, exclude_pattern="*_hm.csv")
 
     # Save AnnData
     ft.save_anndata_objects(adata_motif, "_motifs", dirs['base'])
@@ -303,15 +305,15 @@ def motifs_task(
         bindings=PlotsArtifactBindings(
             plot_templates=[
                 PlotsArtifactTemplate(
-                    template_id="546",
+                    template_id="598",
                     widgets=[
                         Widget(
-                            transform_id="165716",
+                            transform_id="265405",
                             key="data_path",
                             value=results_dir.remote_path
                         ),
                         Widget(
-                            transform_id="165695",
+                            transform_id="265392",
                             key="coverages_genome",
                             value=genome
                         )

@@ -64,6 +64,7 @@ proj <- create_archrproject( # from archr.R
 # Add Conditions to CellColData ----
 for (run in runs) {
   proj$Condition[proj$Sample == run[1]] <- run[3]
+  proj$sample_name[proj$Sample == run[1]] <- run[6]
 }
 saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
 
