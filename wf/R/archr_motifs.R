@@ -56,6 +56,17 @@ addArchRThreads(threads = 50)
 
 proj <- loadArchRProject(archrproj_path)
 
+# Ensure cluster labels are character (e.g., keep "-1" as label, not index)
+if (!is.character(proj$Clusters)) {
+  proj <- ArchR::addCellColData(
+    ArchRProj = proj,
+    data = as.character(proj$Clusters),
+    cells = proj$cellNames,
+    name = "Clusters",
+    force = TRUE
+  )
+}
+
 rd_names <- names(proj@reducedDims@listData)
 if (length(rd_names) == 0) {
   warning("No reduced dims found for ArchRProjects; adding LSI.")

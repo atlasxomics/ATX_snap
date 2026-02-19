@@ -86,7 +86,7 @@ tryCatch({
 })
 
 tryCatch({
-  clusters <- obs[["cluster"]]
+  clusters <- as.character(obs[["cluster"]])
 }, error = function(e) {
   clusters <- rep("C0", length(cells))
   message(
