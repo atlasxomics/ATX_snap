@@ -9,7 +9,7 @@ import subprocess
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from latch.types import LatchFile, LatchDir
 
@@ -176,6 +176,47 @@ def get_groups(runs: List[Run]):
         groups.append("condition")
 
     return groups
+
+
+def get_blacklist_path(genome: str) -> Optional[str]:
+    """Resolve genome-specific blacklist BED file path."""
+
+    genome_to_file = {
+        "mm10": "mm10-blacklist.v2.bed",
+        "hg38": "hg38-blacklist.v2.bed",
+        "rnor6": "rn6_liftOver_mm10-blacklist.v2.bed",
+    }
+
+    try:
+        filename = genome_to_file[genome]
+    except KeyError:
+        logging.warning(
+            "No blacklist mapping configured for genome '%s'; continuing "
+            "without blacklist filtering.",
+            genome,
+        )
+        return None
+
+    search_dirs = [
+        Path("/root/blacklist"),
+        Path("/root/blacklists"),
+        Path("blacklist"),
+        Path("blacklists"),
+    ]
+
+    for base in search_dirs:
+        candidate = base / filename
+        if candidate.exists():
+            return str(candidate)
+
+    searched = ", ".join(str(d) for d in search_dirs)
+    logging.warning(
+        "Blacklist file '%s' not found (searched: %s); continuing without "
+        "blacklist filtering.",
+        filename,
+        searched,
+    )
+    return None
 
 
 def get_LatchFile(directory: LatchDir, file_name: str) -> LatchFile:

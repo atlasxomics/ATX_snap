@@ -54,6 +54,11 @@ def make_adata(
     qc_metrics = ["n_fragment", "log10_frags", "tsse"]
 
     genome = genome.value  # Convert to str
+    blacklist = utils.get_blacklist_path(genome)
+    if blacklist is None:
+        logging.warning("Proceeding without blacklist filtering.")
+    else:
+        logging.info(f"Using blacklist: {blacklist}")
 
     result_dir = f"/root/{project_name}"
     os.makedirs(result_dir, exist_ok=True)
@@ -108,7 +113,12 @@ def make_adata(
         f"Selecting features with {n_features} features and \
         {clustering_iters} clustering iteration(s)"
     )
-    snap.pp.select_features(adata, n_features=n_features, max_iter=clustering_iters)
+    snap.pp.select_features(
+        adata,
+        n_features=n_features,
+        max_iter=clustering_iters,
+        blacklist=blacklist,
+    )
 
     logging.info("Performing dimensionality reduction...")
     adata, spectral_key = pp.add_clusters(
@@ -129,7 +139,8 @@ def make_adata(
             suffix=f"{group}.bw",
             bin_size=10,
             output_format="bigwig",
-            out_dir=coverage_dir
+            out_dir=coverage_dir,
+            blacklist=blacklist,
         )
 
     logging.info("Finished coverages for groups...")
