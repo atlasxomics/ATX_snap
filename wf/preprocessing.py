@@ -97,6 +97,35 @@ def combine_anndata(
     """
     import pandas as pd
 
+    if len(adatas) == 0:
+        raise ValueError("No AnnData objects provided for combination.")
+
+    # Guard against duplicate feature names within an AnnData object.
+    for i, adata in enumerate(adatas):
+        idx = pd.Index(adata.var_names)
+        if idx.has_duplicates:
+            dupes = idx[idx.duplicated()].unique().tolist()
+            preview = ", ".join(map(str, dupes[:5]))
+            raise ValueError(
+                "Duplicate var_names detected in input AnnData "
+                f"(index {i}). Example duplicates: {preview}"
+            )
+
+    # Guard against feature mismatches across AnnData objects.
+    ref_var_names = np.asarray(adatas[0].var_names)
+    for i, adata in enumerate(adatas[1:], start=1):
+        cur_var_names = np.asarray(adata.var_names)
+        if (
+            cur_var_names.shape[0] != ref_var_names.shape[0]
+            or not np.array_equal(cur_var_names, ref_var_names)
+        ):
+            raise ValueError(
+                "Inconsistent var_names across AnnData inputs. "
+                f"Input 0 has {ref_var_names.shape[0]} features, "
+                f"input {i} has {cur_var_names.shape[0]}. "
+                "All inputs must have identical feature coordinates/order."
+            )
+
     # Input AnnData must be backend for AnnDataSet, not in-memory.
     logging.info("Converting AnnData objects to backend...")
     adatas_be = [
@@ -114,7 +143,10 @@ def combine_anndata(
 
     # We have seen the dataset lose var_names, ensure them here.
     if len(adataset.var_names) == 0:
-        adataset.var_names = [str(i) for i in range(len(adatas[0].var_names))]
+        logging.warning(
+            "AnnDataSet lost var_names; restoring from input genomic feature names."
+        )
+        adataset.var_names = list(adatas[0].var_names)
 
     # Convert back to AnnData so we can add metadata :/
     combined_adata = adataset.to_adata()
