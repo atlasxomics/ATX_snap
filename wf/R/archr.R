@@ -126,38 +126,105 @@ get_annotated_peaks <- function(proj, group_by, genome_size, genome) {
 
 get_enriched_motifs <- function(proj, marker_peaks, cutoff) {
 
-  enrich_motifs <- ArchR::peakAnnoEnrichment(
-    seMarker = marker_peaks,
-    ArchRProj = proj,
-    peakAnnotation = "Motif",
-    cutOff = cutoff
+  empty_enrich_df <- data.frame(
+    group_name = character(0),
+    stringsAsFactors = FALSE
   )
-  enrich_df <- data.frame(enrich_motifs@assays@data)
+  empty_heatmap_df <- data.frame(
+    feature = character(0),
+    value = numeric(0),
+    stringsAsFactors = FALSE
+  )
+
+  enrich_motifs <- tryCatch(
+    ArchR::peakAnnoEnrichment(
+      seMarker = marker_peaks,
+      ArchRProj = proj,
+      peakAnnotation = "Motif",
+      cutOff = cutoff
+    ),
+    error = function(e) {
+      message(
+        "peakAnnoEnrichment failed for cutoff ",
+        cutoff,
+        "; returning empty motif enrichment tables. ",
+        e$message
+      )
+      return(NULL)
+    }
+  )
+
+  if (is.null(enrich_motifs)) {
+    return(list(
+      enrich_df = empty_enrich_df,
+      enrich_motifs = NULL,
+      heatmap_em = empty_heatmap_df,
+      has_enrichment = FALSE
+    ))
+  }
+
+  enrich_df <- tryCatch(
+    data.frame(enrich_motifs@assays@data),
+    error = function(e) {
+      message(
+        "Could not extract motif enrichment assay data; returning empty table. ",
+        e$message
+      )
+      empty_enrich_df
+    }
+  )
 
   motif_lst <- unique(rownames(enrich_motifs))
-  split_string <- strsplit(motif_lst, split = "\\(")
+  if (length(motif_lst) > 0) {
+    split_string <- strsplit(motif_lst, split = "\\(")
 
-  req_motifs <- gsub("_", "-", extract_nth_ele(split_string)) # from utils.R
-  req_motifs <- gsub(" ", "", req_motifs)
+    req_motifs <- gsub("_", "-", extract_nth_ele(split_string)) # from utils.R
+    req_motifs <- gsub(" ", "", req_motifs)
 
-  rownames(enrich_motifs) <- req_motifs
+    rownames(enrich_motifs) <- req_motifs
+  }
 
-  heatmap_em <- ArchR::plotEnrichHeatmap(
-    enrich_motifs, n = 50, transpose = FALSE, returnMatrix = TRUE, cutOff = 2
+  heatmap_em <- tryCatch(
+    ArchR::plotEnrichHeatmap(
+      enrich_motifs, n = 50, transpose = FALSE, returnMatrix = TRUE, cutOff = 2
+    ),
+    error = function(e) {
+      if (grepl("No enrichments found", e$message, fixed = TRUE)) {
+        message(
+          "No motif enrichments found for cutoff ",
+          cutoff,
+          "; returning empty motif heatmap table."
+        )
+        return(empty_heatmap_df)
+      }
+      message(
+        "plotEnrichHeatmap failed; returning empty motif heatmap table. ",
+        e$message
+      )
+      return(empty_heatmap_df)
+    }
   )
 
-  motif_lst <- unique(rownames(heatmap_em))
-  split_string <- strsplit(motif_lst, split = "\\(")
+  has_enrichment <- !is.null(heatmap_em) &&
+    nrow(heatmap_em) > 0 &&
+    ncol(heatmap_em) > 0
 
-  req_motifs <- gsub("_", "-", extract_nth_ele(split_string))  # from utils.R
-  req_motifs <- gsub(" ", "", req_motifs)
+  if (has_enrichment) {
+    motif_lst <- unique(rownames(heatmap_em))
+    split_string <- strsplit(motif_lst, split = "\\(")
 
-  rownames(heatmap_em) <- req_motifs
+    req_motifs <- gsub("_", "-", extract_nth_ele(split_string))  # from utils.R
+    req_motifs <- gsub(" ", "", req_motifs)
+
+    rownames(heatmap_em) <- req_motifs
+    heatmap_em <- as.data.frame(heatmap_em)
+  }
 
   return(list(
     enrich_df = enrich_df,
     enrich_motifs = enrich_motifs,
-    heatmap_em = heatmap_em
+    heatmap_em = heatmap_em,
+    has_enrichment = has_enrichment
   ))
 }
 
@@ -296,6 +363,40 @@ get_marker_genes <- function(
     testMethod = "ttest"
   )
   marker_list <- ArchR::getMarkers(markers_gs, cutOff = markers_cutoff)
+  marker_pvals <- tryCatch(
+    SummarizedExperiment::assay(markers_gs, "Pval"),
+    error = function(e) NULL
+  )
+
+  if (!is.null(marker_pvals)) {
+    marker_names <- SummarizedExperiment::rowData(markers_gs)$name
+    marker_groups <- names(marker_list)
+    if (is.null(marker_groups)) {
+      marker_groups <- seq_along(marker_list)
+    }
+
+    for (group in marker_groups) {
+      marker_group <- marker_list[[group]]
+      if (nrow(marker_group) == 0) {
+        marker_list[[group]]$Pval <- numeric(0)
+        next
+      }
+
+      pval_col <- if (is.character(group)) {
+        match(group, colnames(marker_pvals))
+      } else {
+        as.integer(group)
+      }
+
+      if (is.na(pval_col)) {
+        next
+      }
+
+      marker_list[[group]]$Pval <- marker_pvals[
+        match(marker_group$name, marker_names), pval_col
+      ]
+    }
+  }
 
   heatmap_gs <- ArchR::plotMarkerHeatmap(
     seMarker = markers_gs,

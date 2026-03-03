@@ -137,6 +137,106 @@ def load_and_combine_data(suffix: str) -> anndata.AnnData:
     return adata
 
 
+def _is_valid_sample_name(value: object) -> bool:
+    if value is None:
+        return False
+
+    sample_name = str(value).strip()
+    return sample_name != "" and sample_name.lower() != "none"
+
+
+def _get_sample_name_map(adata: anndata.AnnData) -> Dict[str, str]:
+    if "sample" not in adata.obs.columns or "sample_name" not in adata.obs.columns:
+        return {}
+
+    sample_df = adata.obs[["sample", "sample_name"]].copy()
+    if sample_df.empty:
+        return {}
+
+    sample_name_map = {}
+    sample_df["sample"] = sample_df["sample"].astype(str)
+
+    for sample, group in sample_df.groupby("sample", sort=False):
+        valid_names = [
+            str(name).strip()
+            for name in group["sample_name"]
+            if _is_valid_sample_name(name)
+        ]
+
+        if len(valid_names) == 0:
+            continue
+
+        unique_names = list(dict.fromkeys(valid_names))
+        if len(unique_names) > 1:
+            logging.warning(
+                f"Multiple sample_name values found for sample '{sample}'; "
+                f"using '{unique_names[0]}'."
+            )
+
+        sample_name_map[sample] = unique_names[0]
+
+    return sample_name_map
+
+
+def _remap_sample_labels_in_df(df, sample_name_map: Dict[str, str]):
+    remapped = df.copy()
+
+    remapped.columns = [
+        sample_name_map.get(str(col), col) for col in remapped.columns
+    ]
+    remapped.index = [
+        sample_name_map.get(str(idx), idx) for idx in remapped.index
+    ]
+
+    obj_cols = remapped.select_dtypes(include=["object"]).columns
+    for col in obj_cols:
+        remapped[col] = remapped[col].map(
+            lambda x: sample_name_map.get(x, x) if isinstance(x, str) else x
+        )
+
+    return remapped
+
+
+def _sample_name_key(key: str) -> str:
+    if "sample_name" in key:
+        return key
+
+    parts = key.split("_")
+    changed = False
+    for i, part in enumerate(parts):
+        if part == "sample":
+            parts[i] = "sample_name"
+            changed = True
+
+    if changed:
+        return "_".join(parts)
+
+    return key
+
+
+def _add_sample_name_results(adata: anndata.AnnData) -> None:
+    import pandas as pd
+
+    sample_name_map = _get_sample_name_map(adata)
+    if len(sample_name_map) == 0:
+        return
+
+    for key, value in list(adata.uns.items()):
+        if "sample" not in key or "sample_name" in key:
+            continue
+
+        mapped_key = _sample_name_key(key)
+        if mapped_key == key or mapped_key in adata.uns:
+            continue
+
+        if isinstance(value, pd.DataFrame):
+            adata.uns[mapped_key] = _remap_sample_labels_in_df(
+                value, sample_name_map
+            )
+        else:
+            adata.uns[mapped_key] = value
+
+
 def load_analysis_results(
     adata: anndata.AnnData,
     type: str,
@@ -155,6 +255,8 @@ def load_analysis_results(
     # Load volcano plots if condition analysis was performed
     if "condition" in groups:
         load_volcano_plots(adata, type)
+
+    _add_sample_name_results(adata)
 
 
 def load_csv_files_to_uns(
