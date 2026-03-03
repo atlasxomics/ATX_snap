@@ -145,19 +145,19 @@ def make_adata(
 
     logging.info("Finished coverages for groups...")
 
-    pl.plot_umaps(adata, groups, f"{figures_dir}/umap.pdf")
+    pl.plot_umaps(adata, groups, f"{figures_dir}/umap.png")
     pl.plot_spatial(
         adata,
         samples,
         "cluster",
-        f"{figures_dir}/spatial_dim.pdf",
+        f"{figures_dir}/spatial_dim.png",
         pt_size=utils.pt_sizes[channels]["dim"],
     )
     pl.plot_spatial_qc(
         adata,
         samples,
         qc_metrics,
-        f"{figures_dir}/spatial_qc.pdf",
+        f"{figures_dir}/spatial_qc.png",
         pt_size=utils.pt_sizes[channels]["qc"],
     )
 

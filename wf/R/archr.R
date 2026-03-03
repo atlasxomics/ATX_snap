@@ -476,7 +476,7 @@ plot_umap <- function(proj, name) {
 }
 
 save_umap <- function(proj, color_by) {
-  #' Save a plots of UMAP embeddings as a single .pdf, color by each feature in
+  #' Save a plots of UMAP embeddings as a single PNG, color by each feature in
   #' character vector 'color_by'.
 
   umap_plots <- c()
@@ -485,7 +485,7 @@ save_umap <- function(proj, color_by) {
     umap_plots[[feature]] <- umap
   }
 
-  pdf("umap_plots.pdf")
+  png("umap_plots.png", width = 2400, height = 1800, res = 300)
   gridExtra::grid.arrange(grobs = umap_plots, ncol = 2)
   dev.off()
 }

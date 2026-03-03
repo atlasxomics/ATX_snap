@@ -304,7 +304,7 @@ rename_cells <- function(seurat_list) {
 
 # Plot clusters ontop of spatial coordinates -----
 save_spatial_cluster_plots <- function(seurat_objs) {
-  #' Save plot of spatially arranged tixels colored by cluster identiy to .pdf.
+  #' Save plot of spatially arranged tixels colored by cluster identiy to PNG.
 
   spatial_cluster_plots <- list()
   for (i in seq_along(seurat_objs)) {
@@ -319,11 +319,18 @@ save_spatial_cluster_plots <- function(seurat_objs) {
     spatial_cluster_plots, ceiling(seq_along(spatial_cluster_plots) / 4)
   )
 
-  pdf("spatial_plots.pdf")
+  page_idx <- 0
   for (i in seq_along(spatial_lists)) {
+    page_idx <- page_idx + 1
+    png(
+      paste0("spatial_plots_page_", page_idx, ".png"),
+      width = 2200,
+      height = 1800,
+      res = 250
+    )
     print(Seurat::CombinePlots(spatial_lists[[i]], legend = "bottom"))
+    dev.off()
   }
-  dev.off()
 }
 
 save_qc_plots <- function(seurat_objs, metrics) {
@@ -343,14 +350,21 @@ save_qc_plots <- function(seurat_objs, metrics) {
     all_qc_plots[[i]] <- spatial_qc_plots
   }
 
-  pdf("qc_plots.pdf")
+  page_idx <- 0
   for (i in seq_along(metrics)) {
     lists <- split(all_qc_plots[[i]], ceiling(seq_along(all_qc_plots[[i]]) / 6))
     for (list in lists) {
+      page_idx <- page_idx + 1
+      png(
+        paste0("qc_plots_", metrics[i], "_page_", page_idx, ".png"),
+        width = 2400,
+        height = 1800,
+        res = 250
+      )
       gridExtra::grid.arrange(grobs = list, ncol = 2)
+      dev.off()
     }
   }
-  dev.off()
 }
 
 sctheme <- function(base_size = 24, xy_val = TRUE, x_ang = 0, x_jus_h = 0.5) {

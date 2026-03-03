@@ -5,7 +5,7 @@ import pandas as pd
 import seaborn as sns
 import scanpy as sc
 
-from matplotlib.backends.backend_pdf import PdfPages
+from pathlib import Path
 from typing import List, Optional
 
 from wf.spatial import squidpy_analysis
@@ -21,6 +21,23 @@ def get_custom_group_order(groups):
         [g for g in groups if not g.isdigit() and g != "Union"]
     )
     return numeric_groups + non_numeric_groups + ["Union"]
+
+
+def _page_output_path(output_path: str, page_num: int, total_pages: int) -> str:
+    path = Path(output_path)
+    if total_pages <= 1:
+        return str(path)
+    return str(path.with_name(f"{path.stem}_page_{page_num:02d}{path.suffix}"))
+
+
+def _save_figure(
+    fig: plt.Figure, output_path: str, page_num: int = 1, total_pages: int = 1
+) -> None:
+    fig.savefig(
+        _page_output_path(output_path, page_num, total_pages),
+        dpi=200,
+        bbox_inches="tight"
+    )
 
 
 def plot_neighborhoods(
@@ -39,35 +56,34 @@ def plot_neighborhoods(
             filtered_adatas[sg] = filtered_adata
 
     plt.rcParams.update({'figure.autolayout': True})
-    with PdfPages(f"{outdir}/{group}_neighborhoods.pdf") as pdf:
 
-        if subgroups:
-            for sg in subgroups:
-                fig = nhood_enrichment(
-                    filtered_adatas[sg],
-                    cluster_key="cluster",
-                    method="single",
-                    title=f"{group} {sg}: Neighborhood enrichment",
-                    cmap="bwr",
-                    vmin=-50,
-                    vmax=50,
-                )
-                pdf.savefig(fig, bbox_inches="tight")
-                plt.close(fig)
-
-        elif group == "all":
+    if subgroups:
+        for sg in subgroups:
             fig = nhood_enrichment(
-                adata,
+                filtered_adatas[sg],
                 cluster_key="cluster",
                 method="single",
-                title="All cells: Neighborhood enrichment",
+                title=f"{group} {sg}: Neighborhood enrichment",
                 cmap="bwr",
                 vmin=-50,
                 vmax=50,
             )
-
-            pdf.savefig(fig, bbox_inches="tight")
+            _save_figure(fig, f"{outdir}/{group}_{sg}_neighborhoods.png")
             plt.close(fig)
+
+    elif group == "all":
+        fig = nhood_enrichment(
+            adata,
+            cluster_key="cluster",
+            method="single",
+            title="All cells: Neighborhood enrichment",
+            cmap="bwr",
+            vmin=-50,
+            vmax=50,
+        )
+
+        _save_figure(fig, f"{outdir}/{group}_neighborhoods.png")
+        plt.close(fig)
 
 
 def plot_spatial(
@@ -77,39 +93,40 @@ def plot_spatial(
     output_path: str,
     pt_size: int = 75
 ) -> None:
-    """Plot cells spatially, color by metadata stored in .obs. The function
-    creates a plot for each run and saves to a .pdf, with four runs per page.
+    """Plot cells spatially, color by metadata stored in .obs.
+    Creates up to four runs per page and saves as PNG.
     """
     from squidpy.pl import spatial_scatter
 
-    with PdfPages(output_path) as pdf:
-        for i in range(0, len(samples), 4):
+    total_pages = max(1, (len(samples) + 3) // 4)
+    page_num = 0
+    for start in range(0, len(samples), 4):
+        page_num += 1
+        sample_batch = samples[start:start + 4]
+        fig, axs = plt.subplots(2, 2, figsize=(10, 10))
+        axs = axs.flatten()
 
-            sample_batch = samples[i:i + 4]
-            fig, axs = plt.subplots(2, 2, figsize=(10, 10))
-            axs = axs.flatten()
+        for idx, sample in enumerate(sample_batch):
 
-            for i, sample in enumerate(sample_batch):
+            spatial_scatter(
+                adata[adata.obs["sample"] == sample],
+                color=color_by,
+                size=pt_size,
+                shape=None,
+                library_id=sample,
+                ax=axs[idx],
+                title=f"{sample}: {color_by}"
+            )
+            axs[idx].axis("off")
 
-                spatial_scatter(
-                    adata[adata.obs["sample"] == sample],
-                    color=color_by,
-                    size=pt_size,
-                    shape=None,
-                    library_id=sample,
-                    ax=axs[i],
-                    title=f"{sample}: {color_by}"
-                )
-                axs[i].axis("off")
+        # Ensure empty plots are not displayed
+        for j in range(len(sample_batch), 4):
+            axs[j].axis("off")
 
-            # Ensure empty plots are not displayed
-            for j in range(len(sample_batch), 4):
-                axs[j].axis("off")
+        plt.tight_layout()
 
-            plt.tight_layout()
-
-            pdf.savefig(fig)
-            plt.close(fig)
+        _save_figure(fig, output_path, page_num=page_num, total_pages=total_pages)
+        plt.close(fig)
 
 
 def plot_spatial_qc(
@@ -119,50 +136,51 @@ def plot_spatial_qc(
     output_path: str,
     pt_size: int = 25
 ):
-    """Generates a grid of spatial scatter plots for each sample and QC metric,
-    saving them into a PDF.  Each row corresponds to a sample and each column
-    to a QC metric.
+    """Generate a grid of spatial scatter plots for each sample and QC metric.
+    Each row corresponds to a sample and each column to a QC metric.
     """
     from squidpy.pl import spatial_scatter
 
     rows_per_page = 3
     cols_per_page = len(qc_metrics)
+    total_pages = max(1, (len(samples) + rows_per_page - 1) // rows_per_page)
 
-    with PdfPages(output_path) as pdf:
-        for i in range(0, len(samples), rows_per_page):
+    page_num = 0
+    for i in range(0, len(samples), rows_per_page):
+        page_num += 1
 
-            sample_batch = samples[i:i + rows_per_page]
+        sample_batch = samples[i:i + rows_per_page]
 
-            # Create a figure for the current page
-            fig, axs = plt.subplots(
-                len(sample_batch),
-                cols_per_page,
-                figsize=(cols_per_page * 5, len(sample_batch) * 5)
-            )
+        # Create a figure for the current page
+        fig, axs = plt.subplots(
+            len(sample_batch),
+            cols_per_page,
+            figsize=(cols_per_page * 5, len(sample_batch) * 5)
+        )
 
-            # If  one sample, make axs a list
-            if len(sample_batch) == 1:
-                axs = [axs]
+        # If one sample, make axs a list
+        if len(sample_batch) == 1:
+            axs = [axs]
 
-            for row_idx, sample in enumerate(sample_batch):
-                for col_idx, qc_metric in enumerate(qc_metrics):
+        for row_idx, sample in enumerate(sample_batch):
+            for col_idx, qc_metric in enumerate(qc_metrics):
 
-                    ax = axs[row_idx][col_idx]
-                    spatial_scatter(
-                        adata[adata.obs['sample'] == sample],
-                        color=qc_metric,
-                        size=pt_size,
-                        shape=None,
-                        ax=ax,
-                        library_id=sample,
-                        title=f"{sample} : {qc_metric}",
-                        colorbar=False
-                    )
-                    cbar = fig.colorbar(ax.collections[0], ax=ax, shrink=0.7)
+                ax = axs[row_idx][col_idx]
+                spatial_scatter(
+                    adata[adata.obs['sample'] == sample],
+                    color=qc_metric,
+                    size=pt_size,
+                    shape=None,
+                    ax=ax,
+                    library_id=sample,
+                    title=f"{sample} : {qc_metric}",
+                    colorbar=False
+                )
+                fig.colorbar(ax.collections[0], ax=ax, shrink=0.7)
 
-            plt.tight_layout()
-            pdf.savefig(fig)
-            plt.close(fig)
+        plt.tight_layout()
+        _save_figure(fig, output_path, page_num=page_num, total_pages=total_pages)
+        plt.close(fig)
 
 
 def plot_stacked_peaks(
@@ -180,7 +198,7 @@ def plot_stacked_peaks(
     - group_by (str): Column to use for x-axis grouping (e.g., "group").
     - color_by (str): Column to color the bars by (e.g., "peakType").
     - group (str): Group name for the title.
-    - output_path (str): File path to save the plot as a PDF.
+    - output_path (str): File path to save the plot.
     Returns:
     - None (saves the plot to the specified path).
     """
@@ -224,7 +242,7 @@ def plot_stacked_peaks(
     plt.xticks(rotation=45)
 
     # Save figure
-    plt.savefig(output_path, format="pdf", bbox_inches="tight")
+    plt.savefig(output_path, dpi=200, bbox_inches="tight")
 
     plt.close()
 
@@ -255,4 +273,4 @@ def plot_umaps(
 
     plt.tight_layout()
 
-    plt.savefig(output_path)
+    plt.savefig(output_path, dpi=200, bbox_inches="tight")

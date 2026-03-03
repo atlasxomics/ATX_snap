@@ -292,7 +292,7 @@ gene_hm <- ComplexHeatmap::draw(
 )
 
 print("Saving gene heatmap...")
-pdf("heatmap_genes.pdf")
+png("heatmap_genes.png", width = 2400, height = 1800, res = 300)
 print(gene_hm)
 dev.off()
 
@@ -402,18 +402,19 @@ if (n_cond > 1) {
 
       features <- unique(volcano_table$cluster)
       others <- paste(conditions[conditions != cond], collapse = "|")
-      volcano_plots <- list()
       for (i in seq_along(features)) {
-        volcano_plots[[i]] <- scvolcano(
+        volcano_plot <- scvolcano(
           volcano_table, cond, others, features[[i]], fc_col = "Log2FC"
         )
+        png(
+          paste0("volcano_plots_", cond, "_", i, ".png"),
+          width = 2200,
+          height = 1800,
+          res = 250
+        )
+        print(volcano_plot)
+        dev.off()
       }
-
-      pdf(paste0("volcano_plots_", cond, ".pdf"))
-      for (plot in volcano_plots) {
-        print(plot)
-      }
-      dev.off()
     }
   }
 } else {

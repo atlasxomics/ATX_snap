@@ -301,13 +301,15 @@ heatmap_motifs <- ComplexHeatmap::draw(
 
 heatmaps[[2]] <- heatmap_motifs
 
-# Save heatmaps to disk as pdf (per cluster: peaks, motifs) --
+# Save heatmaps to disk as PNG files (per cluster: peaks, motifs) --
 print("Saving peak, motif heatmaps...")
 
-pdf("heatmaps_peaks-motifs.pdf")
-for (i in seq_along(heatmaps)) {
-  print(heatmaps[[i]])
-}
+png("heatmap_peaks.png", width = 2400, height = 1800, res = 300)
+print(heatmaps[[1]])
+dev.off()
+
+png("heatmap_motifs.png", width = 2400, height = 1800, res = 300)
+print(heatmaps[[2]])
 dev.off()
 
 # Peak calling and motifs for Sample ----
@@ -421,18 +423,19 @@ if (n_cond > 1) {
 
       features_m <- unique(volcano_table$cluster)
       others <- paste(conditions[conditions != cond], collapse = "|")
-      volcano_plots_m <- list()
       for (i in seq_along(features_m)) {
-        volcano_plots_m[[i]] <- scvolcano(
+        volcano_plot_m <- scvolcano(
           volcano_table,  cond, others, features_m[[i]], fc_col = "MeanDiff"
         )
+        png(
+          paste0("volcano_plots_motifs_", j, "_", cond, "_", i, ".png"),
+          width = 2200,
+          height = 1800,
+          res = 250
+        )
+        print(volcano_plot_m)
+        dev.off()
       }
-
-      pdf(paste0("volcano_plots_motifs_", j, "_", cond, ".pdf"))
-      for (plot in volcano_plots_m) {
-        print(plot)
-      }
-      dev.off()
     }
   }
 } else {

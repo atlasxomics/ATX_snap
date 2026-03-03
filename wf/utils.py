@@ -98,11 +98,14 @@ def copy_peak_files(project_name: str, dirs: Dict[str, Path]) -> None:
         logging.warning(f"No {table_dir} found")
 
     if os.path.exists(plot_dir):
-        peaks_pdfs = glob.glob(f"{plot_dir}/*.pdf")
-        if not peaks_pdfs:
-            logging.warning(f"No peaks csv files found in {plot_dir}")
+        peak_plots = []
+        for ext in ("png", "pdf"):
+            peak_plots.extend(glob.glob(f"{plot_dir}/*.{ext}"))
+
+        if not peak_plots:
+            logging.warning(f"No peaks plot files found in {plot_dir}")
         else:
-            subprocess.run(["cp"] + peaks_pdfs + [str(dirs['figures'])])
+            subprocess.run(["cp"] + peak_plots + [str(dirs['figures'])])
     else:
         logging.warning(f"No {plot_dir} found")
 
@@ -273,6 +276,10 @@ def organize_outputs(
         subprocess.run(['mv'] + csv_files + [str(dirs['tables'])])
 
     # Move figures (excluding Rplots.pdf)
-    figures = [fig for fig in glob.glob('*.pdf') if fig != 'Rplots.pdf']
+    figure_patterns = ('*.png', '*.pdf', '*.svg')
+    figures = []
+    for pattern in figure_patterns:
+        figures.extend(glob.glob(pattern))
+    figures = [fig for fig in figures if fig != 'Rplots.pdf']
     if figures:
         subprocess.run(['mv'] + figures + [str(dirs['figures'])])
