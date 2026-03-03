@@ -247,3 +247,40 @@ metrics_to_csv <- function(metric_list) {
   )
   write.csv(metric_list, file = "exe_metadata.csv", row.names = FALSE)
 }
+
+safe_bed_name <- function(x) {
+  gsub("[^[:alnum:]_.-]", "_", as.character(x))
+}
+
+export_peak_beds_by_group <- function(proj, group_label, output_root) {
+  peaks <- proj@peakSet
+  grp <- names(peaks)
+
+  if (is.null(grp) || length(grp) != length(peaks)) {
+    grp <- rep("Union", length(peaks))
+  } else {
+    grp <- sub(":.*$", "", grp)
+    grp[is.na(grp) | grp == ""] <- "Union"
+
+    # If names only encode genomic coordinates (e.g. chr1:...), fall back to Union.
+    if (all(grp == as.character(GenomicRanges::seqnames(peaks)))) {
+      grp <- rep("Union", length(peaks))
+    }
+  }
+
+  group_dir <- file.path(output_root, paste0(group_label, "_peak_beds"))
+  dir.create(group_dir, recursive = TRUE, showWarnings = FALSE)
+
+  for (g in sort(unique(grp))) {
+    peaks_g <- peaks[grp == g]
+    if (length(peaks_g) == 0) next
+
+    out_bed <- file.path(group_dir, paste0(safe_bed_name(g), ".peaks.bed"))
+    rtracklayer::export(peaks_g, con = out_bed, format = "BED")
+  }
+
+  message(
+    "Exported peak BED files for group '", group_label, "' to ",
+    group_dir
+  )
+}
