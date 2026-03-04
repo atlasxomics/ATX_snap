@@ -50,6 +50,7 @@ genome_sizes <- list("hg38" = 3.3e+09, "mm10" = 3.0e+09, "rnor6" = 2.9e+09)
 genome_size <- genome_sizes[[genome]]
 
 archrproj_dir <- paste0(project_name, "_ArchRProject")
+output_root <- file.path("/root", project_name)
 
 # Create ArchRProject ---------------------------------------------------------
 addArchRThreads(threads = 50)
@@ -122,6 +123,7 @@ addArchRThreads(threads = num_threads)
 
 # Peak calling and motif enrichment for clusters ----
 proj <- get_annotated_peaks(proj, "Clusters", genome_size, genome)
+export_peak_beds_by_group(proj, "cluster", output_root)
 
 saveArchRProject(ArchRProj = proj, archrproj_dir)
 
@@ -332,6 +334,7 @@ dev.off()
 if (n_samples > 1) {
 
   proj <- get_annotated_peaks(proj, "Sample", genome_size, genome)
+  export_peak_beds_by_group(proj, "sample", output_root)
 
   saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
 
@@ -362,6 +365,12 @@ if (n_cond > 1) {
   for (i in seq_along(treatment)) {
 
     proj <- get_annotated_peaks(proj, treatment[i], genome_size, genome)
+    condition_group_label <- if (length(treatment) == 1) {
+      "condition"
+    } else {
+      paste0("condition_", i)
+    }
+    export_peak_beds_by_group(proj, condition_group_label, output_root)
 
     saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
 
