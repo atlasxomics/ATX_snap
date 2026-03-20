@@ -220,10 +220,22 @@ def make_anndatas(
         sorted_by_barcode=False,
     )
 
-    position_files = {
-        run.run_id: get_LatchFile(run.spatial_dir, "tissue_positions_list.csv")
-        for run in runs
-    }
+    position_files = {}
+    missing_positions = []
+    for run in runs:
+        position_file = get_LatchFile(run.spatial_dir, "tissue_positions_list.csv")
+        if position_file is None:
+            missing_positions.append(f"{run.run_id} ({run.spatial_dir.remote_path})")
+            continue
+        position_files[run.run_id] = position_file
+
+    if missing_positions:
+        missing_str = ", ".join(missing_positions)
+        raise FileNotFoundError(
+            "Unable to resolve 'tissue_positions_list.csv' for one or more runs: "
+            f"{missing_str}. Ensure each spatial directory contains exactly one "
+            "'tissue_positions_list.csv' file."
+        )
 
     # Add run_id, condition, spatial info to .obs, TSS enrichment
     adatas = [add_metadata(run, adata, position_files[run.run_id].local_path)

@@ -246,12 +246,31 @@ def genes_task(
         data_paths['spectral']
     ]
 
+    position_files = {}
+    missing_positions = []
+    for run in runs:
+        position_file = utils.get_LatchFile(
+            run.spatial_dir, "tissue_positions_list.csv"
+        )
+        if position_file is None:
+            missing_positions.append(f"{run.run_id} ({run.spatial_dir.remote_path})")
+            continue
+        position_files[run.run_id] = position_file
+
+    if missing_positions:
+        missing_str = ", ".join(missing_positions)
+        raise FileNotFoundError(
+            "Unable to resolve 'tissue_positions_list.csv' for one or more runs: "
+            f"{missing_str}. Ensure each spatial directory contains exactly one "
+            "'tissue_positions_list.csv' file."
+        )
+
     runs = [
         (
             f'{run.run_id},'
             f'{run.fragments_file.local_path},'
             f'{run.condition},'
-            f'{utils.get_LatchFile(run.spatial_dir, "tissue_positions_list.csv").local_path},'
+            f'{position_files[run.run_id].local_path},'
             f'{run.spatial_dir.local_path},'
             f'{run.sample_name}'
         )
@@ -317,12 +336,31 @@ def motifs_task(
         archrproj_path,
     ]
 
+    position_files = {}
+    missing_positions = []
+    for run in runs:
+        position_file = utils.get_LatchFile(
+            run.spatial_dir, "tissue_positions_list.csv"
+        )
+        if position_file is None:
+            missing_positions.append(f"{run.run_id} ({run.spatial_dir.remote_path})")
+            continue
+        position_files[run.run_id] = position_file
+
+    if missing_positions:
+        missing_str = ", ".join(missing_positions)
+        raise FileNotFoundError(
+            "Unable to resolve 'tissue_positions_list.csv' for one or more runs: "
+            f"{missing_str}. Ensure each spatial directory contains exactly one "
+            "'tissue_positions_list.csv' file."
+        )
+
     runs = [
         (
             f'{run.run_id},'
             f'{run.fragments_file.local_path},'
             f'{run.condition},'
-            f'{utils.get_LatchFile(run.spatial_dir, "tissue_positions_list.csv").local_path},'
+            f'{position_files[run.run_id].local_path},'
             f'{run.spatial_dir.local_path},'
             f'{run.sample_name}'
         )
