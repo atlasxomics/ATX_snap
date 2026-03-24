@@ -284,21 +284,25 @@ heatmaps <- list()
 cut_off <- "Pval <= 0.05 & Log2FC >= 0.1"
 
 # Create peak heatmap by cluster --
-heatmap_peaks <- plotMarkerHeatmap(
-  seMarker = marker_peaks_c$marker_peaks,
-  cutOff = cut_off,
-  transpose = TRUE
-)
+if (is.null(marker_peaks_c$marker_peaks)) {
+  message("Skipping peak heatmap plot because no cluster marker peaks were available.")
+} else {
+  heatmap_peaks <- plotMarkerHeatmap(
+    seMarker = marker_peaks_c$marker_peaks,
+    cutOff = cut_off,
+    transpose = TRUE
+  )
 
-peak_hm <- ComplexHeatmap::draw(
-  heatmap_peaks,
-  heatmap_legend_side = "bot",
-  annotation_legend_side = "bot",
-  column_title = paste0("Marker peaks (", cut_off, ")"),
-  column_title_gp = gpar(fontsize = 12)
-)
+  peak_hm <- ComplexHeatmap::draw(
+    heatmap_peaks,
+    heatmap_legend_side = "bot",
+    annotation_legend_side = "bot",
+    column_title = paste0("Marker peaks (", cut_off, ")"),
+    column_title_gp = gpar(fontsize = 12)
+  )
 
-heatmaps[[1]] <- peak_hm
+  heatmaps[[length(heatmaps) + 1]] <- peak_hm
+}
 
 # Create motif heatmap by cluster --
 if (isTRUE(enriched_motifs_c$has_enrichment)) {
@@ -316,7 +320,7 @@ if (isTRUE(enriched_motifs_c$has_enrichment)) {
     column_title_gp = gpar(fontsize = 12)
   )
 
-  heatmaps[[2]] <- heatmap_motifs
+  heatmaps[[length(heatmaps) + 1]] <- heatmap_motifs
 } else {
   message("Skipping motif heatmap plot: no enrichments found.")
 }
@@ -325,8 +329,13 @@ if (isTRUE(enriched_motifs_c$has_enrichment)) {
 print("Saving peak, motif heatmaps...")
 
 pdf("heatmaps_peaks-motifs.pdf")
-for (i in seq_along(heatmaps)) {
-  print(heatmaps[[i]])
+if (length(heatmaps) == 0) {
+  plot.new()
+  text(0.5, 0.5, "No peak or motif heatmaps available")
+} else {
+  for (i in seq_along(heatmaps)) {
+    print(heatmaps[[i]])
+  }
 }
 dev.off()
 
@@ -339,13 +348,14 @@ if (n_samples > 1) {
   saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
 
   # Repeat getMarkerPeaks for new peak-set, enriched motifs per sample --
-  sample_marker_peaks <- getMarkerFeatures(
+  sample_marker_peaks <- safe_get_marker_features(
     ArchRProj = proj,
     useMatrix = "PeakMatrix",
     groupBy = "Sample",
     bias = c("TSSEnrichment", "log10(nFrags)"),
     k = 100,
-    testMethod = "wilcoxon"
+    testMethod = "wilcoxon",
+    context = "sample-level motif enrichment peaks"
   )
 
   enriched_motifs_s <- get_enriched_motifs(
@@ -375,13 +385,14 @@ if (n_cond > 1) {
     saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
 
     # Get marker peaks and Enriched motifs per treatment --
-    treatment_marker_peaks <- getMarkerFeatures(
+    treatment_marker_peaks <- safe_get_marker_features(
       ArchRProj = proj,
       useMatrix = "PeakMatrix",
       groupBy = treatment[i],
       bias = c("TSSEnrichment", "log10(nFrags)"),
       k = 100,
-      testMethod = "wilcoxon"
+      testMethod = "wilcoxon",
+      context = paste0("condition-level motif enrichment peaks for ", treatment[i])
     )
     enriched_motifs_t <- get_enriched_motifs(
       proj, treatment_marker_peaks, cut_off

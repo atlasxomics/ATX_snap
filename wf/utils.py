@@ -5,6 +5,7 @@ import json
 import logging
 import time
 import os
+import re
 import subprocess
 
 from dataclasses import dataclass
@@ -83,6 +84,18 @@ class Run:
     fragments_file: LatchFile
     spatial_dir: LatchDir
     condition: str = "None"
+
+
+def sanitize_condition(condition: Optional[str]) -> str:
+    """Normalize condition labels for downstream ArchR grouping."""
+    if condition is None:
+        return "None"
+
+    condition_str = str(condition).strip()
+    if condition_str == "":
+        return "None"
+
+    return re.sub(r"\s+", "_", condition_str)
 
 
 def copy_peak_files(project_name: str, dirs: Dict[str, Path]) -> None:
@@ -168,7 +181,7 @@ def get_groups(runs: List[Run]):
     """Set 'groups' list for differential analysis"""
 
     samples = [run.run_id for run in runs]
-    conditions = list({run.condition for run in runs})
+    conditions = list({sanitize_condition(run.condition) for run in runs})
 
     groups = ["cluster"]
     if len(samples) > 1:

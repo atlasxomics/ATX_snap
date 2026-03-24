@@ -9,7 +9,7 @@ import numpy as np
 import snapatac2 as snap
 from scipy.sparse import vstack
 
-from wf.utils import Run, get_LatchFile, ref_dict
+from wf.utils import Run, get_LatchFile, ref_dict, sanitize_condition
 
 logging.basicConfig(
     format="%(levelname)s - %(asctime)s - %(message)s", level=logging.INFO
@@ -75,7 +75,7 @@ def add_metadata(
 
     # Set run_id, condition, sample_name
     adata.obs["sample"] = run.run_id
-    adata.obs["condition"] = run.condition
+    adata.obs["condition"] = sanitize_condition(run.condition)
     adata.obs["sample_name"] = run.sample_name
 
     # Ensure obs_names unique

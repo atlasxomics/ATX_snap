@@ -269,7 +269,7 @@ def genes_task(
         (
             f'{run.run_id},'
             f'{run.fragments_file.local_path},'
-            f'{run.condition},'
+            f'{utils.sanitize_condition(run.condition)},'
             f'{position_files[run.run_id].local_path},'
             f'{run.spatial_dir.local_path},'
             f'{run.sample_name}'
@@ -359,7 +359,7 @@ def motifs_task(
         (
             f'{run.run_id},'
             f'{run.fragments_file.local_path},'
-            f'{run.condition},'
+            f'{utils.sanitize_condition(run.condition)},'
             f'{position_files[run.run_id].local_path},'
             f'{run.spatial_dir.local_path},'
             f'{run.sample_name}'

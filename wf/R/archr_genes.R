@@ -298,34 +298,33 @@ write.csv(cluster_marker_genes$heatmap_gs, "genes_per_cluster_hm.csv")
 # Recompute gene heatmap for plotting (transpose, plotLog2FC different) --
 cut_off <- "Pval <= 0.05 & Log2FC >= 0.1"
 
-heatmap_gs_plotting <- plotMarkerHeatmap(
-  seMarker = cluster_marker_genes$markers_gs,
-  cutOff = cut_off,
-  transpose = TRUE
-)
+if (
+  is.null(cluster_marker_genes$markers_gs) ||
+    nrow(cluster_marker_genes$heatmap_gs) == 0 ||
+    ncol(cluster_marker_genes$heatmap_gs) == 0
+) {
+  message("Skipping gene heatmap plot because no cluster marker genes were available.")
+  empty_pdf("heatmap_genes.pdf", "No cluster marker genes available")
+} else {
+  heatmap_gs_plotting <- plotMarkerHeatmap(
+    seMarker = cluster_marker_genes$markers_gs,
+    cutOff = cut_off,
+    transpose = TRUE
+  )
 
-# Save for plotting with peaks and motifs --
-gene_hm <- ComplexHeatmap::draw(
-  heatmap_gs_plotting,
-  heatmap_legend_side = "bot",
-  annotation_legend_side = "bot",
-  column_title = paste0("Marker genes (", cut_off, ")"),
-  column_title_gp = gpar(fontsize = 12)
-)
+  gene_hm <- ComplexHeatmap::draw(
+    heatmap_gs_plotting,
+    heatmap_legend_side = "bot",
+    annotation_legend_side = "bot",
+    column_title = paste0("Marker genes (", cut_off, ")"),
+    column_title_gp = gpar(fontsize = 12)
+  )
 
-print("Saving gene heatmap...")
-pdf("heatmap_genes.pdf")
-print(gene_hm)
-dev.off()
-
-# Save for plotting with peaks and motifs --
-gene_hm <- ComplexHeatmap::draw(
-  heatmap_gs_plotting,
-  heatmap_legend_side = "bot",
-  annotation_legend_side = "bot",
-  column_title = paste0("Marker genes (", cut_off, ")"),
-  column_title_gp = gpar(fontsize = 12)
-)
+  print("Saving gene heatmap...")
+  pdf("heatmap_genes.pdf")
+  print(gene_hm)
+  dev.off()
+}
 
 # Marker genes per sample, save marker gene rds, csv, heatmap.csv --
 if (n_samples > 1) {
@@ -347,7 +346,7 @@ if (n_samples > 1) {
   if (length(sample_name_map) > 0) {
     sample_marker_list_named <- sample_marker_genes$marker_list
     marker_groups <- names(sample_marker_list_named)
-    if (!is.null(marker_groups)) {
+    if (!is.data.frame(sample_marker_list_named) && !is.null(marker_groups)) {
       names(sample_marker_list_named) <- remap_sample_ids(
         marker_groups, sample_name_map
       )

@@ -12,6 +12,54 @@ library("S4Vectors")
 source("/root/wf/R/utils.R")
 
 
+safe_get_marker_features <- function(..., context = "marker features") {
+  tryCatch(
+    ArchR::getMarkerFeatures(...),
+    error = function(e) {
+      message(
+        "Skipping ", context,
+        " because ArchR could not construct background matches: ",
+        e$message
+      )
+      return(NULL)
+    }
+  )
+}
+
+
+get_group_levels <- function(proj, group_by) {
+  groups <- sort(unique(proj@cellColData[group_by][, 1]))
+  groups[!is.na(groups)]
+}
+
+
+empty_result_df <- function() {
+  data.frame(stringsAsFactors = FALSE)
+}
+
+
+empty_marker_feature_table <- function(diff_metric = "Log2FC") {
+  marker_df <- data.frame(
+    metric = numeric(0),
+    p_val = numeric(0),
+    p_val_adj = numeric(0),
+    gene = character(0),
+    cluster = character(0),
+    stringsAsFactors = FALSE
+  )
+  colnames(marker_df)[1] <- diff_metric
+  marker_df
+}
+
+
+empty_pdf <- function(filename, label) {
+  pdf(filename)
+  plot.new()
+  text(0.5, 0.5, label)
+  dev.off()
+}
+
+
 add_motif_annotations <- function(proj, genome) {
   #' Wrapper for ArchR::addMotifAnnotations()
 
@@ -136,6 +184,20 @@ get_enriched_motifs <- function(proj, marker_peaks, cutoff) {
     stringsAsFactors = FALSE
   )
 
+  if (is.null(marker_peaks)) {
+    message(
+      "Skipping motif enrichment for cutoff ",
+      cutoff,
+      " because no marker peaks were available."
+    )
+    return(list(
+      enrich_df = empty_enrich_df,
+      enrich_motifs = NULL,
+      heatmap_em = empty_heatmap_df,
+      has_enrichment = FALSE
+    ))
+  }
+
   enrich_motifs <- tryCatch(
     ArchR::peakAnnoEnrichment(
       seMarker = marker_peaks,
@@ -234,8 +296,14 @@ get_marker_df <- function(
   #' Return data frame of ArhcR marker features with:
   #' "avg_log2FC", "p_val", "p_val_adj", "gene", "cluster"
 
+  conditions <- get_group_levels(proj, group_by)
+  markers_df <- setNames(
+    lapply(conditions, function(x) empty_marker_feature_table(diff_metric)),
+    conditions
+  )
+
   # Get markers -----
-  markers <- ArchR::getMarkerFeatures(
+  markers <- safe_get_marker_features(
     ArchRProj = proj,
     useMatrix = matrix,
     groupBy = group_by,
@@ -243,17 +311,31 @@ get_marker_df <- function(
     useSeqnames = seq_names,
     maxCells = max_cells,
     normBy = "none",
-    testMethod = test_method
+    testMethod = test_method,
+    context = paste0("marker dataframe for ", group_by)
   )
+  if (is.null(markers)) {
+    return(markers_df)
+  }
 
   # Create data frame with for MeanDiff, Pval, FDR -----
-  markers_df1 <- SummarizedExperiment::assay(markers, diff_metric)
-  markers_df2 <- SummarizedExperiment::assay(markers, "Pval")
-  markers_df3 <- SummarizedExperiment::assay(markers, "FDR")
+  markers_df1 <- tryCatch(
+    SummarizedExperiment::assay(markers, diff_metric),
+    error = function(e) NULL
+  )
+  markers_df2 <- tryCatch(
+    SummarizedExperiment::assay(markers, "Pval"),
+    error = function(e) NULL
+  )
+  markers_df3 <- tryCatch(
+    SummarizedExperiment::assay(markers, "FDR"),
+    error = function(e) NULL
+  )
+  if (is.null(markers_df1) || is.null(markers_df2) || is.null(markers_df3)) {
+    message("Unable to extract marker assays for ", group_by, "; returning empty tables.")
+    return(markers_df)
+  }
 
-  conditions <- sort(unique(proj@cellColData[group_by][, 1]))
-
-  markers_df <- list()
   for (conds in conditions) {
 
     markers_df[[conds]] <- S4Vectors::DataFrame(
@@ -276,17 +358,20 @@ get_marker_df <- function(
 get_marker_df_clusters <- function(
   proj, clusters, group_by, matrix, seq_names, test_method, diff_metric
 ) {
+  conditions <- get_group_levels(proj, group_by)
+  markers_df_by_cluster <- setNames(
+    lapply(conditions, function(x) empty_marker_feature_table(diff_metric)),
+    conditions
+  )
 
-  markers_by_cluster <- list()
-  for (i in seq_along(clusters)) {
+  for (cluster in clusters) {
 
-    proj_filter <- BiocGenerics::which(proj$Clusters == clusters[i])
+    proj_filter <- BiocGenerics::which(proj$Clusters == cluster)
     cells_subset <- proj$cellNames[proj_filter]
     proj_subset <- proj[cells_subset, ]
     n_cells <- length(proj_subset$cellNames)
 
-    # Get gene score matrix each cluster separately -----
-    markers_by_cluster[[i]] <- ArchR::getMarkerFeatures(
+    markers_by_cluster <- safe_get_marker_features(
       ArchRProj = proj_subset,
       useMatrix = matrix,
       groupBy = group_by,
@@ -294,59 +379,55 @@ get_marker_df_clusters <- function(
       maxCells = n_cells,
       useSeqnames = seq_names,
       normBy = "none",
-      testMethod = test_method
+      testMethod = test_method,
+      context = paste0("cluster-level marker dataframe for ", group_by, " in ", cluster)
     )
-  }
+    if (is.null(markers_by_cluster)) {
+      next
+    }
 
-  names(markers_by_cluster) <- clusters
-
-  # create markList_df for each cluster -----
-  markerlist_df1 <- list()
-  markerlist_df2 <- list()
-  markerlist_df3 <- list()
-  markerlist_df <- list()
-
-  for (i in seq_along(clusters)) {
-
-    cluster <- clusters[i]
-    markerlist_df1[[i]] <- SummarizedExperiment::assay(
-      markers_by_cluster[[i]], diff_metric
+    markerlist_df1 <- tryCatch(
+      SummarizedExperiment::assay(markers_by_cluster, diff_metric),
+      error = function(e) NULL
     )
-    markerlist_df2[[i]] <- SummarizedExperiment::assay(
-      markers_by_cluster[[i]], "Pval"
+    markerlist_df2 <- tryCatch(
+      SummarizedExperiment::assay(markers_by_cluster, "Pval"),
+      error = function(e) NULL
     )
-    markerlist_df3[[i]] <- SummarizedExperiment::assay(
-      markers_by_cluster[[i]], "FDR"
+    markerlist_df3 <- tryCatch(
+      SummarizedExperiment::assay(markers_by_cluster, "FDR"),
+      error = function(e) NULL
     )
-
-    conditions <- sort(unique(proj@cellColData[group_by][, 1]))
-
-    markerlist_df[[i]] <- list()
-    for (conds in conditions) {
-
-      markerlist_df[[i]][[conds]] <- S4Vectors::DataFrame(
-        markerlist_df1[[i]][, conds],
-        markerlist_df2[[i]][, conds],
-        markerlist_df3[[i]][, conds]
+    if (is.null(markerlist_df1) || is.null(markerlist_df2) || is.null(markerlist_df3)) {
+      message(
+        "Unable to extract cluster-level marker assays for ",
+        group_by,
+        " in ",
+        cluster,
+        "; skipping this cluster."
       )
+      next
+    }
 
-      markerlist_df[[i]][[conds]] <- as.data.frame(
-        markerlist_df[[i]][[conds]]
+    cluster_conditions <- intersect(colnames(markerlist_df1), conditions)
+    for (conds in cluster_conditions) {
+      marker_df <- S4Vectors::DataFrame(
+        markerlist_df1[, conds],
+        markerlist_df2[, conds],
+        markerlist_df3[, conds]
       )
-      markerlist_df[[i]][[conds]]$genes <- SummarizedExperiment::rowData(
-        markers_by_cluster[[i]]
-      )$name
-      markerlist_df[[i]][[conds]]$cluster <- rep(
-        cluster, dim(markerlist_df[[i]][[conds]])[1]
-      )
-      colnames(markerlist_df[[i]][[conds]]) <- c(
+      marker_df <- as.data.frame(marker_df)
+      marker_df$genes <- SummarizedExperiment::rowData(markers_by_cluster)$name
+      marker_df$cluster <- rep(cluster, dim(marker_df)[1])
+      colnames(marker_df) <- c(
         diff_metric, "p_val", "p_val_adj", "gene", "cluster"
+      )
+      markers_df_by_cluster[[conds]] <- rbind(
+        markers_df_by_cluster[[conds]],
+        marker_df
       )
     }
   }
-
-  names(markerlist_df) <- clusters
-  markers_df_by_cluster <- do.call(Map, c(f = rbind, markerlist_df))
 
   return(markers_df_by_cluster)
 }
@@ -355,20 +436,37 @@ get_marker_genes <- function(
   proj, group_by, markers_cutoff, heatmap_cutoff
 ) {
 
-  markers_gs <- ArchR::getMarkerFeatures(
+  markers_gs <- safe_get_marker_features(
     ArchRProj = proj,
     useMatrix = "GeneScoreMatrix",
     groupBy = group_by,
     bias = c("TSSEnrichment", "log10(nFrags)"),
-    testMethod = "ttest"
+    testMethod = "ttest",
+    context = paste0("marker genes for ", group_by)
   )
-  marker_list <- ArchR::getMarkers(markers_gs, cutOff = markers_cutoff)
+  if (is.null(markers_gs)) {
+    return(
+      list(
+        markers_gs = NULL,
+        marker_list = empty_result_df(),
+        heatmap_gs = empty_result_df()
+      )
+    )
+  }
+
+  marker_list <- tryCatch(
+    ArchR::getMarkers(markers_gs, cutOff = markers_cutoff),
+    error = function(e) {
+      message("Unable to extract marker genes for ", group_by, ": ", e$message)
+      empty_result_df()
+    }
+  )
   marker_pvals <- tryCatch(
     SummarizedExperiment::assay(markers_gs, "Pval"),
     error = function(e) NULL
   )
 
-  if (!is.null(marker_pvals)) {
+  if (!is.null(marker_pvals) && !is.data.frame(marker_list)) {
     marker_names <- SummarizedExperiment::rowData(markers_gs)$name
     marker_groups <- names(marker_list)
     if (is.null(marker_groups)) {
@@ -398,11 +496,22 @@ get_marker_genes <- function(
     }
   }
 
-  heatmap_gs <- ArchR::plotMarkerHeatmap(
-    seMarker = markers_gs,
-    cutOff = heatmap_cutoff,
-    plotLog2FC = TRUE,
-    returnMatrix = TRUE
+  heatmap_gs <- tryCatch(
+    ArchR::plotMarkerHeatmap(
+      seMarker = markers_gs,
+      cutOff = heatmap_cutoff,
+      plotLog2FC = TRUE,
+      returnMatrix = TRUE
+    ),
+    error = function(e) {
+      message(
+        "Unable to generate marker heatmap matrix for ",
+        group_by,
+        ": ",
+        e$message
+      )
+      empty_result_df()
+    }
   )
   return(
     list(
@@ -415,19 +524,40 @@ get_marker_genes <- function(
 
 get_marker_peaks <- function(proj, group_by, peak_data, cut_off) {
 
-  marker_peaks <- ArchR::getMarkerFeatures(
+  marker_peaks <- safe_get_marker_features(
     ArchRProj = proj,
     useMatrix = "PeakMatrix",
     groupBy = group_by,
     bias = c("TSSEnrichment", "log10(nFrags)"),
     k = 100,
-    testMethod = "wilcoxon"
+    testMethod = "wilcoxon",
+    context = paste0("marker peaks for ", group_by)
+  )
+  if (is.null(marker_peaks)) {
+    return(list(
+      marker_peaks = NULL,
+      marker_peak_list = empty_result_df(),
+      total_peaks = empty_result_df()
+    ))
+  }
+
+  marker_peak_list <- tryCatch(
+    ArchR::getMarkers(marker_peaks, cutOff = cut_off),
+    error = function(e) {
+      message("Unable to extract marker peaks for ", group_by, ": ", e$message)
+      empty_result_df()
+    }
   )
 
-  marker_peak_list <- ArchR::getMarkers(marker_peaks, cutOff = cut_off)
-
   # Merge all peaks with significant marker peaks, write to csv -----
-  total_peaks <- merge(peak_data, marker_peak_list, by = c("start", "end"))
+  total_peaks <- if (
+    is.data.frame(marker_peak_list) &&
+      (!all(c("start", "end") %in% colnames(marker_peak_list)))
+  ) {
+    empty_result_df()
+  } else {
+    merge(peak_data, marker_peak_list, by = c("start", "end"))
+  }
 
   return(list(
     marker_peaks = marker_peaks,
@@ -526,8 +656,16 @@ get_volcano_table <- function(
 ) {
 
   # Merge df with all clusters with df for each cluster -----
+  marker_df <- markers_df[[condition]]
+  if (is.null(marker_df)) {
+    marker_df <- empty_marker_feature_table(fc_col)
+  }
+  marker_df_cluster <- markers_by_cluster_df[[condition]]
+  if (is.null(marker_df_cluster)) {
+    marker_df_cluster <- empty_marker_feature_table(fc_col)
+  }
   merged_df <- rbind(
-    markers_df[[condition]], markers_by_cluster_df[[condition]]
+    marker_df, marker_df_cluster
   )
 
   # Remove empty features -----
@@ -537,6 +675,10 @@ get_volcano_table <- function(
 
   # Remove NA values -----
   merged_df <- na.omit(merged_df)
+
+  if (nrow(merged_df) == 0) {
+    return(merged_df)
+  }
 
   # Check if fc_col exists
   if (!fc_col %in% colnames(merged_df)) {
