@@ -27,6 +27,53 @@ safe_get_marker_features <- function(..., context = "marker features") {
 }
 
 
+normalize_marker_table <- function(marker_table, context = "marker table") {
+  if (is.null(marker_table)) {
+    return(empty_result_df())
+  }
+
+  if (is.data.frame(marker_table) || methods::is(marker_table, "DataFrame")) {
+    return(as.data.frame(marker_table))
+  }
+
+  if (is.list(marker_table)) {
+    marker_table <- Filter(Negate(is.null), marker_table)
+    if (length(marker_table) == 0) {
+      return(empty_result_df())
+    }
+
+    marker_table <- lapply(marker_table, function(x) {
+      x_df <- tryCatch(
+        as.data.frame(x),
+        error = function(e) {
+          message("Unable to coerce ", context, " entry to data frame: ", e$message)
+          NULL
+        }
+      )
+      if (is.null(x_df) || !isTRUE(nrow(x_df) > 0)) {
+        return(NULL)
+      }
+      x_df
+    })
+
+    marker_table <- Filter(Negate(is.null), marker_table)
+    if (length(marker_table) == 0) {
+      return(empty_result_df())
+    }
+
+    return(dplyr::bind_rows(marker_table, .id = "group"))
+  }
+
+  tryCatch(
+    as.data.frame(marker_table),
+    error = function(e) {
+      message("Unable to coerce ", context, " to data frame: ", e$message)
+      empty_result_df()
+    }
+  )
+}
+
+
 get_group_levels <- function(proj, group_by) {
   groups <- sort(unique(proj@cellColData[group_by][, 1]))
   groups[!is.na(groups)]
@@ -536,6 +583,7 @@ get_marker_peaks <- function(proj, group_by, peak_data, cut_off) {
   if (is.null(marker_peaks)) {
     return(list(
       marker_peaks = NULL,
+      has_markers = FALSE,
       marker_peak_list = empty_result_df(),
       total_peaks = empty_result_df()
     ))
@@ -548,12 +596,16 @@ get_marker_peaks <- function(proj, group_by, peak_data, cut_off) {
       empty_result_df()
     }
   )
+  marker_peak_list <- normalize_marker_table(
+    marker_peak_list,
+    context = paste0("marker peaks for ", group_by)
+  )
+
+  has_markers <- isTRUE(nrow(marker_peak_list) > 0) &&
+    all(c("start", "end") %in% colnames(marker_peak_list))
 
   # Merge all peaks with significant marker peaks, write to csv -----
-  total_peaks <- if (
-    is.data.frame(marker_peak_list) &&
-      (!all(c("start", "end") %in% colnames(marker_peak_list)))
-  ) {
+  total_peaks <- if (!has_markers) {
     empty_result_df()
   } else {
     merge(peak_data, marker_peak_list, by = c("start", "end"))
@@ -561,6 +613,7 @@ get_marker_peaks <- function(proj, group_by, peak_data, cut_off) {
 
   return(list(
     marker_peaks = marker_peaks,
+    has_markers = has_markers,
     marker_peak_list = marker_peak_list,
     total_peaks = total_peaks
   ))

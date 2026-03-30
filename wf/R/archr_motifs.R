@@ -284,8 +284,15 @@ heatmaps <- list()
 cut_off <- "Pval <= 0.05 & Log2FC >= 0.1"
 
 # Create peak heatmap by cluster --
-if (is.null(marker_peaks_c$marker_peaks)) {
-  message("Skipping peak heatmap plot because no cluster marker peaks were available.")
+if (
+  is.null(marker_peaks_c$marker_peaks) ||
+    !isTRUE(marker_peaks_c$has_markers)
+) {
+  message(
+    "Skipping peak heatmap plot because no cluster marker peaks passed ",
+    cut_off,
+    "."
+  )
 } else {
   heatmap_peaks <- plotMarkerHeatmap(
     seMarker = marker_peaks_c$marker_peaks,
