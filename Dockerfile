@@ -86,6 +86,7 @@ COPY . /root/
 # Latch workflow registration metadata
 # DO NOT CHANGE
 RUN python3 -m pip install --upgrade latch
+RUN pip install https://github.com/atlasxomics/atx-common/archive/refs/tags/v0.1.0.tar.gz
 ARG tag
 # DO NOT CHANGE
 ENV FLYTE_INTERNAL_IMAGE $tag

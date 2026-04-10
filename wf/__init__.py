@@ -13,7 +13,8 @@ from wf.task import (
     make_adata,
     registry_task,
 )
-from wf.utils import Genome, Run
+from atx_common import Genome
+from wf.utils import Run
 
 metadata = LatchMetadata(
     display_name="atx_snap",

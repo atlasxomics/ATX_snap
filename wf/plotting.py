@@ -9,7 +9,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from typing import List, Optional
 
 from wf.spatial import squidpy_analysis
-from wf.utils import filter_anndata
+from atx_common import filter_anndata
 
 
 def get_custom_group_order(groups):

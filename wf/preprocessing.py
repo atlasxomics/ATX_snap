@@ -9,7 +9,8 @@ import numpy as np
 import snapatac2 as snap
 from scipy.sparse import vstack
 
-from wf.utils import Run, get_LatchFile, ref_dict, sanitize_condition
+from atx_common import get_LatchFile, ref_dict, sanitize_condition
+from wf.utils import Run
 
 logging.basicConfig(
     format="%(levelname)s - %(asctime)s - %(message)s", level=logging.INFO
