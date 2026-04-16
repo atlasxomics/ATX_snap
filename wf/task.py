@@ -230,12 +230,12 @@ def genes_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
     project_name: str,
-    groups: List[str],
     genome: utils.Genome,
 ) -> LatchDir:
 
     # Read in data tables
     data_paths = utils.get_data_paths(results_dir)
+    groups = utils.get_groups(runs)
 
     genome = genome.value
 
@@ -316,12 +316,12 @@ def motifs_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
     project_name: str,
-    groups: List[str],
     genome: utils.Genome,
 ) -> LatchDir:
 
     # Read in data tables
     data_paths = utils.get_data_paths(results_dir)
+    groups = utils.get_groups(runs)
 
     genome = genome.value
 
