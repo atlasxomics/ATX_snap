@@ -183,20 +183,27 @@ def make_adata(
 
     logging.info("Finished coverages for groups...")
 
-    pl.plot_umaps(adata, groups, f"{figures_dir}/umap.pdf")
+    pl.plot_umaps(
+        adata,
+        groups,
+        f"{figures_dir}/umap.png",
+        html_output_path=f"{result_dir}/umap.html",
+    )
     pl.plot_spatial(
         adata,
         samples,
         "cluster",
-        f"{figures_dir}/spatial_dim.pdf",
+        f"{figures_dir}/spatial_dim.png",
         pt_size=utils.pt_sizes[channels]["dim"],
+        html_output_path=f"{result_dir}/spatial_dim.html",
     )
     pl.plot_spatial_qc(
         adata,
         samples,
         qc_metrics,
-        f"{figures_dir}/spatial_qc.pdf",
+        f"{figures_dir}/spatial_qc.png",
         pt_size=utils.pt_sizes[channels]["qc"],
+        html_output_path=f"{result_dir}/spatial_qc.html",
     )
 
     subprocess.run([f"mv /root/figures/* {figures_dir}"], shell=True)

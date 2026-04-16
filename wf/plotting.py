@@ -1,4 +1,5 @@
 import anndata
+import os
 import logging
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -6,7 +7,7 @@ import seaborn as sns
 import scanpy as sc
 
 from matplotlib.backends.backend_pdf import PdfPages
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from wf.spatial import squidpy_analysis
 from atx_common import filter_anndata
@@ -21,6 +22,117 @@ def get_custom_group_order(groups):
         [g for g in groups if not g.isdigit() and g != "Union"]
     )
     return numeric_groups + non_numeric_groups + ["Union"]
+
+
+def _get_page_saver(output_path: str) -> tuple[Callable, Callable, bool, List[str]]:
+    """Return a page saver and closer for PDF or image outputs."""
+    ext = os.path.splitext(output_path)[1].lower()
+    page_idx = 1
+    pdf = PdfPages(output_path) if ext == ".pdf" else None
+    output_stem = os.path.splitext(output_path)[0] if ext else output_path
+    output_ext = ext if ext else ".png"
+    saved_paths: List[str] = []
+
+    def save_page(fig):
+        nonlocal page_idx
+        if pdf is not None:
+            pdf.savefig(fig)
+            return
+
+        image_path = f"{output_stem}_{page_idx:03d}{output_ext}"
+        fig.savefig(image_path, dpi=200, bbox_inches="tight")
+        saved_paths.append(image_path)
+        page_idx += 1
+
+    def close():
+        if pdf is not None:
+            pdf.close()
+
+    return save_page, close, pdf is not None, saved_paths
+
+
+def _write_html_gallery(
+    output_path: str,
+    title: str,
+    image_paths: List[str],
+    captions: Optional[List[str]] = None,
+    html_output_path: Optional[str] = None,
+) -> None:
+    """Write a single HTML file that displays all saved image pages."""
+    if len(image_paths) == 0:
+        return
+
+    html_path = (
+        html_output_path
+        if html_output_path is not None
+        else f"{os.path.splitext(output_path)[0]}.html"
+    )
+    html_dir = os.path.dirname(html_path) or "."
+    relative_paths = [os.path.relpath(path, start=html_dir) for path in image_paths]
+
+    blocks = []
+    for idx, rel_path in enumerate(relative_paths, start=1):
+        caption = f"Page {idx}"
+        if captions is not None and idx - 1 < len(captions):
+            caption = captions[idx - 1]
+
+        blocks.append(
+            "<section class=\"page\">"
+            f"<h2>{caption}</h2>"
+            f"<img loading=\"lazy\" src=\"{rel_path}\" alt=\"{caption}\" />"
+            "</section>"
+        )
+
+    body = "\n".join(blocks)
+    html = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{title}</title>
+  <style>
+    body {{
+      margin: 24px auto;
+      max-width: 1600px;
+      padding: 0 16px 32px;
+      background: #f4f4f4;
+      color: #1f1f1f;
+      font-family: Arial, sans-serif;
+    }}
+    h1 {{
+      margin: 0 0 8px;
+    }}
+    p {{
+      margin: 0 0 20px;
+      color: #404040;
+    }}
+    .page {{
+      margin: 0 0 24px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 12px;
+    }}
+    .page h2 {{
+      margin: 0 0 10px;
+      font-size: 18px;
+    }}
+    img {{
+      width: 100%;
+      height: auto;
+      display: block;
+    }}
+  </style>
+</head>
+<body>
+  <h1>{title}</h1>
+  <p>{len(image_paths)} page{"s" if len(image_paths) != 1 else ""}</p>
+  {body}
+</body>
+</html>
+"""
+    with open(html_path, "w", encoding="utf-8") as fh:
+        fh.write(html)
 
 
 def plot_neighborhoods(
@@ -75,14 +187,18 @@ def plot_spatial(
     samples: List[str],
     color_by: str,
     output_path: str,
-    pt_size: int = 75
+    pt_size: int = 75,
+    html_output_path: Optional[str] = None,
 ) -> None:
     """Plot cells spatially, color by metadata stored in .obs. The function
-    creates a plot for each run and saves to a .pdf, with four runs per page.
+    creates a plot for each run and saves paginated output, with four runs per
+    page.
     """
     from squidpy.pl import spatial_scatter
 
-    with PdfPages(output_path) as pdf:
+    page_captions: List[str] = []
+    save_page, close, is_pdf, image_paths = _get_page_saver(output_path)
+    try:
         for i in range(0, len(samples), 4):
 
             sample_batch = samples[i:i + 4]
@@ -108,8 +224,19 @@ def plot_spatial(
 
             plt.tight_layout()
 
-            pdf.savefig(fig)
+            page_captions.append("Samples: " + ", ".join(sample_batch))
+            save_page(fig)
             plt.close(fig)
+    finally:
+        close()
+    if not is_pdf:
+        _write_html_gallery(
+            output_path,
+            title=f"Spatial Plots: {color_by}",
+            image_paths=image_paths,
+            captions=page_captions,
+            html_output_path=html_output_path,
+        )
 
 
 def plot_spatial_qc(
@@ -117,18 +244,21 @@ def plot_spatial_qc(
     samples: List[str],
     qc_metrics: List[str],
     output_path: str,
-    pt_size: int = 25
+    pt_size: int = 25,
+    html_output_path: Optional[str] = None,
 ):
     """Generates a grid of spatial scatter plots for each sample and QC metric,
-    saving them into a PDF.  Each row corresponds to a sample and each column
-    to a QC metric.
+    saving them into paginated output. Each row corresponds to a sample and
+    each column to a QC metric.
     """
     from squidpy.pl import spatial_scatter
 
     rows_per_page = 3
     cols_per_page = len(qc_metrics)
 
-    with PdfPages(output_path) as pdf:
+    page_captions: List[str] = []
+    save_page, close, is_pdf, image_paths = _get_page_saver(output_path)
+    try:
         for i in range(0, len(samples), rows_per_page):
 
             sample_batch = samples[i:i + rows_per_page]
@@ -161,8 +291,19 @@ def plot_spatial_qc(
                     cbar = fig.colorbar(ax.collections[0], ax=ax, shrink=0.7)
 
             plt.tight_layout()
-            pdf.savefig(fig)
+            page_captions.append("Samples: " + ", ".join(sample_batch))
+            save_page(fig)
             plt.close(fig)
+    finally:
+        close()
+    if not is_pdf:
+        _write_html_gallery(
+            output_path,
+            title="Spatial QC Plots",
+            image_paths=image_paths,
+            captions=page_captions,
+            html_output_path=html_output_path,
+        )
 
 
 def plot_stacked_peaks(
@@ -230,12 +371,15 @@ def plot_stacked_peaks(
 
 
 def plot_umaps(
-    adata: anndata.AnnData, groups: List[str], output_path: str
+    adata: anndata.AnnData,
+    groups: List[str],
+    output_path: str,
+    html_output_path: Optional[str] = None,
 ) -> None:
     """Create a figure with UMAPs colored categorical metadata.
     """
 
-    _, axs = plt.subplots(2, 2, figsize=(10, 10))
+    fig, axs = plt.subplots(2, 2, figsize=(10, 10))
     axs = axs.flatten()
 
     for i in range(len(groups)):
@@ -254,5 +398,14 @@ def plot_umaps(
         axs[j].axis("off")
 
     plt.tight_layout()
+    fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
 
-    plt.savefig(output_path)
+    if html_output_path is not None and output_path.lower().endswith(".png"):
+        _write_html_gallery(
+            output_path,
+            title="UMAP Plots",
+            image_paths=[output_path],
+            captions=["UMAP overview"],
+            html_output_path=html_output_path,
+        )
