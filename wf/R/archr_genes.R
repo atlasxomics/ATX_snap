@@ -34,12 +34,28 @@ project_name <- args[1]
 genome <- args[2]
 metadata_path <- args[3]
 embedding_path <- args[4]
+gene_artifacts_dir <- if (length(args) >= 5) args[5] else ""
+resume_from_gene_artifacts <- (
+  !is.na(gene_artifacts_dir) &&
+    nzchar(gene_artifacts_dir) &&
+    tolower(gene_artifacts_dir) != "none"
+)
 tile_size <- 5000
 min_tss <- 0  # Use filtering from SnapATAC2
 min_frags <- 0  # Use filtering from SnapATAC2
 num_threads <- 50
 
-runs <- strsplit(args[5:length(args)], ",")
+run_args <- if (resume_from_gene_artifacts) {
+  if (length(args) < 6) character(0) else args[6:length(args)]
+} else {
+  if (length(args) < 5) character(0) else args[5:length(args)]
+}
+
+if (length(run_args) == 0) {
+  stop("No runs were supplied to archr_genes.R.")
+}
+
+runs <- strsplit(run_args, ",")
 runs
 
 inputs <- c()  # Inputs for ArrowFiles (run_id : fragment_file path)
@@ -70,6 +86,67 @@ remap_sample_ids <- function(values, sample_name_map) {
   return(remapped)
 }
 
+copy_gene_artifact_files <- function(artifact_dir, pattern) {
+  files <- list.files(
+    artifact_dir,
+    pattern = pattern,
+    full.names = TRUE,
+    recursive = TRUE
+  )
+
+  if (length(files) == 0) {
+    return(character(0))
+  }
+
+  copied <- character(0)
+  for (file in files) {
+    destination <- basename(file)
+    if (!file.exists(destination)) {
+      file.copy(file, destination, overwrite = FALSE)
+    }
+    copied <- c(copied, destination)
+  }
+
+  return(unique(copied))
+}
+
+find_archr_project_dir <- function(artifact_dir, project_dir_name) {
+  candidates <- c(
+    file.path(artifact_dir, project_dir_name),
+    artifact_dir
+  )
+
+  for (candidate in candidates) {
+    if (file.exists(file.path(candidate, "Save-ArchR-Project.rds"))) {
+      return(candidate)
+    }
+  }
+
+  recursive_matches <- list.files(
+    artifact_dir,
+    pattern = "^Save-ArchR-Project\\.rds$",
+    full.names = TRUE,
+    recursive = TRUE
+  )
+
+  if (length(recursive_matches) > 0) {
+    return(dirname(recursive_matches[[1]]))
+  }
+
+  stop(
+    "Could not find Save-ArchR-Project.rds in gene artifacts directory: ",
+    artifact_dir
+  )
+}
+
+prepare_resume_seurat_object <- function(obj) {
+  if (any(grepl("#", colnames(obj), fixed = TRUE))) {
+    return(obj)
+  }
+
+  rename_cells(list(obj))[[1]]
+}
+
 # Set genome size for peak calling ----
 genome_sizes <- list("hg38" = 3.3e+09, "mm10" = 3.0e+09, "rnor6" = 2.9e+09)
 genome_size <- genome_sizes[[genome]]
@@ -78,6 +155,88 @@ archrproj_dir <- paste0(project_name, "_ArchRProject")
 
 # Create ArchRProject ---------------------------------------------------------
 addArchRThreads(threads = num_threads)
+
+if (resume_from_gene_artifacts) {
+
+  message("Resuming gene task from artifacts directory: ", gene_artifacts_dir)
+  gene_artifacts_dir <- normalizePath(gene_artifacts_dir, mustWork = TRUE)
+
+  archrproj_source_dir <- find_archr_project_dir(
+    gene_artifacts_dir,
+    archrproj_dir
+  )
+  message("Loading ArchRProject from: ", archrproj_source_dir)
+  proj <- ArchR::loadArchRProject(
+    path = archrproj_source_dir,
+    force = TRUE,
+    showLogo = FALSE
+  )
+
+  # Refresh run metadata in case the resumed project came from a prior launch.
+  for (run in runs) {
+    proj$Condition[proj$Sample == run[1]] <- run[3]
+    proj$sample_name[proj$Sample == run[1]] <- run[6]
+  }
+
+  conds <- strsplit(proj$Condition, split = "\\s|-")
+  for (i in seq_along(conds[[1]])) {
+    proj <- ArchR::addCellColData(
+      proj,
+      data = extract_nth_ele(conds, i),
+      name = paste0("condition_", i),
+      cells = proj$cellNames,
+      force = TRUE
+    )
+  }
+  treatment <- names(ArchR::getCellColData(proj))[
+    grep("condition_", names(ArchR::getCellColData(proj)))
+  ]
+
+  print(paste("Treatments:", treatment))
+
+  n_samples <- length(unique(proj$Sample))
+  n_cond <- length(unique(proj$Condition))
+  n_cells <- length(proj$cellNames)
+  empty_feat <- character(0)
+
+  copied_h5ads <- copy_gene_artifact_files(
+    gene_artifacts_dir,
+    "_g_converted\\.h5ad$"
+  )
+  copied_rds <- copy_gene_artifact_files(
+    gene_artifacts_dir,
+    "_SeuratObj\\.rds$"
+  )
+
+  message("Copied ", length(copied_h5ads), " existing gene h5ad file(s).")
+  message("Copied ", length(copied_rds), " Seurat object RDS file(s).")
+
+  for (run in runs) {
+    h5ad_file <- paste0(run[1], "_g_converted.h5ad")
+    if (file.exists(h5ad_file)) {
+      message("Found existing ", h5ad_file, "; skipping conversion.")
+      next
+    }
+
+    rds_file <- paste0(run[1], "_SeuratObj.rds")
+    if (!file.exists(rds_file)) {
+      stop(
+        "Missing required Seurat object for run '",
+        run[1],
+        "': ",
+        rds_file
+      )
+    }
+
+    message("Converting ", rds_file, " to h5ad...")
+    obj <- readRDS(rds_file)
+    obj <- prepare_resume_seurat_object(obj)
+    seurat_to_h5ad(obj, FALSE, paste0(unique(obj$Sample), "_g"))
+    rm(obj)
+    gc(verbose = FALSE, full = TRUE)
+  }
+
+} else {
 
 proj <- create_archrproject( # from archr.R
   inputs, genome, min_tss, min_frags, tile_size, archrproj_dir
@@ -318,6 +477,8 @@ for (obj in all) {
 }
 rm(all, matrix, metadata, gene_row_names)
 gc(verbose = FALSE, full = TRUE)
+
+}
 
 # Identify marker genes ----
 # Marker genes per cluster, save marker gene rds, csv, heatmap.csv --

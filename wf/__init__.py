@@ -57,6 +57,14 @@ metadata = LatchMetadata(
                 be written back into this same directory.",
             batch_table_column=True,
         ),
+        "gene_artifacts_dir": LatchParameter(
+            display_name="gene artifacts directory",
+            description="Directory containing saved gene-stage artifacts from \
+                a failed run, including the ArchRProject, `*_SeuratObj.rds`, \
+                and any existing `*_g_converted.h5ad` files. The gene task \
+                resumes by converting missing h5ad files from Seurat objects.",
+            batch_table_column=True,
+        ),
     },
 )
 
@@ -67,6 +75,7 @@ def snap_workflow(
     genome: Genome,
     project_name: str,
     results_dir: LatchDir,
+    gene_artifacts_dir: LatchDir,
 ) -> None:
     """
     Temporary entrypoint that skips `make_adata` and resumes from an existing
@@ -76,6 +85,7 @@ def snap_workflow(
     results_ge = genes_task(
         runs=runs,
         results_dir=results_dir,
+        gene_artifacts_dir=gene_artifacts_dir,
         project_name=project_name,
         genome=genome,
     )

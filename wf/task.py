@@ -229,6 +229,7 @@ def make_adata(
 def genes_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
+    gene_artifacts_dir: LatchDir,
     project_name: str,
     genome: utils.Genome,
 ) -> LatchDir:
@@ -250,7 +251,8 @@ def genes_task(
         project_name,
         genome,
         data_paths['obs'],
-        data_paths['spectral']
+        data_paths['spectral'],
+        gene_artifacts_dir.local_path,
     ]
 
     position_files = {}
