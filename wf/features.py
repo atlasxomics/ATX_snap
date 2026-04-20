@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import anndata
+from anndata.experimental import concat_on_disk
 import numpy as np
-import scanpy as sc
 import scipy.sparse as sp
 
 logging.basicConfig(
@@ -122,13 +122,32 @@ def clean_index_columns(*adatas: anndata.AnnData) -> None:
 
 def load_and_combine_data(suffix: str) -> anndata.AnnData:
     """Load and combine AnnData objects."""
-    logging.info("Reading and combining gene AnnData...")
-    files = glob.glob(f"*{suffix}.h5ad")
-    adatas = [anndata.read_h5ad(file) for file in files]
-    adata = sc.concat(adatas)
+    logging.info("Combining AnnData objects on disk...")
+    files = sorted(glob.glob(f"*{suffix}.h5ad"))
+    if len(files) == 0:
+        raise FileNotFoundError(f"No AnnData files found matching '*{suffix}.h5ad'.")
 
-    # Clean up memory
-    del adatas
+    combined_path = Path(f"combined_{suffix}.tmp.h5ad")
+    if combined_path.exists():
+        combined_path.unlink()
+
+    # Match anndata/scanpy concat defaults while avoiding a list of full
+    # in-memory AnnData objects plus a second combined copy.
+    concat_on_disk(
+        files,
+        combined_path,
+        axis=0,
+        join="inner",
+        merge=None,
+        uns_merge=None,
+        label=None,
+        keys=None,
+        index_unique=None,
+        pairwise=False,
+    )
+
+    adata = anndata.read_h5ad(combined_path)
+    combined_path.unlink(missing_ok=True)
     gc.collect()
 
     # Clean up index columns if they exist
