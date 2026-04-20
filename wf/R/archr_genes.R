@@ -147,6 +147,97 @@ prepare_resume_seurat_object <- function(obj) {
   rename_cells(list(obj))[[1]]
 }
 
+get_gene_feature_names <- function(gene_matrix) {
+  feature_names <- gene_matrix@elementMetadata$name
+  if (is.null(feature_names)) {
+    feature_names <- SummarizedExperiment::rowData(gene_matrix)$name
+  }
+  feature_names
+}
+
+create_missing_seurat_object <- function(
+  proj,
+  run,
+  spatial_path,
+  chunk_size = 2000
+) {
+  run_id <- run[1]
+  rds_file <- paste0(run_id, "_SeuratObj.rds")
+
+  message("Recreating missing Seurat object for run: ", run_id)
+
+  metadata <- ArchR::getCellColData(ArchRProj = proj)
+  rownames(metadata) <- str_split_fixed(
+    str_split_fixed(
+      row.names(metadata),
+      "#",
+      2
+    )[, 2],
+    "-",
+    2
+  )[, 1]
+  metadata["log10_nFrags"] <- log(metadata$nFrags)
+
+  impute_weights <- ArchR::getImputeWeights(proj)
+  gene_matrix <- ArchR::getMatrixFromProject(
+    ArchRProj = proj,
+    useMatrix = "GeneScoreMatrix",
+    asMatrix = TRUE
+  )
+  gene_row_names <- get_gene_feature_names(gene_matrix)
+
+  gene_assay <- SummarizedExperiment::assay(
+    gene_matrix,
+    "GeneScoreMatrix"
+  )
+  run_cols <- grep(pattern = run_id, colnames(gene_assay))
+  if (length(run_cols) == 0) {
+    stop("No GeneScoreMatrix columns found for missing run: ", run_id)
+  }
+
+  n_chunks <- ceiling(nrow(gene_assay) / chunk_size)
+  imputed_chunks <- vector("list", n_chunks)
+
+  for (i in seq_len(n_chunks)) {
+    start_idx <- (i - 1) * chunk_size + 1
+    end_idx <- min(i * chunk_size, nrow(gene_assay))
+    message(
+      "Imputing missing Seurat object chunk ",
+      i,
+      " of ",
+      n_chunks,
+      " for ",
+      run_id
+    )
+
+    mat_chunk <- gene_assay[start_idx:end_idx, , drop = FALSE]
+    imputed_chunk <- ArchR::imputeMatrix(
+      mat = mat_chunk,
+      imputeWeights = impute_weights
+    )
+    imputed_chunks[[i]] <- imputed_chunk[, run_cols, drop = FALSE]
+    rm(mat_chunk, imputed_chunk)
+    gc(verbose = FALSE, full = TRUE)
+  }
+
+  matrix <- do.call(rbind, imputed_chunks)
+  rownames(matrix) <- gene_row_names
+  rm(imputed_chunks, gene_matrix, gene_assay, impute_weights)
+  gc(verbose = FALSE, full = TRUE)
+
+  obj <- build_atlas_seurat_object(
+    run_id = run_id,
+    matrix = matrix,
+    metadata = metadata,
+    spatial_path = spatial_path
+  )
+  saveRDS(obj, file = rds_file)
+  rm(matrix, metadata)
+  gc(verbose = FALSE, full = TRUE)
+
+  obj
+}
+
 # Set genome size for peak calling ----
 genome_sizes <- list("hg38" = 3.3e+09, "mm10" = 3.0e+09, "rnor6" = 2.9e+09)
 genome_size <- genome_sizes[[genome]]
@@ -220,16 +311,16 @@ if (resume_from_gene_artifacts) {
 
     rds_file <- paste0(run[1], "_SeuratObj.rds")
     if (!file.exists(rds_file)) {
-      stop(
-        "Missing required Seurat object for run '",
-        run[1],
-        "': ",
-        rds_file
+      obj <- create_missing_seurat_object(
+        proj = proj,
+        run = run,
+        spatial_path = run[5]
       )
+    } else {
+      message("Converting ", rds_file, " to h5ad...")
+      obj <- readRDS(rds_file)
     }
 
-    message("Converting ", rds_file, " to h5ad...")
-    obj <- readRDS(rds_file)
     obj <- prepare_resume_seurat_object(obj)
     seurat_to_h5ad(obj, FALSE, paste0(unique(obj$Sample), "_g"))
     rm(obj)
