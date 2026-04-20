@@ -288,7 +288,6 @@ if (resume_from_gene_artifacts) {
   n_samples <- length(unique(proj$Sample))
   n_cond <- length(unique(proj$Condition))
   n_cells <- length(proj$cellNames)
-  empty_feat <- character(0)
 
   copied_h5ads <- copy_gene_artifact_files(
     gene_artifacts_dir,
@@ -477,14 +476,6 @@ gene_matrix <- ArchR::getMatrixFromProject(
 )
 gene_row_names <- gene_matrix@elementMetadata$name
 
-# Identify empty features for filtering volcano plots --
-print("Identifying empty features...")
-empty_feat_idx <- which(Matrix::rowSums(
-  SummarizedExperiment::assay(gene_matrix, "GeneScoreMatrix")
-) == 0)
-empty_feat <- gene_row_names[empty_feat_idx]
-print(paste("Found", length(empty_feat), "empty features"))
-
 # Chunked imputation parameters
 chunk_size <- 2000
 total_features <- nrow(SummarizedExperiment::assay(
@@ -571,228 +562,39 @@ gc(verbose = FALSE, full = TRUE)
 
 }
 
-# Identify marker genes ----
-# Marker genes per cluster, save marker gene rds, csv, heatmap.csv --
-n_clust <- length(unique(proj$Clusters))
-marker_max_cells <- 500
-marker_threads <- 1
-print(paste(
-  "Using maxCells =", marker_max_cells,
-  "and threads =", marker_threads,
-  "for ArchR gene marker tests to limit memory usage."
-))
+# Gene differential statistics -------------------------------------------------
+message("Skipping gene differential statistics for this run.")
+write.csv(empty_result_df(), "ranked_genes_per_cluster.csv", row.names = FALSE)
+write.csv(empty_result_df(), "genes_per_cluster_hm.csv", row.names = FALSE)
+empty_pdf("heatmap_genes.pdf", "Gene differential statistics skipped")
 
-cluster_marker_genes <- get_marker_genes( # from archr.R
-  proj,
-  group_by = "Clusters",
-  markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
-  heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
-  max_cells = marker_max_cells,
-  threads = marker_threads
-)
-
-write.csv(
-  cluster_marker_genes$marker_list,
-  "ranked_genes_per_cluster.csv",
-  row.names = FALSE
-)
-write.csv(cluster_marker_genes$heatmap_gs, "genes_per_cluster_hm.csv")
-
-# Recompute gene heatmap for plotting (transpose, plotLog2FC different) --
-cut_off <- "Pval <= 0.05 & Log2FC >= 0.1"
-
-if (
-  is.null(cluster_marker_genes$markers_gs) ||
-    nrow(cluster_marker_genes$heatmap_gs) == 0 ||
-    ncol(cluster_marker_genes$heatmap_gs) == 0
-) {
-  message("Skipping gene heatmap plot because no cluster marker genes were available.")
-  empty_pdf("heatmap_genes.pdf", "No cluster marker genes available")
-} else {
-  heatmap_gs_plotting <- plotMarkerHeatmap(
-    seMarker = cluster_marker_genes$markers_gs,
-    cutOff = cut_off,
-    transpose = TRUE
-  )
-
-  gene_hm <- ComplexHeatmap::draw(
-    heatmap_gs_plotting,
-    heatmap_legend_side = "bot",
-    annotation_legend_side = "bot",
-    column_title = paste0("Marker genes (", cut_off, ")"),
-    column_title_gp = gpar(fontsize = 12)
-  )
-
-  print("Saving gene heatmap...")
-  pdf("heatmap_genes.pdf")
-  print(gene_hm)
-  dev.off()
-}
-rm(list = intersect(c("cluster_marker_genes", "heatmap_gs_plotting", "gene_hm"), ls()))
-gc(verbose = FALSE, full = TRUE)
-
-# Marker genes per sample, save marker gene rds, csv, heatmap.csv --
 if (n_samples > 1) {
-
-  sample_marker_genes <- get_marker_genes(
-    proj,
-    group_by = "Sample",
-    markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
-    heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
-    max_cells = marker_max_cells,
-    threads = marker_threads
-  )
-
-  write.csv(
-    sample_marker_genes$marker_list,
-    "ranked_genes_per_sample.csv",
-    row.names = FALSE
-  )
-  write.csv(sample_marker_genes$heatmap_gs, "genes_per_sample_hm.csv")
+  write.csv(empty_result_df(), "ranked_genes_per_sample.csv", row.names = FALSE)
+  write.csv(empty_result_df(), "genes_per_sample_hm.csv", row.names = FALSE)
 
   if (length(sample_name_map) > 0) {
-    sample_marker_list_named <- sample_marker_genes$marker_list
-    marker_groups <- names(sample_marker_list_named)
-    if (!is.data.frame(sample_marker_list_named) && !is.null(marker_groups)) {
-      names(sample_marker_list_named) <- remap_sample_ids(
-        marker_groups, sample_name_map
-      )
-    }
     write.csv(
-      sample_marker_list_named,
+      empty_result_df(),
       "ranked_genes_per_sample_name.csv",
       row.names = FALSE
     )
-
-    sample_heatmap_named <- sample_marker_genes$heatmap_gs
-    if (!is.null(colnames(sample_heatmap_named))) {
-      colnames(sample_heatmap_named) <- remap_sample_ids(
-        colnames(sample_heatmap_named), sample_name_map
-      )
-    }
-    if (!is.null(rownames(sample_heatmap_named))) {
-      rownames(sample_heatmap_named) <- remap_sample_ids(
-        rownames(sample_heatmap_named), sample_name_map
-      )
-    }
-    write.csv(
-      sample_heatmap_named,
-      "genes_per_sample_name_hm.csv"
-    )
+    write.csv(empty_result_df(), "genes_per_sample_name_hm.csv", row.names = FALSE)
   }
-
-  rm(list = intersect(
-    c("sample_marker_genes", "sample_marker_list_named", "sample_heatmap_named"),
-    ls()
-  ))
-  gc(verbose = FALSE, full = TRUE)
 }
 
-# Marker genes per treatment, save marker gene rds, csv, heatmap.csv --
 if (n_cond > 1) {
-
   for (i in seq_along(treatment)) {
-
-    treatment_marker_genes <- get_marker_genes(
-      proj,
-      group_by = treatment[i],
-      markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
-      heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
-      max_cells = marker_max_cells,
-      threads = marker_threads
-    )
-
     write.csv(
-      treatment_marker_genes$marker_list,
+      empty_result_df(),
       paste0("ranked_genes_per_condition_", i, ".csv"),
       row.names = FALSE
     )
     write.csv(
-      treatment_marker_genes$heatmap_gs,
-      paste0("genes_per_condition_", i, "_hm.csv")
+      empty_result_df(),
+      paste0("genes_per_condition_", i, "_hm.csv"),
+      row.names = FALSE
     )
-    rm(treatment_marker_genes)
-    gc(verbose = FALSE, full = TRUE)
   }
-}
-
-# Volcano plots for genes ----
-if (n_cond > 1) {
-  for (j in seq_along(treatment)) {
-
-    # Get gene markers df for all clusters together --
-    marker_genes_df <- get_marker_df(
-      proj = proj,
-      group_by = treatment[j],
-      matrix = "GeneScoreMatrix",
-      seq_names = NULL,
-      max_cells = marker_max_cells,
-      test_method = "ttest",
-      diff_metric = "Log2FC",
-      threads = marker_threads
-    )
-
-    # Create a merged marker genes df for clusters for which no condition is
-    # >90% of all cells --
-    req_clusters <- get_required_clusters(proj, treatment[j])
-    marker_genes_by_cluster_df <- get_marker_df_clusters(
-      proj = proj,
-      clusters = req_clusters,
-      group_by = treatment[j],
-      seq_names = "z",
-      matrix = "GeneScoreMatrix",
-      max_cells = marker_max_cells,
-      test_method = "ttest",
-      diff_metric = "Log2FC",
-      threads = marker_threads
-    )
-
-    # Per condition, merge dfs and cleanup data --
-    conditions <- sort(unique(proj@cellColData[treatment[j]][, 1]))
-    for (cond in conditions) {
-
-      volcano_table <- get_volcano_table( # from archr.R
-        marker_genes_df,
-        marker_genes_by_cluster_df,
-        cond,
-        "gene",
-        empty_feat,
-        fc_col = "Log2FC"
-      )
-
-      write.table(
-        volcano_table,
-        paste0(
-          "volcanoMarkers_genes_", j, "_", cond, ".csv"
-        ),
-        sep = ",",
-        quote = FALSE,
-        row.names = FALSE
-      )
-      print(paste0("volcanoMarkers_genes_", j, "_", cond, ".csv is done!"))
-
-      features <- unique(volcano_table$cluster)
-      others <- paste(conditions[conditions != cond], collapse = "|")
-      volcano_plots <- list()
-      for (i in seq_along(features)) {
-        volcano_plots[[i]] <- scvolcano(
-          volcano_table, cond, others, features[[i]], fc_col = "Log2FC"
-        )
-      }
-
-      pdf(paste0("volcano_plots_", cond, ".pdf"))
-      for (plot in volcano_plots) {
-        print(plot)
-      }
-      dev.off()
-      rm(volcano_table, volcano_plots)
-      gc(verbose = FALSE, full = TRUE)
-    }
-    rm(marker_genes_df, marker_genes_by_cluster_df)
-    gc(verbose = FALSE, full = TRUE)
-  }
-} else {
-  print("There are not enough conditions to be compared with!")
 }
 
 saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
