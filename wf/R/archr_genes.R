@@ -316,18 +316,27 @@ gc()
 for (obj in all) {
   seurat_to_h5ad(obj, FALSE, paste0(unique(obj$Sample), "_g"))  # from utils.R
 }
-rm(all)
-gc()
+rm(all, matrix, metadata, gene_row_names)
+gc(verbose = FALSE, full = TRUE)
 
 # Identify marker genes ----
 # Marker genes per cluster, save marker gene rds, csv, heatmap.csv --
 n_clust <- length(unique(proj$Clusters))
+marker_max_cells <- 500
+marker_threads <- 1
+print(paste(
+  "Using maxCells =", marker_max_cells,
+  "and threads =", marker_threads,
+  "for ArchR gene marker tests to limit memory usage."
+))
 
 cluster_marker_genes <- get_marker_genes( # from archr.R
   proj,
   group_by = "Clusters",
   markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
-  heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10"
+  heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
+  max_cells = marker_max_cells,
+  threads = marker_threads
 )
 
 write.csv(
@@ -367,6 +376,8 @@ if (
   print(gene_hm)
   dev.off()
 }
+rm(list = intersect(c("cluster_marker_genes", "heatmap_gs_plotting", "gene_hm"), ls()))
+gc(verbose = FALSE, full = TRUE)
 
 # Marker genes per sample, save marker gene rds, csv, heatmap.csv --
 if (n_samples > 1) {
@@ -375,7 +386,9 @@ if (n_samples > 1) {
     proj,
     group_by = "Sample",
     markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
-    heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10"
+    heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
+    max_cells = marker_max_cells,
+    threads = marker_threads
   )
 
   write.csv(
@@ -416,6 +429,11 @@ if (n_samples > 1) {
     )
   }
 
+  rm(list = intersect(
+    c("sample_marker_genes", "sample_marker_list_named", "sample_heatmap_named"),
+    ls()
+  ))
+  gc(verbose = FALSE, full = TRUE)
 }
 
 # Marker genes per treatment, save marker gene rds, csv, heatmap.csv --
@@ -427,7 +445,9 @@ if (n_cond > 1) {
       proj,
       group_by = treatment[i],
       markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
-      heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10"
+      heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10",
+      max_cells = marker_max_cells,
+      threads = marker_threads
     )
 
     write.csv(
@@ -439,6 +459,8 @@ if (n_cond > 1) {
       treatment_marker_genes$heatmap_gs,
       paste0("genes_per_condition_", i, "_hm.csv")
     )
+    rm(treatment_marker_genes)
+    gc(verbose = FALSE, full = TRUE)
   }
 }
 
@@ -452,9 +474,10 @@ if (n_cond > 1) {
       group_by = treatment[j],
       matrix = "GeneScoreMatrix",
       seq_names = NULL,
-      max_cells = n_cells,  # Equals total cells in project
+      max_cells = marker_max_cells,
       test_method = "ttest",
-      diff_metric = "Log2FC"
+      diff_metric = "Log2FC",
+      threads = marker_threads
     )
 
     # Create a merged marker genes df for clusters for which no condition is
@@ -466,8 +489,10 @@ if (n_cond > 1) {
       group_by = treatment[j],
       seq_names = "z",
       matrix = "GeneScoreMatrix",
+      max_cells = marker_max_cells,
       test_method = "ttest",
-      diff_metric = "Log2FC"
+      diff_metric = "Log2FC",
+      threads = marker_threads
     )
 
     # Per condition, merge dfs and cleanup data --
@@ -508,7 +533,11 @@ if (n_cond > 1) {
         print(plot)
       }
       dev.off()
+      rm(volcano_table, volcano_plots)
+      gc(verbose = FALSE, full = TRUE)
     }
+    rm(marker_genes_df, marker_genes_by_cluster_df)
+    gc(verbose = FALSE, full = TRUE)
   }
 } else {
   print("There are not enough conditions to be compared with!")

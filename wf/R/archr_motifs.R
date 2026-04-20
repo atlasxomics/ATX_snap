@@ -447,6 +447,7 @@ if (n_cond > 1) {
       group_by =  treatment[j],
       seq_names = "z",
       matrix = "MotifMatrix",
+      max_cells = 5000,
       test_method = "wilcoxon",
       diff_metric = "MeanDiff"
     )
