@@ -5,7 +5,7 @@ import shutil
 import subprocess
 
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 import snapatac2 as snap
 
@@ -22,6 +22,63 @@ import wf.plotting as pl
 import wf.preprocessing as pp
 import wf.spatial as sp
 import wf.utils as utils
+
+
+def _dirs_for_base(base_dir: Path) -> Dict[str, Path]:
+    figures_dir = base_dir / "figures"
+    tables_dir = base_dir / "tables"
+
+    for directory in [base_dir, figures_dir, tables_dir]:
+        directory.mkdir(parents=True, exist_ok=True)
+
+    return {
+        "base": base_dir,
+        "figures": figures_dir,
+        "tables": tables_dir,
+    }
+
+
+def _copy_required_input_tables(data_paths: Dict[str, str], tables_dir: Path) -> None:
+    tables_dir.mkdir(parents=True, exist_ok=True)
+
+    for local_path in data_paths.values():
+        source = Path(local_path)
+        if not source.exists():
+            logging.warning(f"Input table does not exist and was not copied: {source}")
+            continue
+
+        destination = tables_dir / source.name
+        try:
+            if source.resolve() == destination.resolve():
+                continue
+        except FileNotFoundError:
+            pass
+
+        shutil.copy2(source, destination)
+
+
+def _copy_directory_contents(source_dir: Path, destination_dir: Path) -> None:
+    destination_dir.mkdir(parents=True, exist_ok=True)
+
+    if not source_dir.exists():
+        logging.warning(f"Directory does not exist and was not copied: {source_dir}")
+        return
+
+    for source in source_dir.iterdir():
+        destination = destination_dir / source.name
+        if source.is_dir():
+            if destination.exists():
+                shutil.rmtree(destination)
+            shutil.copytree(source, destination)
+        else:
+            shutil.copy2(source, destination)
+
+
+def _gene_stats_run_args(runs: List[utils.Run]) -> List[str]:
+    return [
+        f"{run.run_id},{run.sample_name}"
+        for run in runs
+    ]
 
 
 @custom_task(cpu=62, memory=512, storage_gib=1000)
@@ -236,12 +293,12 @@ def genes_task(
 
     # Read in data tables
     data_paths = utils.get_data_paths(results_dir)
-    groups = utils.get_groups(runs)
 
     genome = genome.value
 
     # Create output dirs
     dirs = utils.create_output_directories(project_name)
+    _copy_required_input_tables(data_paths, dirs["tables"])
 
     logging.info("Running ArchR analysis...")
     # run subprocess R script to make .h5ad file
@@ -288,8 +345,36 @@ def genes_task(
     _archr_cmd.extend(runs)
     subprocess.run(_archr_cmd, check=True)
 
+    # Stage ArchRProject, Seurat objects, per-run h5ads, and R-side tables.
+    utils.organize_outputs(project_name, dirs)
+
+    logging.info("Uploading gene-stage artifacts to Latch...")
+    return LatchDir(str(dirs['base']), results_dir.remote_path)
+
+
+@custom_task(cpu=16, memory=975, storage_gib=2000)
+def combine_gene_h5ads_task(
+    runs: List[utils.Run],
+    results_dir: LatchDir,
+    gene_results_dir: LatchDir,
+    project_name: str,
+) -> LatchDir:
+
+    # Read in data tables from the original make_adata output.
+    data_paths = utils.get_data_paths(results_dir)
+    groups = utils.get_groups(runs)
+
+    # Continue in the uploaded gene artifact directory so a combine failure
+    # does not discard the already-materialized Seurat and per-run h5ad files.
+    dirs = _dirs_for_base(Path(gene_results_dir.local_path))
+    _copy_required_input_tables(data_paths, dirs["tables"])
+
     # Load and combine data
-    adata_gene = ft.load_and_combine_data("g_converted")
+    adata_gene = ft.load_and_combine_data(
+        "g_converted",
+        input_dir=dirs["base"],
+        temp_dir=dirs["base"],
+    )
 
     # Transfer auxiliary data to combined AnnData
     ft.transfer_auxiliary_data(adata_gene, data_paths, groups)
@@ -301,16 +386,102 @@ def genes_task(
     )
 
     # Load differential analysis results
-    ft.load_analysis_results(adata_gene, "gene", groups)
-
-    # Organize outputs
-    utils.organize_outputs(project_name, dirs, exclude_pattern="*_hm.csv")
+    ft.load_analysis_results(
+        adata_gene,
+        "gene",
+        groups,
+        input_dir=dirs["tables"],
+    )
 
     # Save AnnData
     ft.save_anndata_objects(adata_gene, "_ge", dirs["base"])
 
     logging.info("Uploading data to Latch...")
     return LatchDir(str(dirs['base']), results_dir.remote_path)
+
+
+@custom_task(cpu=50, memory=975, storage_gib=2000)
+def gene_stats_task(
+    runs: List[utils.Run],
+    results_dir: LatchDir,
+    project_name: str,
+    gene_stats_threads: int,
+) -> LatchDir:
+
+    local_results = Path(results_dir.local_path)
+    archrproj_path = local_results / f"{project_name}_ArchRProject"
+    if not archrproj_path.exists():
+        raise FileNotFoundError(
+            f"Could not find ArchRProject at {archrproj_path}. "
+            "Run this task against a completed ATX_snap results directory."
+        )
+
+    marker_threads = max(1, min(int(gene_stats_threads), 50))
+    if marker_threads != gene_stats_threads:
+        logging.warning(
+            f"Clamping gene_stats_threads from {gene_stats_threads} to "
+            f"{marker_threads}; this task reserves at most 50 CPUs."
+        )
+
+    output_dir = Path(f"/root/{project_name}_gene_stats")
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    logging.info(
+        f"Running full gene differential statistics with {marker_threads} thread(s)."
+    )
+    _gene_stats_cmd = [
+        "Rscript",
+        "/root/wf/R/archr_gene_stats.R",
+        project_name,
+        str(archrproj_path),
+        str(output_dir),
+        str(marker_threads),
+    ]
+    _gene_stats_cmd.extend(_gene_stats_run_args(runs))
+    subprocess.run(_gene_stats_cmd, check=True)
+
+    logging.info("Uploading gene differential statistics to Latch...")
+    return LatchDir(str(output_dir), f"{results_dir.remote_path}/gene_stats")
+
+
+@custom_task(cpu=8, memory=975, storage_gib=2000)
+def patch_gene_stats_task(
+    runs: List[utils.Run],
+    results_dir: LatchDir,
+    gene_stats_dir: LatchDir,
+    project_name: str,
+) -> LatchDir:
+    import anndata
+
+    local_results = Path(results_dir.local_path)
+    dirs = _dirs_for_base(local_results)
+    stats_dir = Path(gene_stats_dir.local_path)
+
+    _copy_directory_contents(stats_dir / "tables", dirs["tables"])
+    _copy_directory_contents(stats_dir / "figures", dirs["figures"])
+
+    adata_path = local_results / "combined_sm_ge.h5ad"
+    if not adata_path.exists():
+        raise FileNotFoundError(
+            f"Could not find combined_sm_ge.h5ad at {adata_path}."
+        )
+
+    logging.info(f"Patching gene statistics into {adata_path}...")
+    adata_gene_sm = anndata.read_h5ad(adata_path)
+    ft.load_analysis_results(
+        adata_gene_sm,
+        "gene",
+        utils.get_groups(runs),
+        input_dir=dirs["tables"],
+    )
+
+    ft._sanitize_uns_for_h5ad(adata_gene_sm.uns)
+    adata_gene_sm.write(adata_path)
+
+    logging.info("Uploading patched results to Latch...")
+    return LatchDir(str(local_results), results_dir.remote_path)
 
 
 @custom_task(cpu=50, memory=975, storage_gib=2000)

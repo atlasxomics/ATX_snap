@@ -155,6 +155,96 @@ get_gene_feature_names <- function(gene_matrix) {
   feature_names
 }
 
+get_impute_weight_files <- function(impute_weights) {
+  if (is.null(impute_weights) || length(impute_weights) == 0) {
+    return(character(0))
+  }
+
+  weight_files <- unlist(impute_weights$Weights, use.names = FALSE)
+  if (!is.character(weight_files)) {
+    return(character(0))
+  }
+
+  weight_files[!is.na(weight_files) & nzchar(weight_files)]
+}
+
+repair_impute_weight_paths <- function(proj) {
+  impute_weights <- ArchR::getImputeWeights(proj)
+  weight_files <- get_impute_weight_files(impute_weights)
+
+  if (length(weight_files) == 0 || all(file.exists(weight_files))) {
+    return(proj)
+  }
+
+  weights <- impute_weights$Weights
+  weight_dir <- file.path(ArchR::getOutputDirectory(proj), "ImputeWeights")
+  repaired <- FALSE
+
+  for (i in seq_along(weights)) {
+    weight_file <- weights[[i]]
+    if (!is.character(weight_file) || file.exists(weight_file)) {
+      next
+    }
+
+    candidate <- file.path(weight_dir, basename(weight_file))
+    if (file.exists(candidate)) {
+      message("Repointing impute weight file to: ", candidate)
+      weights[[i]] <- candidate
+      repaired <- TRUE
+    }
+  }
+
+  if (repaired) {
+    impute_weights$Weights <- weights
+    proj@imputeWeights <- impute_weights
+  }
+
+  proj
+}
+
+select_impute_reduced_dims <- function(proj) {
+  reduced_dims <- names(proj@reducedDims)
+  preferred <- c("Spectral", "IterativeLSI", "Harmony")
+
+  for (rd_name in preferred) {
+    if (rd_name %in% reduced_dims) {
+      return(rd_name)
+    }
+  }
+
+  if (length(reduced_dims) > 0) {
+    return(reduced_dims[[1]])
+  }
+
+  stop("No reducedDims found in ArchRProject; cannot add impute weights.")
+}
+
+ensure_valid_impute_weights <- function(proj) {
+  proj <- repair_impute_weight_paths(proj)
+
+  impute_weights <- ArchR::getImputeWeights(proj)
+  weight_files <- get_impute_weight_files(impute_weights)
+  needs_rebuild <- (
+    is.null(impute_weights) ||
+      length(impute_weights) == 0 ||
+      (length(weight_files) > 0 && any(!file.exists(weight_files)))
+  )
+
+  if (!needs_rebuild) {
+    return(proj)
+  }
+
+  rd_name <- select_impute_reduced_dims(proj)
+  message(
+    "Impute weights are missing or invalid; rebuilding with reducedDims = ",
+    rd_name
+  )
+  proj <- ArchR::addImputeWeights(proj, reducedDims = rd_name)
+  gc(verbose = FALSE, full = TRUE)
+
+  proj
+}
+
 create_missing_seurat_object <- function(
   proj,
   run,
@@ -300,6 +390,23 @@ if (resume_from_gene_artifacts) {
 
   message("Copied ", length(copied_h5ads), " existing gene h5ad file(s).")
   message("Copied ", length(copied_rds), " Seurat object RDS file(s).")
+
+  missing_seurat_runs <- c()
+  for (run in runs) {
+    h5ad_file <- paste0(run[1], "_g_converted.h5ad")
+    rds_file <- paste0(run[1], "_SeuratObj.rds")
+    if (!file.exists(h5ad_file) && !file.exists(rds_file)) {
+      missing_seurat_runs <- c(missing_seurat_runs, run[1])
+    }
+  }
+
+  if (length(missing_seurat_runs) > 0) {
+    message(
+      "Missing Seurat object(s) require imputation for run(s): ",
+      paste(missing_seurat_runs, collapse = ", ")
+    )
+    proj <- ensure_valid_impute_weights(proj)
+  }
 
   for (run in runs) {
     h5ad_file <- paste0(run[1], "_g_converted.h5ad")

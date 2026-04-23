@@ -8,8 +8,11 @@ from latch.types.metadata import (
 
 # from wf.task import registry_task, snap_task
 from wf.task import (
+    combine_gene_h5ads_task,
+    gene_stats_task,
     genes_task,
     motifs_task,
+    patch_gene_stats_task,
     registry_task,
 )
 from atx_common import Genome
@@ -69,37 +72,119 @@ metadata = LatchMetadata(
 )
 
 
-@workflow(metadata)
+gene_stats_metadata = LatchMetadata(
+    display_name="atx_snap_gene_stats_patch",
+    author=LatchAuthor(
+        name="James McGann",
+        email="jamesm@atlasxomics.com",
+        github="github.com/atlasxomics",
+    ),
+    repository="https://github.com/atlasxomics/ATX_snap",
+    license="MIT",
+    parameters={
+        "runs": LatchParameter(
+            display_name="runs",
+            description="Runs from the completed ATX_snap launch. Sample names \
+                are used to recreate sample-name gene statistic outputs.",
+            batch_table_column=True,
+            samplesheet=True,
+        ),
+        "project_name": LatchParameter(
+            display_name="project name",
+            description="Project name used for the completed ATX_snap output.",
+            batch_table_column=True,
+            rules=[
+                LatchRule(
+                    regex="^[^/].*", message="project name cannot start with a '/'"
+                )
+            ],
+        ),
+        "results_dir": LatchParameter(
+            display_name="completed ATX_snap results directory",
+            description="Completed results directory containing \
+                `<project>_ArchRProject` and `combined_sm_ge.h5ad`.",
+            batch_table_column=True,
+        ),
+        "gene_stats_threads": LatchParameter(
+            display_name="gene statistics threads",
+            description="Number of ArchR threads to use while running the \
+                post-hoc gene differential statistics. Values above 50 are \
+                clamped to 50 by the task.",
+            batch_table_column=True,
+        ),
+    },
+)
+
+
+# @workflow(metadata)
+# def snap_workflow(
+#     runs: List[Run],
+#     genome: Genome,
+#     project_name: str,
+#     results_dir: LatchDir,
+#     gene_artifacts_dir: LatchDir,
+# ) -> None:
+#     """
+#     Temporary entrypoint that skips `make_adata` and resumes from an existing
+#     results directory produced by that task. The gene stage is split so
+#     per-run Seurat and h5ad artifacts are uploaded before the combined gene
+#     h5ad is built.
+#     """
+
+#     gene_results = genes_task(
+#         runs=runs,
+#         results_dir=results_dir,
+#         gene_artifacts_dir=gene_artifacts_dir,
+#         project_name=project_name,
+#         genome=genome,
+#     )
+
+#     results_ge = combine_gene_h5ads_task(
+#         runs=runs,
+#         results_dir=results_dir,
+#         gene_results_dir=gene_results,
+#         project_name=project_name,
+#     )
+
+#     outdir_motifs = motifs_task(
+#         runs=runs,
+#         results_dir=results_ge,
+#         project_name=project_name,
+#         genome=genome,
+#     )
+
+#     uploaded_results = registry_task(runs=runs, results=outdir_motifs)
+
+#     return uploaded_results
+
+
+@workflow(gene_stats_metadata)
 def snap_workflow(
     runs: List[Run],
-    genome: Genome,
     project_name: str,
     results_dir: LatchDir,
-    gene_artifacts_dir: LatchDir,
-) -> None:
+    gene_stats_threads: int = 1,
+) -> LatchDir:
     """
-    Temporary entrypoint that skips `make_adata` and resumes from an existing
-    results directory produced by that task.
+    Post-hoc workflow for running the skipped gene differential statistics and
+    patching the real outputs into `combined_sm_ge.h5ad`.
     """
 
-    results_ge = genes_task(
+    gene_stats = gene_stats_task(
         runs=runs,
         results_dir=results_dir,
-        gene_artifacts_dir=gene_artifacts_dir,
         project_name=project_name,
-        genome=genome,
+        gene_stats_threads=gene_stats_threads,
     )
 
-    outdir_motifs = motifs_task(
+    patched_results = patch_gene_stats_task(
         runs=runs,
-        results_dir=results_ge,
+        results_dir=results_dir,
+        gene_stats_dir=gene_stats,
         project_name=project_name,
-        genome=genome,
     )
 
-    uploaded_results = registry_task(runs=runs, results=outdir_motifs)
-
-    return uploaded_results
+    return patched_results
 
 
 if __name__ == "__main__":
