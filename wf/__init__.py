@@ -85,12 +85,6 @@ metadata = LatchMetadata(
             "for tile matrix.",
             batch_table_column=True,
         ),
-        "gene_stats_threads": LatchParameter(
-            display_name="gene statistics threads",
-            description="Number of ArchR threads to use while running gene "
-            "differential statistics. Values above 50 are clamped to 50.",
-            batch_table_column=True,
-        ),
         "leiden_iters": LatchParameter(
             display_name="leiden iterations",
             description="Number of iterations for the leiden algorithm.",
@@ -139,7 +133,6 @@ def snap_workflow(
     n_comps: int = 30,
     resolution: float = 1.0,
     clustering_iters: int = 1,
-    gene_stats_threads: int = 25,
     leiden_iters: int = -1,
     min_cluster_size: int = 20,
     min_tss: float = 2.0,
@@ -191,7 +184,6 @@ def snap_workflow(
         runs=runs,
         results_dir=results_motifs,
         project_name=project_name,
-        gene_stats_threads=gene_stats_threads,
     )
 
     uploaded_results = registry_task(runs=runs, results=results_with_gene_stats)

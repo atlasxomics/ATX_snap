@@ -403,7 +403,6 @@ def gene_stats_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
     project_name: str,
-    gene_stats_threads: int,
 ) -> LatchDir:
 
     import anndata
@@ -417,12 +416,7 @@ def gene_stats_task(
             "Run this task after the gene and motif artifact tasks."
         )
 
-    marker_threads = max(1, min(int(gene_stats_threads), 25))
-    if marker_threads != gene_stats_threads:
-        logging.warning(
-            f"Clamping gene_stats_threads from {gene_stats_threads} to "
-            f"{marker_threads}; this task reserves at most 50 CPUs."
-        )
+    marker_threads = 25
 
     output_dir = Path(f"/root/{project_name}_gene_stats")
     if output_dir.exists():
