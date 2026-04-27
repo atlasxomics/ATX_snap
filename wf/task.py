@@ -282,11 +282,10 @@ def make_adata(
     return LatchDir(result_dir, output_dir), groups
 
 
-@custom_task(cpu=50, memory=975, storage_gib=2000)
+@custom_task(cpu=30, memory=700, storage_gib=2000)
 def genes_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
-    gene_artifacts_dir: LatchDir,
     project_name: str,
     genome: utils.Genome,
 ) -> LatchDir:
@@ -309,7 +308,6 @@ def genes_task(
         genome,
         data_paths['obs'],
         data_paths['spectral'],
-        gene_artifacts_dir.local_path,
     ]
 
     position_files = {}
@@ -352,7 +350,7 @@ def genes_task(
     return LatchDir(str(dirs['base']), results_dir.remote_path)
 
 
-@custom_task(cpu=16, memory=975, storage_gib=2000)
+@custom_task(cpu=16, memory=512, storage_gib=2000)
 def combine_gene_h5ads_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
@@ -400,7 +398,7 @@ def combine_gene_h5ads_task(
     return LatchDir(str(dirs['base']), results_dir.remote_path)
 
 
-@custom_task(cpu=50, memory=975, storage_gib=2000)
+@custom_task(cpu=26, memory=700, storage_gib=2000)
 def gene_stats_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
@@ -408,15 +406,18 @@ def gene_stats_task(
     gene_stats_threads: int,
 ) -> LatchDir:
 
+    import anndata
+
     local_results = Path(results_dir.local_path)
+    dirs = _dirs_for_base(local_results)
     archrproj_path = local_results / f"{project_name}_ArchRProject"
     if not archrproj_path.exists():
         raise FileNotFoundError(
             f"Could not find ArchRProject at {archrproj_path}. "
-            "Run this task against a completed ATX_snap results directory."
+            "Run this task after the gene and motif artifact tasks."
         )
 
-    marker_threads = max(1, min(int(gene_stats_threads), 50))
+    marker_threads = max(1, min(int(gene_stats_threads), 25))
     if marker_threads != gene_stats_threads:
         logging.warning(
             f"Clamping gene_stats_threads from {gene_stats_threads} to "
@@ -442,25 +443,8 @@ def gene_stats_task(
     _gene_stats_cmd.extend(_gene_stats_run_args(runs))
     subprocess.run(_gene_stats_cmd, check=True)
 
-    logging.info("Uploading gene differential statistics to Latch...")
-    return LatchDir(str(output_dir), f"{results_dir.remote_path}/gene_stats")
-
-
-@custom_task(cpu=8, memory=975, storage_gib=2000)
-def patch_gene_stats_task(
-    runs: List[utils.Run],
-    results_dir: LatchDir,
-    gene_stats_dir: LatchDir,
-    project_name: str,
-) -> LatchDir:
-    import anndata
-
-    local_results = Path(results_dir.local_path)
-    dirs = _dirs_for_base(local_results)
-    stats_dir = Path(gene_stats_dir.local_path)
-
-    _copy_directory_contents(stats_dir / "tables", dirs["tables"])
-    _copy_directory_contents(stats_dir / "figures", dirs["figures"])
+    _copy_directory_contents(output_dir / "tables", dirs["tables"])
+    _copy_directory_contents(output_dir / "figures", dirs["figures"])
 
     adata_path = local_results / "combined_sm_ge.h5ad"
     if not adata_path.exists():
@@ -480,11 +464,11 @@ def patch_gene_stats_task(
     ft._sanitize_uns_for_h5ad(adata_gene_sm.uns)
     adata_gene_sm.write(adata_path)
 
-    logging.info("Uploading patched results to Latch...")
+    logging.info("Uploading results with gene differential statistics to Latch...")
     return LatchDir(str(local_results), results_dir.remote_path)
 
 
-@custom_task(cpu=50, memory=975, storage_gib=2000)
+@custom_task(cpu=50, memory=512, storage_gib=1000)
 def motifs_task(
     runs: List[utils.Run],
     results_dir: LatchDir,

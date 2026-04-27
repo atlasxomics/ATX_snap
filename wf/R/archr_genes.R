@@ -38,7 +38,9 @@ gene_artifacts_dir <- if (length(args) >= 5) args[5] else ""
 resume_from_gene_artifacts <- (
   !is.na(gene_artifacts_dir) &&
     nzchar(gene_artifacts_dir) &&
-    tolower(gene_artifacts_dir) != "none"
+    tolower(gene_artifacts_dir) != "none" &&
+    !grepl(",", gene_artifacts_dir, fixed = TRUE) &&
+    dir.exists(gene_artifacts_dir)
 )
 tile_size <- 5000
 min_tss <- 0  # Use filtering from SnapATAC2
@@ -219,6 +221,32 @@ select_impute_reduced_dims <- function(proj) {
   stop("No reducedDims found in ArchRProject; cannot add impute weights.")
 }
 
+add_project_impute_weights <- function(proj, rd_name) {
+  n_cells <- length(proj$cellNames)
+  if (n_cells < 2) {
+    stop(
+      "Cannot add ArchR impute weights with fewer than 2 cells after filtering."
+    )
+  }
+
+  impute_k <- min(15, n_cells - 1)
+  if (impute_k < 15) {
+    message(
+      "Using addImputeWeights(k = ",
+      impute_k,
+      ") because only ",
+      n_cells,
+      " cells are available after filtering."
+    )
+  }
+
+  ArchR::addImputeWeights(
+    proj,
+    reducedDims = rd_name,
+    k = impute_k
+  )
+}
+
 ensure_valid_impute_weights <- function(proj) {
   proj <- repair_impute_weight_paths(proj)
 
@@ -239,7 +267,7 @@ ensure_valid_impute_weights <- function(proj) {
     "Impute weights are missing or invalid; rebuilding with reducedDims = ",
     rd_name
   )
-  proj <- ArchR::addImputeWeights(proj, reducedDims = rd_name)
+  proj <- add_project_impute_weights(proj, rd_name)
   gc(verbose = FALSE, full = TRUE)
 
   proj
@@ -548,7 +576,7 @@ if (file.exists(embedding_path)) {
 }
 
 # Impute weights --------------------------------------------------------------
-proj <- ArchR::addImputeWeights(proj, reducedDims = rd_name)
+proj <- add_project_impute_weights(proj, rd_name)
 
 saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
 
