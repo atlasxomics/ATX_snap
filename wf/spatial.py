@@ -1,5 +1,6 @@
 import anndata
 import logging
+import numpy as np
 from pathlib import Path
 from typing import Optional
 
@@ -47,14 +48,31 @@ def squidpy_analysis(
 
     if not adata.obs[cluster_key].dtype.name == "category":
         adata.obs[cluster_key] = adata.obs["cluster"].astype("category")
+    else:
+        adata.obs[cluster_key] = adata.obs[cluster_key].cat.remove_unused_categories()
 
     if sample_key:
         if not adata.obs[sample_key].dtype.name == "category":
             adata.obs[sample_key] = adata.obs[sample_key].astype("category")
+        else:
+            adata.obs[sample_key] = adata.obs[sample_key].cat.remove_unused_categories()
 
+    n_clusters = len(adata.obs[cluster_key].cat.categories)
     spatial_neighbors(
         adata, coord_type="grid", n_neighs=4, n_rings=1, library_key=sample_key
     )
+    if n_clusters < 2:
+        logging.warning(
+            "Skipping Squidpy neighborhood enrichment because only "
+            f"{n_clusters} cluster is present."
+        )
+        adata.uns[f"{cluster_key}_nhood_enrichment"] = {
+            "zscore": np.zeros((n_clusters, n_clusters), dtype=float),
+            "count": np.zeros((n_clusters, n_clusters), dtype=float),
+            "skipped": "fewer_than_two_clusters",
+        }
+        return adata
+
     nhood_enrichment(
         adata, cluster_key=cluster_key, library_key=sample_key, seed=42
     )

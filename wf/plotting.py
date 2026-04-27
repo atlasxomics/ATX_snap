@@ -106,6 +106,14 @@ def _plot_nhood_enrichment(
 ):
     from squidpy.pl import nhood_enrichment
 
+    result = adata.uns.get(f"{cluster_key}_nhood_enrichment")
+    if isinstance(result, dict) and result.get("skipped") == "fewer_than_two_clusters":
+        logging.warning(
+            "Skipping neighborhood enrichment plot because fewer than two "
+            "clusters are present."
+        )
+        return None
+
     _sanitize_nhood_enrichment(adata, cluster_key=cluster_key)
     try:
         return nhood_enrichment(
@@ -281,6 +289,8 @@ def plot_neighborhoods(
                     filtered_adatas[sg],
                     title=f"{group} {sg}: Neighborhood enrichment",
                 )
+                if fig is None:
+                    continue
                 pdf.savefig(fig, bbox_inches="tight")
                 plt.close(fig)
 
@@ -289,6 +299,8 @@ def plot_neighborhoods(
                 adata,
                 title="All cells: Neighborhood enrichment",
             )
+            if fig is None:
+                return
 
             pdf.savefig(fig, bbox_inches="tight")
             plt.close(fig)
