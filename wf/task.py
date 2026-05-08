@@ -5,7 +5,7 @@ import shutil
 import subprocess
 
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Set
 
 import snapatac2 as snap
 
@@ -72,6 +72,62 @@ def _copy_directory_contents(source_dir: Path, destination_dir: Path) -> None:
             shutil.copytree(source, destination)
         else:
             shutil.copy2(source, destination)
+
+
+def _copy_directory_delta(
+    source_dir: Path,
+    destination_dir: Path,
+    skip_relative_paths: Set[Path],
+) -> None:
+    destination_dir.mkdir(parents=True, exist_ok=True)
+
+    if not source_dir.exists():
+        logging.warning(f"Directory does not exist and was not copied: {source_dir}")
+        return
+
+    for source in source_dir.rglob("*"):
+        if not source.is_file():
+            continue
+
+        relative_path = source.relative_to(source_dir)
+        if relative_path in skip_relative_paths:
+            continue
+
+        destination = destination_dir / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+
+
+def _copy_relative_files(
+    source_dir: Path,
+    destination_dir: Path,
+    relative_paths: List[Path],
+) -> None:
+    destination_dir.mkdir(parents=True, exist_ok=True)
+
+    for relative_path in relative_paths:
+        source = source_dir / relative_path
+        if not source.exists():
+            logging.warning(f"Expected stage output does not exist: {source}")
+            continue
+
+        destination = destination_dir / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if source.is_dir():
+            if destination.exists():
+                shutil.rmtree(destination)
+            shutil.copytree(source, destination)
+            continue
+
+        shutil.copy2(source, destination)
+
+
+def _fresh_stage_dir(project_name: str, stage_name: str) -> Path:
+    stage_dir = Path(f"/root/{project_name}_{stage_name}_stage")
+    if stage_dir.exists():
+        shutil.rmtree(stage_dir)
+    stage_dir.mkdir(parents=True, exist_ok=True)
+    return stage_dir
 
 
 def _gene_stats_run_args(runs: List[utils.Run]) -> List[str]:
@@ -346,8 +402,20 @@ def genes_task(
     # Stage ArchRProject, Seurat objects, per-run h5ads, and R-side tables.
     utils.organize_outputs(project_name, dirs)
 
+    delta_dir = _fresh_stage_dir(project_name, "genes_delta")
+    _copy_directory_delta(
+        dirs["base"],
+        delta_dir,
+        {
+            Path("tables/obs.csv"),
+            Path("tables/spatial.csv"),
+            Path("tables/X_umap.csv"),
+            Path("tables/spectral.csv"),
+        },
+    )
+
     logging.info("Uploading gene-stage artifacts to Latch...")
-    return LatchDir(str(dirs['base']), results_dir.remote_path)
+    return LatchDir(str(delta_dir), results_dir.remote_path)
 
 
 @custom_task(cpu=16, memory=512, storage_gib=2000)
@@ -394,27 +462,49 @@ def combine_gene_h5ads_task(
     # Save AnnData
     ft.save_anndata_objects(adata_gene, "_ge", dirs["base"])
 
-    logging.info("Uploading data to Latch...")
-    return LatchDir(str(dirs['base']), results_dir.remote_path)
+    delta_dir = _fresh_stage_dir(project_name, "gene_expression_delta")
+    _copy_relative_files(
+        dirs["base"],
+        delta_dir,
+        [
+            Path("combined_ge.h5ad"),
+            Path("combined_sm_ge.h5ad"),
+            Path("figures/all_neighborhoods.pdf"),
+        ],
+    )
+
+    logging.info("Uploading gene-expression stage artifacts to Latch...")
+    return LatchDir(str(delta_dir), results_dir.remote_path)
 
 
 @custom_task(cpu=26, memory=700, storage_gib=2000)
 def gene_stats_task(
     runs: List[utils.Run],
-    results_dir: LatchDir,
+    gene_results_dir: LatchDir,
+    gene_expression_results_dir: LatchDir,
+    results_root: LatchDir,
     project_name: str,
 ) -> LatchDir:
 
     import anndata
 
-    local_results = Path(results_dir.local_path)
-    dirs = _dirs_for_base(local_results)
-    archrproj_path = local_results / f"{project_name}_ArchRProject"
+    local_gene_results = Path(gene_results_dir.local_path)
+    local_gene_expression = Path(gene_expression_results_dir.local_path)
+    archrproj_path = local_gene_results / f"{project_name}_ArchRProject"
     if not archrproj_path.exists():
         raise FileNotFoundError(
             f"Could not find ArchRProject at {archrproj_path}. "
-            "Run this task after the gene and motif artifact tasks."
+            "Run this task after the gene artifact task."
         )
+
+    source_adata_path = local_gene_expression / "combined_sm_ge.h5ad"
+    if not source_adata_path.exists():
+        raise FileNotFoundError(
+            f"Could not find combined_sm_ge.h5ad at {source_adata_path}."
+        )
+
+    delta_dir = _fresh_stage_dir(project_name, "gene_stats_delta")
+    dirs = _dirs_for_base(delta_dir)
 
     marker_threads = 25
 
@@ -440,11 +530,8 @@ def gene_stats_task(
     _copy_directory_contents(output_dir / "tables", dirs["tables"])
     _copy_directory_contents(output_dir / "figures", dirs["figures"])
 
-    adata_path = local_results / "combined_sm_ge.h5ad"
-    if not adata_path.exists():
-        raise FileNotFoundError(
-            f"Could not find combined_sm_ge.h5ad at {adata_path}."
-        )
+    adata_path = delta_dir / "combined_sm_ge.h5ad"
+    shutil.copy2(source_adata_path, adata_path)
 
     logging.info(f"Patching gene statistics into {adata_path}...")
     adata_gene_sm = anndata.read_h5ad(adata_path)
@@ -459,13 +546,14 @@ def gene_stats_task(
     adata_gene_sm.write(adata_path)
 
     logging.info("Uploading results with gene differential statistics to Latch...")
-    return LatchDir(str(local_results), results_dir.remote_path)
+    return LatchDir(str(delta_dir), results_root.remote_path)
 
 
 @custom_task(cpu=50, memory=512, storage_gib=1000)
 def motifs_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
+    gene_results_dir: LatchDir,
     project_name: str,
     genome: utils.Genome,
 ) -> LatchDir:
@@ -480,7 +568,9 @@ def motifs_task(
     dirs = utils.create_output_directories(project_name)
 
     # Download ArchRProject
-    archrproj_path = f"{results_dir.remote_path}/{project_name}_ArchRProject"
+    archrproj_path = (
+        f"{gene_results_dir.remote_path.rstrip('/')}/{project_name}_ArchRProject"
+    )
     archrproj_path = LatchDir(archrproj_path).local_path
 
     logging.info("Running ArchR analysis...")
@@ -577,6 +667,23 @@ def motifs_task(
 
     logging.info("Uploading data to Latch...")
     return LatchDir(str(dirs['base']), results_dir.remote_path)
+
+
+@small_task(cache=True)
+def complete_results_task(
+    base_results_dir: LatchDir,
+    gene_results_dir: LatchDir,
+    gene_expression_results_dir: LatchDir,
+    gene_stats_results_dir: LatchDir,
+    motif_results_dir: LatchDir,
+) -> LatchDir:
+    _ = (
+        gene_results_dir,
+        gene_expression_results_dir,
+        gene_stats_results_dir,
+        motif_results_dir,
+    )
+    return base_results_dir
 
 
 @small_task(cache=True)

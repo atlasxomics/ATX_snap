@@ -12,6 +12,7 @@ from latch.types.metadata import (
 
 from wf.task import (
     combine_gene_h5ads_task,
+    complete_results_task,
     gene_stats_task,
     genes_task,
     make_adata,
@@ -175,17 +176,28 @@ def snap_workflow(
 
     results_motifs = motifs_task(
         runs=runs,
-        results_dir=results_ge,
+        results_dir=results,
+        gene_results_dir=gene_results,
         project_name=project_name,
         genome=genome,
     )
 
     results_with_gene_stats = gene_stats_task(
         runs=runs,
-        results_dir=results_motifs,
+        gene_results_dir=gene_results,
+        gene_expression_results_dir=results_ge,
+        results_root=results,
         project_name=project_name,
     )
 
-    uploaded_results = registry_task(runs=runs, results=results_with_gene_stats)
+    final_results = complete_results_task(
+        base_results_dir=results,
+        gene_results_dir=gene_results,
+        gene_expression_results_dir=results_ge,
+        gene_stats_results_dir=results_with_gene_stats,
+        motif_results_dir=results_motifs,
+    )
+
+    uploaded_results = registry_task(runs=runs, results=final_results)
 
     return uploaded_results
