@@ -643,12 +643,12 @@ def motifs_task(
                     template_id="760",
                     widgets=[
                         Widget(
-                            transform_id="401983",
+                            transform_id="415155",
                             key="data_path",
                             value=results_dir.remote_path
                         ),
                         Widget(
-                            transform_id="401994",
+                            transform_id="415148",
                             key="coverages_genome",
                             value=genome
                         )
