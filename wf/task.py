@@ -1,3 +1,5 @@
+import fnmatch
+import glob
 import json
 import logging
 import os
@@ -5,7 +7,7 @@ import shutil
 import subprocess
 
 from pathlib import Path
-from typing import Dict, List, Set
+from typing import Dict, List, Set, Optional
 
 import snapatac2 as snap
 
@@ -135,6 +137,51 @@ def _gene_stats_run_args(runs: List[utils.Run]) -> List[str]:
         f"{run.run_id},{run.sample_name}"
         for run in runs
     ]
+
+
+def _unique_glob_matches(
+    patterns: List[str],
+    exclude_pattern: Optional[str] = None,
+) -> List[str]:
+    matches = []
+    seen = set()
+
+    for pattern in patterns:
+        for match in glob.glob(pattern):
+            if exclude_pattern and fnmatch.fnmatch(match, exclude_pattern):
+                continue
+            if match in seen:
+                continue
+
+            seen.add(match)
+            matches.append(match)
+
+    return matches
+
+
+def _move_files_to_directory(files: List[str], target_dir: Path) -> None:
+    if files:
+        subprocess.run(["mv"] + files + [str(target_dir)], check=True)
+
+
+def _organize_outputs(
+    project_name: str,
+    dirs: Dict[str, Path],
+    exclude_pattern: Optional[str] = None,
+) -> None:
+    logging.info("Moving outputs to output directory...")
+
+    project_files = _unique_glob_matches([f"{project_name}_*", "*.rds", "*.h5ad"])
+    _move_files_to_directory(project_files, dirs["base"])
+
+    csv_files = _unique_glob_matches(["*.csv"], exclude_pattern=exclude_pattern)
+    _move_files_to_directory(csv_files, dirs["tables"])
+
+    figures = [
+        figure for figure in _unique_glob_matches(["*.pdf"])
+        if figure != "Rplots.pdf"
+    ]
+    _move_files_to_directory(figures, dirs["figures"])
 
 
 @custom_task(cpu=62, memory=512, storage_gib=1000)
@@ -458,6 +505,8 @@ def combine_gene_h5ads_task(
         groups,
         input_dir=dirs["tables"],
     )
+    _organize_outputs(project_name, dirs, exclude_pattern="*_hm.csv")
+
 
     # Save AnnData
     ft.save_anndata_objects(adata_gene, "_ge", dirs["base"])
@@ -627,7 +676,7 @@ def motifs_task(
     ft.load_analysis_results(adata_motif, "motif", groups)
 
     # Organize outputs
-    utils.organize_outputs(project_name, dirs, exclude_pattern="*_hm.csv")
+    _organize_outputs(project_name, dirs, exclude_pattern="*_hm.csv")
 
     # Save AnnData
     ft.save_anndata_objects(adata_motif, "_motifs", dirs['base'])
