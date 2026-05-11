@@ -477,7 +477,7 @@ def combine_gene_h5ads_task(
     return LatchDir(str(delta_dir), results_dir.remote_path)
 
 
-@custom_task(cpu=26, memory=700, storage_gib=2000)
+@custom_task(cpu=26, memory=700, storage_gib=3000)
 def gene_stats_task(
     runs: List[utils.Run],
     gene_results_dir: LatchDir,
@@ -549,7 +549,7 @@ def gene_stats_task(
     return LatchDir(str(delta_dir), results_root.remote_path)
 
 
-@custom_task(cpu=50, memory=512, storage_gib=1000)
+@custom_task(cpu=50, memory=512, storage_gib=2000)
 def motifs_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
