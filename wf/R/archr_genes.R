@@ -34,12 +34,30 @@ project_name <- args[1]
 genome <- args[2]
 metadata_path <- args[3]
 embedding_path <- args[4]
+gene_artifacts_dir <- if (length(args) >= 5) args[5] else ""
+resume_from_gene_artifacts <- (
+  !is.na(gene_artifacts_dir) &&
+    nzchar(gene_artifacts_dir) &&
+    tolower(gene_artifacts_dir) != "none" &&
+    !grepl(",", gene_artifacts_dir, fixed = TRUE) &&
+    dir.exists(gene_artifacts_dir)
+)
 tile_size <- 5000
 min_tss <- 0  # Use filtering from SnapATAC2
 min_frags <- 0  # Use filtering from SnapATAC2
 num_threads <- 50
 
-runs <- strsplit(args[5:length(args)], ",")
+run_args <- if (resume_from_gene_artifacts) {
+  if (length(args) < 6) character(0) else args[6:length(args)]
+} else {
+  if (length(args) < 5) character(0) else args[5:length(args)]
+}
+
+if (length(run_args) == 0) {
+  stop("No runs were supplied to archr_genes.R.")
+}
+
+runs <- strsplit(run_args, ",")
 runs
 
 inputs <- c()  # Inputs for ArrowFiles (run_id : fragment_file path)
@@ -70,6 +88,274 @@ remap_sample_ids <- function(values, sample_name_map) {
   return(remapped)
 }
 
+copy_gene_artifact_files <- function(artifact_dir, pattern) {
+  files <- list.files(
+    artifact_dir,
+    pattern = pattern,
+    full.names = TRUE,
+    recursive = TRUE
+  )
+
+  if (length(files) == 0) {
+    return(character(0))
+  }
+
+  copied <- character(0)
+  for (file in files) {
+    destination <- basename(file)
+    if (!file.exists(destination)) {
+      file.copy(file, destination, overwrite = FALSE)
+    }
+    copied <- c(copied, destination)
+  }
+
+  return(unique(copied))
+}
+
+find_archr_project_dir <- function(artifact_dir, project_dir_name) {
+  candidates <- c(
+    file.path(artifact_dir, project_dir_name),
+    artifact_dir
+  )
+
+  for (candidate in candidates) {
+    if (file.exists(file.path(candidate, "Save-ArchR-Project.rds"))) {
+      return(candidate)
+    }
+  }
+
+  recursive_matches <- list.files(
+    artifact_dir,
+    pattern = "^Save-ArchR-Project\\.rds$",
+    full.names = TRUE,
+    recursive = TRUE
+  )
+
+  if (length(recursive_matches) > 0) {
+    return(dirname(recursive_matches[[1]]))
+  }
+
+  stop(
+    "Could not find Save-ArchR-Project.rds in gene artifacts directory: ",
+    artifact_dir
+  )
+}
+
+prepare_resume_seurat_object <- function(obj) {
+  if (any(grepl("#", colnames(obj), fixed = TRUE))) {
+    return(obj)
+  }
+
+  rename_cells(list(obj))[[1]]
+}
+
+get_gene_feature_names <- function(gene_matrix) {
+  feature_names <- gene_matrix@elementMetadata$name
+  if (is.null(feature_names)) {
+    feature_names <- SummarizedExperiment::rowData(gene_matrix)$name
+  }
+  feature_names
+}
+
+get_impute_weight_files <- function(impute_weights) {
+  if (is.null(impute_weights) || length(impute_weights) == 0) {
+    return(character(0))
+  }
+
+  weight_files <- unlist(impute_weights$Weights, use.names = FALSE)
+  if (!is.character(weight_files)) {
+    return(character(0))
+  }
+
+  weight_files[!is.na(weight_files) & nzchar(weight_files)]
+}
+
+repair_impute_weight_paths <- function(proj) {
+  impute_weights <- ArchR::getImputeWeights(proj)
+  weight_files <- get_impute_weight_files(impute_weights)
+
+  if (length(weight_files) == 0 || all(file.exists(weight_files))) {
+    return(proj)
+  }
+
+  weights <- impute_weights$Weights
+  weight_dir <- file.path(ArchR::getOutputDirectory(proj), "ImputeWeights")
+  repaired <- FALSE
+
+  for (i in seq_along(weights)) {
+    weight_file <- weights[[i]]
+    if (!is.character(weight_file) || file.exists(weight_file)) {
+      next
+    }
+
+    candidate <- file.path(weight_dir, basename(weight_file))
+    if (file.exists(candidate)) {
+      message("Repointing impute weight file to: ", candidate)
+      weights[[i]] <- candidate
+      repaired <- TRUE
+    }
+  }
+
+  if (repaired) {
+    impute_weights$Weights <- weights
+    proj@imputeWeights <- impute_weights
+  }
+
+  proj
+}
+
+select_impute_reduced_dims <- function(proj) {
+  reduced_dims <- names(proj@reducedDims)
+  preferred <- c("Spectral", "IterativeLSI", "Harmony")
+
+  for (rd_name in preferred) {
+    if (rd_name %in% reduced_dims) {
+      return(rd_name)
+    }
+  }
+
+  if (length(reduced_dims) > 0) {
+    return(reduced_dims[[1]])
+  }
+
+  stop("No reducedDims found in ArchRProject; cannot add impute weights.")
+}
+
+add_project_impute_weights <- function(proj, rd_name) {
+  n_cells <- length(proj$cellNames)
+  if (n_cells < 2) {
+    stop(
+      "Cannot add ArchR impute weights with fewer than 2 cells after filtering."
+    )
+  }
+
+  impute_k <- min(15, n_cells - 1)
+  if (impute_k < 15) {
+    message(
+      "Using addImputeWeights(k = ",
+      impute_k,
+      ") because only ",
+      n_cells,
+      " cells are available after filtering."
+    )
+  }
+
+  ArchR::addImputeWeights(
+    proj,
+    reducedDims = rd_name,
+    k = impute_k
+  )
+}
+
+ensure_valid_impute_weights <- function(proj) {
+  proj <- repair_impute_weight_paths(proj)
+
+  impute_weights <- ArchR::getImputeWeights(proj)
+  weight_files <- get_impute_weight_files(impute_weights)
+  needs_rebuild <- (
+    is.null(impute_weights) ||
+      length(impute_weights) == 0 ||
+      (length(weight_files) > 0 && any(!file.exists(weight_files)))
+  )
+
+  if (!needs_rebuild) {
+    return(proj)
+  }
+
+  rd_name <- select_impute_reduced_dims(proj)
+  message(
+    "Impute weights are missing or invalid; rebuilding with reducedDims = ",
+    rd_name
+  )
+  proj <- add_project_impute_weights(proj, rd_name)
+  gc(verbose = FALSE, full = TRUE)
+
+  proj
+}
+
+create_missing_seurat_object <- function(
+  proj,
+  run,
+  spatial_path,
+  chunk_size = 2000
+) {
+  run_id <- run[1]
+  rds_file <- paste0(run_id, "_SeuratObj.rds")
+
+  message("Recreating missing Seurat object for run: ", run_id)
+
+  metadata <- ArchR::getCellColData(ArchRProj = proj)
+  rownames(metadata) <- str_split_fixed(
+    str_split_fixed(
+      row.names(metadata),
+      "#",
+      2
+    )[, 2],
+    "-",
+    2
+  )[, 1]
+  metadata["log10_nFrags"] <- log(metadata$nFrags)
+
+  impute_weights <- ArchR::getImputeWeights(proj)
+  gene_matrix <- ArchR::getMatrixFromProject(
+    ArchRProj = proj,
+    useMatrix = "GeneScoreMatrix",
+    asMatrix = TRUE
+  )
+  gene_row_names <- get_gene_feature_names(gene_matrix)
+
+  gene_assay <- SummarizedExperiment::assay(
+    gene_matrix,
+    "GeneScoreMatrix"
+  )
+  run_cols <- grep(pattern = run_id, colnames(gene_assay))
+  if (length(run_cols) == 0) {
+    stop("No GeneScoreMatrix columns found for missing run: ", run_id)
+  }
+
+  n_chunks <- ceiling(nrow(gene_assay) / chunk_size)
+  imputed_chunks <- vector("list", n_chunks)
+
+  for (i in seq_len(n_chunks)) {
+    start_idx <- (i - 1) * chunk_size + 1
+    end_idx <- min(i * chunk_size, nrow(gene_assay))
+    message(
+      "Imputing missing Seurat object chunk ",
+      i,
+      " of ",
+      n_chunks,
+      " for ",
+      run_id
+    )
+
+    mat_chunk <- gene_assay[start_idx:end_idx, , drop = FALSE]
+    imputed_chunk <- ArchR::imputeMatrix(
+      mat = mat_chunk,
+      imputeWeights = impute_weights
+    )
+    imputed_chunks[[i]] <- imputed_chunk[, run_cols, drop = FALSE]
+    rm(mat_chunk, imputed_chunk)
+    gc(verbose = FALSE, full = TRUE)
+  }
+
+  matrix <- do.call(rbind, imputed_chunks)
+  rownames(matrix) <- gene_row_names
+  rm(imputed_chunks, gene_matrix, gene_assay, impute_weights)
+  gc(verbose = FALSE, full = TRUE)
+
+  obj <- build_atlas_seurat_object(
+    run_id = run_id,
+    matrix = matrix,
+    metadata = metadata,
+    spatial_path = spatial_path
+  )
+  saveRDS(obj, file = rds_file)
+  rm(matrix, metadata)
+  gc(verbose = FALSE, full = TRUE)
+
+  obj
+}
+
 # Set genome size for peak calling ----
 genome_sizes <- list("hg38" = 3.3e+09, "mm10" = 3.0e+09, "rnor6" = 2.9e+09)
 genome_size <- genome_sizes[[genome]]
@@ -78,6 +364,104 @@ archrproj_dir <- paste0(project_name, "_ArchRProject")
 
 # Create ArchRProject ---------------------------------------------------------
 addArchRThreads(threads = num_threads)
+
+if (resume_from_gene_artifacts) {
+
+  message("Resuming gene task from artifacts directory: ", gene_artifacts_dir)
+  gene_artifacts_dir <- normalizePath(gene_artifacts_dir, mustWork = TRUE)
+
+  archrproj_source_dir <- find_archr_project_dir(
+    gene_artifacts_dir,
+    archrproj_dir
+  )
+  message("Loading ArchRProject from: ", archrproj_source_dir)
+  proj <- ArchR::loadArchRProject(
+    path = archrproj_source_dir,
+    force = TRUE,
+    showLogo = FALSE
+  )
+
+  # Refresh run metadata in case the resumed project came from a prior launch.
+  for (run in runs) {
+    proj$Condition[proj$Sample == run[1]] <- run[3]
+    proj$sample_name[proj$Sample == run[1]] <- run[6]
+  }
+
+  conds <- strsplit(proj$Condition, split = "\\s|-")
+  for (i in seq_along(conds[[1]])) {
+    proj <- ArchR::addCellColData(
+      proj,
+      data = extract_nth_ele(conds, i),
+      name = paste0("condition_", i),
+      cells = proj$cellNames,
+      force = TRUE
+    )
+  }
+  treatment <- names(ArchR::getCellColData(proj))[
+    grep("condition_", names(ArchR::getCellColData(proj)))
+  ]
+
+  print(paste("Treatments:", treatment))
+
+  n_samples <- length(unique(proj$Sample))
+  n_cond <- length(unique(proj$Condition))
+  n_cells <- length(proj$cellNames)
+
+  copied_h5ads <- copy_gene_artifact_files(
+    gene_artifacts_dir,
+    "_g_converted\\.h5ad$"
+  )
+  copied_rds <- copy_gene_artifact_files(
+    gene_artifacts_dir,
+    "_SeuratObj\\.rds$"
+  )
+
+  message("Copied ", length(copied_h5ads), " existing gene h5ad file(s).")
+  message("Copied ", length(copied_rds), " Seurat object RDS file(s).")
+
+  missing_seurat_runs <- c()
+  for (run in runs) {
+    h5ad_file <- paste0(run[1], "_g_converted.h5ad")
+    rds_file <- paste0(run[1], "_SeuratObj.rds")
+    if (!file.exists(h5ad_file) && !file.exists(rds_file)) {
+      missing_seurat_runs <- c(missing_seurat_runs, run[1])
+    }
+  }
+
+  if (length(missing_seurat_runs) > 0) {
+    message(
+      "Missing Seurat object(s) require imputation for run(s): ",
+      paste(missing_seurat_runs, collapse = ", ")
+    )
+    proj <- ensure_valid_impute_weights(proj)
+  }
+
+  for (run in runs) {
+    h5ad_file <- paste0(run[1], "_g_converted.h5ad")
+    if (file.exists(h5ad_file)) {
+      message("Found existing ", h5ad_file, "; skipping conversion.")
+      next
+    }
+
+    rds_file <- paste0(run[1], "_SeuratObj.rds")
+    if (!file.exists(rds_file)) {
+      obj <- create_missing_seurat_object(
+        proj = proj,
+        run = run,
+        spatial_path = run[5]
+      )
+    } else {
+      message("Converting ", rds_file, " to h5ad...")
+      obj <- readRDS(rds_file)
+    }
+
+    obj <- prepare_resume_seurat_object(obj)
+    seurat_to_h5ad(obj, FALSE, paste0(unique(obj$Sample), "_g"))
+    rm(obj)
+    gc(verbose = FALSE, full = TRUE)
+  }
+
+} else {
 
 proj <- create_archrproject( # from archr.R
   inputs, genome, min_tss, min_frags, tile_size, archrproj_dir
@@ -192,7 +576,7 @@ if (file.exists(embedding_path)) {
 }
 
 # Impute weights --------------------------------------------------------------
-proj <- ArchR::addImputeWeights(proj, reducedDims = rd_name)
+proj <- add_project_impute_weights(proj, rd_name)
 
 saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
 
@@ -227,19 +611,53 @@ gene_matrix <- ArchR::getMatrixFromProject(
 )
 gene_row_names <- gene_matrix@elementMetadata$name
 
-# Identify empty features for filtering volcano plots --
-print("Identifying empty features...")
-empty_feat_idx <- which(Matrix::rowSums(
-  SummarizedExperiment::assay(gene_matrix, "GeneScoreMatrix")
-) == 0)
-empty_feat <- gene_row_names[empty_feat_idx]
-print(paste("Found", length(empty_feat), "empty features"))
+# Chunked imputation parameters
+chunk_size <- 2000
+total_features <- nrow(SummarizedExperiment::assay(
+  gene_matrix,
+  "GeneScoreMatrix"
+))
+n_chunks <- ceiling(total_features / chunk_size)
 
+print(paste(Sys.time(), "Starting chunked imputation..."))
+print(paste(
+  "Processing", total_features, "features in", n_chunks,
+  "chunks of size", chunk_size
+))
 
-matrix <- ArchR::imputeMatrix(
-  mat = SummarizedExperiment::assay(gene_matrix),
-  imputeWeights = impute_weights
-)
+imputed_chunks <- vector("list", n_chunks)
+
+for (i in seq_len(n_chunks)) {
+
+  start_idx <- (i - 1) * chunk_size + 1
+  end_idx <- min(i * chunk_size, total_features)
+
+  print(paste(Sys.time(), "Processing chunk", i, "of", n_chunks))
+
+  mat_chunk <- SummarizedExperiment::assay(
+    gene_matrix,
+    "GeneScoreMatrix"
+  )[start_idx:end_idx, , drop = FALSE]
+
+  imputed_chunk <- ArchR::imputeMatrix(
+    mat = mat_chunk,
+    imputeWeights = impute_weights
+  )
+
+  imputed_chunks[[i]] <- imputed_chunk
+  rm(mat_chunk, imputed_chunk)
+
+  print(paste(
+    "Completed", i, "Mem:", format(object.size(imputed_chunks), units = "MB")
+  ))
+}
+
+print(paste(Sys.time(), "Combining chunks..."))
+matrix <- do.call(rbind, imputed_chunks)
+
+rm(imputed_chunks)
+gc(verbose = FALSE)
+print(paste(Sys.time(), "Imputation complete!"))
 
 rm(gene_matrix, impute_weights)
 gc()
@@ -274,202 +692,44 @@ gc()
 for (obj in all) {
   seurat_to_h5ad(obj, FALSE, paste0(unique(obj$Sample), "_g"))  # from utils.R
 }
-rm(all)
-gc()
+rm(all, matrix, metadata, gene_row_names)
+gc(verbose = FALSE, full = TRUE)
 
-# Identify marker genes ----
-# Marker genes per cluster, save marker gene rds, csv, heatmap.csv --
-n_clust <- length(unique(proj$Clusters))
-
-cluster_marker_genes <- get_marker_genes( # from archr.R
-  proj,
-  group_by = "Clusters",
-  markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
-  heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10"
-)
-
-write.csv(
-  cluster_marker_genes$marker_list,
-  "ranked_genes_per_cluster.csv",
-  row.names = FALSE
-)
-write.csv(cluster_marker_genes$heatmap_gs, "genes_per_cluster_hm.csv")
-
-# Recompute gene heatmap for plotting (transpose, plotLog2FC different) --
-cut_off <- "Pval <= 0.05 & Log2FC >= 0.1"
-
-if (
-  is.null(cluster_marker_genes$markers_gs) ||
-    nrow(cluster_marker_genes$heatmap_gs) == 0 ||
-    ncol(cluster_marker_genes$heatmap_gs) == 0
-) {
-  message("Skipping gene heatmap plot because no cluster marker genes were available.")
-  empty_pdf("heatmap_genes.pdf", "No cluster marker genes available")
-} else {
-  heatmap_gs_plotting <- plotMarkerHeatmap(
-    seMarker = cluster_marker_genes$markers_gs,
-    cutOff = cut_off,
-    transpose = TRUE
-  )
-
-  gene_hm <- ComplexHeatmap::draw(
-    heatmap_gs_plotting,
-    heatmap_legend_side = "bot",
-    annotation_legend_side = "bot",
-    column_title = paste0("Marker genes (", cut_off, ")"),
-    column_title_gp = gpar(fontsize = 12)
-  )
-
-  print("Saving gene heatmap...")
-  pdf("heatmap_genes.pdf")
-  print(gene_hm)
-  dev.off()
 }
 
-# Marker genes per sample, save marker gene rds, csv, heatmap.csv --
+# Gene differential statistics -------------------------------------------------
+message("Skipping gene differential statistics for this run.")
+write.csv(empty_result_df(), "ranked_genes_per_cluster.csv", row.names = FALSE)
+write.csv(empty_result_df(), "genes_per_cluster_hm.csv", row.names = FALSE)
+empty_pdf("heatmap_genes.pdf", "Gene differential statistics skipped")
+
 if (n_samples > 1) {
-
-  sample_marker_genes <- get_marker_genes(
-    proj,
-    group_by = "Sample",
-    markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
-    heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10"
-  )
-
-  write.csv(
-    sample_marker_genes$marker_list,
-    "ranked_genes_per_sample.csv",
-    row.names = FALSE
-  )
-  write.csv(sample_marker_genes$heatmap_gs, "genes_per_sample_hm.csv")
+  write.csv(empty_result_df(), "ranked_genes_per_sample.csv", row.names = FALSE)
+  write.csv(empty_result_df(), "genes_per_sample_hm.csv", row.names = FALSE)
 
   if (length(sample_name_map) > 0) {
-    sample_marker_list_named <- sample_marker_genes$marker_list
-    marker_groups <- names(sample_marker_list_named)
-    if (!is.data.frame(sample_marker_list_named) && !is.null(marker_groups)) {
-      names(sample_marker_list_named) <- remap_sample_ids(
-        marker_groups, sample_name_map
-      )
-    }
     write.csv(
-      sample_marker_list_named,
+      empty_result_df(),
       "ranked_genes_per_sample_name.csv",
       row.names = FALSE
     )
-
-    sample_heatmap_named <- sample_marker_genes$heatmap_gs
-    if (!is.null(colnames(sample_heatmap_named))) {
-      colnames(sample_heatmap_named) <- remap_sample_ids(
-        colnames(sample_heatmap_named), sample_name_map
-      )
-    }
-    if (!is.null(rownames(sample_heatmap_named))) {
-      rownames(sample_heatmap_named) <- remap_sample_ids(
-        rownames(sample_heatmap_named), sample_name_map
-      )
-    }
-    write.csv(
-      sample_heatmap_named,
-      "genes_per_sample_name_hm.csv"
-    )
+    write.csv(empty_result_df(), "genes_per_sample_name_hm.csv", row.names = FALSE)
   }
-
 }
 
-# Marker genes per treatment, save marker gene rds, csv, heatmap.csv --
 if (n_cond > 1) {
-
   for (i in seq_along(treatment)) {
-
-    treatment_marker_genes <- get_marker_genes(
-      proj,
-      group_by = treatment[i],
-      markers_cutoff = "FDR <= 1 & Log2FC >= -Inf",
-      heatmap_cutoff = "Pval <= 0.05 & Log2FC >= 0.10"
-    )
-
     write.csv(
-      treatment_marker_genes$marker_list,
+      empty_result_df(),
       paste0("ranked_genes_per_condition_", i, ".csv"),
       row.names = FALSE
     )
     write.csv(
-      treatment_marker_genes$heatmap_gs,
-      paste0("genes_per_condition_", i, "_hm.csv")
+      empty_result_df(),
+      paste0("genes_per_condition_", i, "_hm.csv"),
+      row.names = FALSE
     )
   }
-}
-
-# Volcano plots for genes ----
-if (n_cond > 1) {
-  for (j in seq_along(treatment)) {
-
-    # Get gene markers df for all clusters together --
-    marker_genes_df <- get_marker_df(
-      proj = proj,
-      group_by = treatment[j],
-      matrix = "GeneScoreMatrix",
-      seq_names = NULL,
-      max_cells = n_cells,  # Equals total cells in project
-      test_method = "ttest",
-      diff_metric = "Log2FC"
-    )
-
-    # Create a merged marker genes df for clusters for which no condition is
-    # >90% of all cells --
-    req_clusters <- get_required_clusters(proj, treatment[j])
-    marker_genes_by_cluster_df <- get_marker_df_clusters(
-      proj = proj,
-      clusters = req_clusters,
-      group_by = treatment[j],
-      seq_names = "z",
-      matrix = "GeneScoreMatrix",
-      test_method = "ttest",
-      diff_metric = "Log2FC"
-    )
-
-    # Per condition, merge dfs and cleanup data --
-    conditions <- sort(unique(proj@cellColData[treatment[j]][, 1]))
-    for (cond in conditions) {
-
-      volcano_table <- get_volcano_table( # from archr.R
-        marker_genes_df,
-        marker_genes_by_cluster_df,
-        cond,
-        "gene",
-        empty_feat,
-        fc_col = "Log2FC"
-      )
-
-      write.table(
-        volcano_table,
-        paste0(
-          "volcanoMarkers_genes_", j, "_", cond, ".csv"
-        ),
-        sep = ",",
-        quote = FALSE,
-        row.names = FALSE
-      )
-      print(paste0("volcanoMarkers_genes_", j, "_", cond, ".csv is done!"))
-
-      features <- unique(volcano_table$cluster)
-      others <- paste(conditions[conditions != cond], collapse = "|")
-      volcano_plots <- list()
-      for (i in seq_along(features)) {
-        volcano_plots[[i]] <- scvolcano(
-          volcano_table, cond, others, features[[i]], fc_col = "Log2FC"
-        )
-      }
-
-      pdf(paste0("volcano_plots_", cond, ".pdf"))
-      for (plot in volcano_plots) {
-        print(plot)
-      }
-      dev.off()
-    }
-  }
-} else {
-  print("There are not enough conditions to be compared with!")
 }
 
 saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)

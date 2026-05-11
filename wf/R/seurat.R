@@ -42,7 +42,7 @@ build_atlas_seurat_object <- function(
   message("Subsetting matrix and converting to sparse format...")
 
   # Option 1: If matrix is already in memory and very large
-  matrix_sparse <- as(matrix[, col_indices], "dgCMatrix")
+  matrix_sparse <- as(matrix[, col_indices, drop = FALSE], "dgCMatrix")
 
   # Immediately remove references to free memory
   rm(col_indices)

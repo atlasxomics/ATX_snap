@@ -51,5 +51,5 @@ def get_data_paths(outdir: LatchDir) -> Dict[str, str]:
         "obs": LatchFile(f"{base_path}/tables/obs.csv").local_path,
         "spatial": LatchFile(f"{base_path}/tables/spatial.csv").local_path,
         "umap": LatchFile(f"{base_path}/tables/X_umap.csv").local_path,
-        "spectral": LatchFile(f"{base_path}/tables/spectral.csv")
+        "spectral": LatchFile(f"{base_path}/tables/spectral.csv").local_path,
     }

@@ -338,7 +338,8 @@ get_enriched_motifs <- function(proj, marker_peaks, cutoff) {
 }
 
 get_marker_df <- function(
-  proj, group_by, matrix, seq_names, max_cells, test_method, diff_metric
+  proj, group_by, matrix, seq_names, max_cells, test_method, diff_metric,
+  threads = getArchRThreads()
 ) {
   #' Return data frame of ArhcR marker features with:
   #' "avg_log2FC", "p_val", "p_val_adj", "gene", "cluster"
@@ -359,6 +360,7 @@ get_marker_df <- function(
     maxCells = max_cells,
     normBy = "none",
     testMethod = test_method,
+    threads = threads,
     context = paste0("marker dataframe for ", group_by)
   )
   if (is.null(markers)) {
@@ -403,7 +405,8 @@ get_marker_df <- function(
 }
 
 get_marker_df_clusters <- function(
-  proj, clusters, group_by, matrix, seq_names, test_method, diff_metric
+  proj, clusters, group_by, matrix, seq_names, max_cells, test_method,
+  diff_metric, threads = getArchRThreads()
 ) {
   conditions <- get_group_levels(proj, group_by)
   markers_df_by_cluster <- setNames(
@@ -417,16 +420,18 @@ get_marker_df_clusters <- function(
     cells_subset <- proj$cellNames[proj_filter]
     proj_subset <- proj[cells_subset, ]
     n_cells <- length(proj_subset$cellNames)
+    marker_cells <- min(n_cells, max_cells)
 
     markers_by_cluster <- safe_get_marker_features(
       ArchRProj = proj_subset,
       useMatrix = matrix,
       groupBy = group_by,
       bias = c("TSSEnrichment", "log10(nFrags)"),
-      maxCells = n_cells,
+      maxCells = marker_cells,
       useSeqnames = seq_names,
       normBy = "none",
       testMethod = test_method,
+      threads = threads,
       context = paste0("cluster-level marker dataframe for ", group_by, " in ", cluster)
     )
     if (is.null(markers_by_cluster)) {
@@ -480,7 +485,8 @@ get_marker_df_clusters <- function(
 }
 
 get_marker_genes <- function(
-  proj, group_by, markers_cutoff, heatmap_cutoff
+  proj, group_by, markers_cutoff, heatmap_cutoff, max_cells = 500,
+  threads = getArchRThreads()
 ) {
 
   markers_gs <- safe_get_marker_features(
@@ -488,7 +494,9 @@ get_marker_genes <- function(
     useMatrix = "GeneScoreMatrix",
     groupBy = group_by,
     bias = c("TSSEnrichment", "log10(nFrags)"),
+    maxCells = max_cells,
     testMethod = "ttest",
+    threads = threads,
     context = paste0("marker genes for ", group_by)
   )
   if (is.null(markers_gs)) {

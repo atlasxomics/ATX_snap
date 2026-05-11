@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import anndata
+from anndata.experimental import concat_on_disk
 import numpy as np
-import scanpy as sc
 import scipy.sparse as sp
 
 logging.basicConfig(
@@ -120,15 +120,97 @@ def clean_index_columns(*adatas: anndata.AnnData) -> None:
                 adata.raw.var.drop(columns=['_index'], inplace=True)
 
 
-def load_and_combine_data(suffix: str) -> anndata.AnnData:
-    """Load and combine AnnData objects."""
-    logging.info("Reading and combining gene AnnData...")
-    files = glob.glob(f"*{suffix}.h5ad")
-    adatas = [anndata.read_h5ad(file) for file in files]
-    adata = sc.concat(adatas)
+def _ensure_anndata_root_encoding(path: Path) -> None:
+    """Add missing AnnData encoding metadata for older H5AD writers."""
+    import h5py
 
-    # Clean up memory
-    del adatas
+    with h5py.File(path, "r") as handle:
+        encoding_type = handle.attrs.get("encoding-type")
+        encoding_version = handle.attrs.get("encoding-version")
+
+    if isinstance(encoding_type, bytes):
+        encoding_type = encoding_type.decode()
+    if isinstance(encoding_version, bytes):
+        encoding_version = encoding_version.decode()
+
+    if encoding_type != "anndata":
+        try:
+            backed = anndata.read_h5ad(path, backed="r")
+            backed.file.close()
+        except Exception as e:
+            raise ValueError(
+                f"{path} is not a readable AnnData h5ad file. "
+                f"Root encoding-type={encoding_type!r}."
+            ) from e
+
+    with h5py.File(path, "r+") as handle:
+        if encoding_type != "anndata":
+            logging.warning(
+                "Adding missing AnnData root encoding attrs to h5ad written by an "
+                f"older converter: {path}"
+            )
+            handle.attrs["encoding-type"] = "anndata"
+            handle.attrs["encoding-version"] = encoding_version or "0.1.0"
+
+        for group_name in ["layers", "obsm", "varm", "obsp", "varp", "uns"]:
+            if group_name not in handle:
+                logging.warning(
+                    f"Adding missing empty AnnData group '{group_name}' to {path}"
+                )
+                group = handle.create_group(group_name)
+            else:
+                group = handle[group_name]
+
+            if group.attrs.get("encoding-type") is None:
+                group.attrs["encoding-type"] = "dict"
+                group.attrs["encoding-version"] = "0.1.0"
+
+
+def load_and_combine_data(
+    suffix: str,
+    input_dir: Path = Path("."),
+    temp_dir: Optional[Path] = None,
+) -> anndata.AnnData:
+    """Load and combine AnnData objects."""
+    logging.info("Combining AnnData objects on disk...")
+    input_dir = Path(input_dir)
+    temp_dir = Path(temp_dir) if temp_dir is not None else input_dir
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    combined_path = temp_dir / f"combined_{suffix}.tmp.h5ad"
+    if combined_path.exists():
+        combined_path.unlink()
+
+    files = sorted(
+        str(path)
+        for path in input_dir.glob(f"*{suffix}.h5ad")
+        if path.resolve() != combined_path.resolve()
+    )
+    if len(files) == 0:
+        raise FileNotFoundError(
+            f"No AnnData files found matching '*{suffix}.h5ad' in {input_dir}."
+        )
+
+    logging.info(f"Found {len(files)} AnnData file(s) to combine.")
+    for file in files:
+        _ensure_anndata_root_encoding(Path(file))
+
+    # Match anndata/scanpy concat defaults while avoiding a list of full
+    # in-memory AnnData objects plus a second combined copy.
+    concat_on_disk(
+        files,
+        combined_path,
+        axis=0,
+        join="inner",
+        merge=None,
+        uns_merge=None,
+        label=None,
+        keys=None,
+        index_unique=None,
+        pairwise=False,
+    )
+
+    adata = anndata.read_h5ad(combined_path)
+    combined_path.unlink(missing_ok=True)
     gc.collect()
 
     # Clean up index columns if they exist
@@ -240,21 +322,22 @@ def _add_sample_name_results(adata: anndata.AnnData) -> None:
 def load_analysis_results(
     adata: anndata.AnnData,
     type: str,
-    groups: List[str]
+    groups: List[str],
+    input_dir: Path = Path("."),
 ) -> None:
     """Load various analysis results into AnnData objects."""
     # Load differential analysis results
     if type == "gene":
-        load_ranked_genes(adata)
+        load_ranked_genes(adata, input_dir=input_dir)
     elif type == "motif":
-        load_enriched_motifs(adata)
+        load_enriched_motifs(adata, input_dir=input_dir)
 
     # Load heatmap data
-    load_heatmaps(adata, type)
+    load_heatmaps(adata, type, input_dir=input_dir)
 
     # Load volcano plots if condition analysis was performed
     if "condition" in groups:
-        load_volcano_plots(adata, type)
+        load_volcano_plots(adata, type, input_dir=input_dir)
 
     _add_sample_name_results(adata)
 
@@ -264,13 +347,14 @@ def load_csv_files_to_uns(
     target_uns: Dict,
     dtype_spec: Optional[Dict] = None,
     index_col: Optional[int] = None,
-    name_transform: Optional[callable] = None
+    name_transform: Optional[callable] = None,
+    input_dir: Path = Path("."),
 ) -> None:
     import pandas as pd
     """Generic function to load CSV files matching a pattern into uns
     dictionary."""
     try:
-        files = glob.glob(pattern)
+        files = glob.glob(str(Path(input_dir) / pattern))
         for file in files:
             name = Path(file).stem
             if name_transform:
@@ -282,17 +366,24 @@ def load_csv_files_to_uns(
         logging.warning(f"Error loading files matching {pattern}: {e}")
 
 
-def load_enriched_motifs(adata_motif: anndata.AnnData) -> None:
+def load_enriched_motifs(
+    adata_motif: anndata.AnnData,
+    input_dir: Path = Path("."),
+) -> None:
     """Load enriched motifs data."""
     logging.info("Adding enriched motifs...")
     load_csv_files_to_uns(
-        "enrichedMotifs_*.csv", adata_motif.uns, dtype_spec={"group_name": str}
+        "enrichedMotifs_*.csv",
+        adata_motif.uns,
+        dtype_spec={"group_name": str},
+        input_dir=input_dir,
     )
 
 
 def load_heatmaps(
     adata: anndata.AnnData,
-    type: str
+    type: str,
+    input_dir: Path = Path("."),
 ) -> None:
     """Load heatmap data for both genes and motifs."""
     logging.info("Adding heatmaps...")
@@ -303,7 +394,8 @@ def load_heatmaps(
             "genes_per_*_hm.csv",
             adata.uns,
             dtype_spec={"cluster": str},
-            index_col=0
+            index_col=0,
+            input_dir=input_dir,
         )
 
     elif type == "motif":
@@ -311,20 +403,29 @@ def load_heatmaps(
         load_csv_files_to_uns(
             "motif_per_*_hm.csv",
             adata.uns,
-            index_col=0
+            index_col=0,
+            input_dir=input_dir,
         )
 
 
-def load_ranked_genes(adata_gene: anndata.AnnData) -> None:
+def load_ranked_genes(
+    adata_gene: anndata.AnnData,
+    input_dir: Path = Path("."),
+) -> None:
     """Load ranked genes data."""
     logging.info("Adding ranked genes...")
     load_csv_files_to_uns(
-        "ranked_genes_*.csv", adata_gene.uns, dtype_spec={"group_name": str}
+        "ranked_genes_*.csv",
+        adata_gene.uns,
+        dtype_spec={"group_name": str},
+        input_dir=input_dir,
     )
 
 
 def load_volcano_plots(
-    adata: anndata.AnnData, type: str
+    adata: anndata.AnnData,
+    type: str,
+    input_dir: Path = Path("."),
 ) -> None:
     """Load volcano plot data for genes and motifs."""
     if type == "gene":
@@ -333,7 +434,8 @@ def load_volcano_plots(
             "volcanoMarkers_genes_*.csv",
             adata.uns,
             dtype_spec={"cluster": str},
-            name_transform=lambda name, file: volcano_name_transform(name, file, "genes")
+            name_transform=lambda name, file: volcano_name_transform(name, file, "genes"),
+            input_dir=input_dir,
         )
 
     elif type == "motif":
@@ -343,7 +445,8 @@ def load_volcano_plots(
             adata.uns,
             dtype_spec={"cluster": str},
             name_transform=lambda name,
-            file: volcano_name_transform(name, file, "motifs")
+            file: volcano_name_transform(name, file, "motifs"),
+            input_dir=input_dir,
         )
 
 

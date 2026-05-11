@@ -7,7 +7,7 @@ import shutil
 import subprocess
 
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Set, Optional
 
 import snapatac2 as snap
 
@@ -24,6 +24,119 @@ import wf.plotting as pl
 import wf.preprocessing as pp
 import wf.spatial as sp
 import wf.utils as utils
+
+
+def _dirs_for_base(base_dir: Path) -> Dict[str, Path]:
+    figures_dir = base_dir / "figures"
+    tables_dir = base_dir / "tables"
+
+    for directory in [base_dir, figures_dir, tables_dir]:
+        directory.mkdir(parents=True, exist_ok=True)
+
+    return {
+        "base": base_dir,
+        "figures": figures_dir,
+        "tables": tables_dir,
+    }
+
+
+def _copy_required_input_tables(data_paths: Dict[str, str], tables_dir: Path) -> None:
+    tables_dir.mkdir(parents=True, exist_ok=True)
+
+    for local_path in data_paths.values():
+        source = Path(local_path)
+        if not source.exists():
+            logging.warning(f"Input table does not exist and was not copied: {source}")
+            continue
+
+        destination = tables_dir / source.name
+        try:
+            if source.resolve() == destination.resolve():
+                continue
+        except FileNotFoundError:
+            pass
+
+        shutil.copy2(source, destination)
+
+
+def _copy_directory_contents(source_dir: Path, destination_dir: Path) -> None:
+    destination_dir.mkdir(parents=True, exist_ok=True)
+
+    if not source_dir.exists():
+        logging.warning(f"Directory does not exist and was not copied: {source_dir}")
+        return
+
+    for source in source_dir.iterdir():
+        destination = destination_dir / source.name
+        if source.is_dir():
+            if destination.exists():
+                shutil.rmtree(destination)
+            shutil.copytree(source, destination)
+        else:
+            shutil.copy2(source, destination)
+
+
+def _copy_directory_delta(
+    source_dir: Path,
+    destination_dir: Path,
+    skip_relative_paths: Set[Path],
+) -> None:
+    destination_dir.mkdir(parents=True, exist_ok=True)
+
+    if not source_dir.exists():
+        logging.warning(f"Directory does not exist and was not copied: {source_dir}")
+        return
+
+    for source in source_dir.rglob("*"):
+        if not source.is_file():
+            continue
+
+        relative_path = source.relative_to(source_dir)
+        if relative_path in skip_relative_paths:
+            continue
+
+        destination = destination_dir / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+
+
+def _copy_relative_files(
+    source_dir: Path,
+    destination_dir: Path,
+    relative_paths: List[Path],
+) -> None:
+    destination_dir.mkdir(parents=True, exist_ok=True)
+
+    for relative_path in relative_paths:
+        source = source_dir / relative_path
+        if not source.exists():
+            logging.warning(f"Expected stage output does not exist: {source}")
+            continue
+
+        destination = destination_dir / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if source.is_dir():
+            if destination.exists():
+                shutil.rmtree(destination)
+            shutil.copytree(source, destination)
+            continue
+
+        shutil.copy2(source, destination)
+
+
+def _fresh_stage_dir(project_name: str, stage_name: str) -> Path:
+    stage_dir = Path(f"/root/{project_name}_{stage_name}_stage")
+    if stage_dir.exists():
+        shutil.rmtree(stage_dir)
+    stage_dir.mkdir(parents=True, exist_ok=True)
+    return stage_dir
+
+
+def _gene_stats_run_args(runs: List[utils.Run]) -> List[str]:
+    return [
+        f"{run.run_id},{run.sample_name}"
+        for run in runs
+    ]
 
 
 def _unique_glob_matches(
@@ -272,12 +385,11 @@ def make_adata(
     return LatchDir(result_dir, output_dir), groups
 
 
-@custom_task(cpu=50, memory=975, storage_gib=2000)
+@custom_task(cpu=30, memory=700, storage_gib=2000)
 def genes_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
     project_name: str,
-    groups: List[str],
     genome: utils.Genome,
 ) -> LatchDir:
 
@@ -288,6 +400,7 @@ def genes_task(
 
     # Create output dirs
     dirs = utils.create_output_directories(project_name)
+    _copy_required_input_tables(data_paths, dirs["tables"])
 
     logging.info("Running ArchR analysis...")
     # run subprocess R script to make .h5ad file
@@ -297,7 +410,7 @@ def genes_task(
         project_name,
         genome,
         data_paths['obs'],
-        data_paths['spectral']
+        data_paths['spectral'],
     ]
 
     position_files = {}
@@ -333,8 +446,48 @@ def genes_task(
     _archr_cmd.extend(runs)
     subprocess.run(_archr_cmd, check=True)
 
+    # Stage ArchRProject, Seurat objects, per-run h5ads, and R-side tables.
+    utils.organize_outputs(project_name, dirs)
+
+    delta_dir = _fresh_stage_dir(project_name, "genes_delta")
+    _copy_directory_delta(
+        dirs["base"],
+        delta_dir,
+        {
+            Path("tables/obs.csv"),
+            Path("tables/spatial.csv"),
+            Path("tables/X_umap.csv"),
+            Path("tables/spectral.csv"),
+        },
+    )
+
+    logging.info("Uploading gene-stage artifacts to Latch...")
+    return LatchDir(str(delta_dir), results_dir.remote_path)
+
+
+@custom_task(cpu=16, memory=512, storage_gib=2000)
+def combine_gene_h5ads_task(
+    runs: List[utils.Run],
+    results_dir: LatchDir,
+    gene_results_dir: LatchDir,
+    project_name: str,
+) -> LatchDir:
+
+    # Read in data tables from the original make_adata output.
+    data_paths = utils.get_data_paths(results_dir)
+    groups = utils.get_groups(runs)
+
+    # Continue in the uploaded gene artifact directory so a combine failure
+    # does not discard the already-materialized Seurat and per-run h5ad files.
+    dirs = _dirs_for_base(Path(gene_results_dir.local_path))
+    _copy_required_input_tables(data_paths, dirs["tables"])
+
     # Load and combine data
-    adata_gene = ft.load_and_combine_data("g_converted")
+    adata_gene = ft.load_and_combine_data(
+        "g_converted",
+        input_dir=dirs["base"],
+        temp_dir=dirs["base"],
+    )
 
     # Transfer auxiliary data to combined AnnData
     ft.transfer_auxiliary_data(adata_gene, data_paths, groups)
@@ -346,29 +499,117 @@ def genes_task(
     )
 
     # Load differential analysis results
-    ft.load_analysis_results(adata_gene, "gene", groups)
-
-    # Organize outputs
+    ft.load_analysis_results(
+        adata_gene,
+        "gene",
+        groups,
+        input_dir=dirs["tables"],
+    )
     _organize_outputs(project_name, dirs, exclude_pattern="*_hm.csv")
+
 
     # Save AnnData
     ft.save_anndata_objects(adata_gene, "_ge", dirs["base"])
 
-    logging.info("Uploading data to Latch...")
-    return LatchDir(str(dirs['base']), results_dir.remote_path)
+    delta_dir = _fresh_stage_dir(project_name, "gene_expression_delta")
+    _copy_relative_files(
+        dirs["base"],
+        delta_dir,
+        [
+            Path("combined_ge.h5ad"),
+            Path("combined_sm_ge.h5ad"),
+            Path("figures/all_neighborhoods.pdf"),
+        ],
+    )
+
+    logging.info("Uploading gene-expression stage artifacts to Latch...")
+    return LatchDir(str(delta_dir), results_dir.remote_path)
 
 
-@custom_task(cpu=50, memory=975, storage_gib=2000)
+@custom_task(cpu=26, memory=700, storage_gib=3000)
+def gene_stats_task(
+    runs: List[utils.Run],
+    gene_results_dir: LatchDir,
+    gene_expression_results_dir: LatchDir,
+    results_root: LatchDir,
+    project_name: str,
+) -> LatchDir:
+
+    import anndata
+
+    local_gene_results = Path(gene_results_dir.local_path)
+    local_gene_expression = Path(gene_expression_results_dir.local_path)
+    archrproj_path = local_gene_results / f"{project_name}_ArchRProject"
+    if not archrproj_path.exists():
+        raise FileNotFoundError(
+            f"Could not find ArchRProject at {archrproj_path}. "
+            "Run this task after the gene artifact task."
+        )
+
+    source_adata_path = local_gene_expression / "combined_sm_ge.h5ad"
+    if not source_adata_path.exists():
+        raise FileNotFoundError(
+            f"Could not find combined_sm_ge.h5ad at {source_adata_path}."
+        )
+
+    delta_dir = _fresh_stage_dir(project_name, "gene_stats_delta")
+    dirs = _dirs_for_base(delta_dir)
+
+    marker_threads = 25
+
+    output_dir = Path(f"/root/{project_name}_gene_stats")
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    logging.info(
+        f"Running full gene differential statistics with {marker_threads} thread(s)."
+    )
+    _gene_stats_cmd = [
+        "Rscript",
+        "/root/wf/R/archr_gene_stats.R",
+        project_name,
+        str(archrproj_path),
+        str(output_dir),
+        str(marker_threads),
+    ]
+    _gene_stats_cmd.extend(_gene_stats_run_args(runs))
+    subprocess.run(_gene_stats_cmd, check=True)
+
+    _copy_directory_contents(output_dir / "tables", dirs["tables"])
+    _copy_directory_contents(output_dir / "figures", dirs["figures"])
+
+    adata_path = delta_dir / "combined_sm_ge.h5ad"
+    shutil.copy2(source_adata_path, adata_path)
+
+    logging.info(f"Patching gene statistics into {adata_path}...")
+    adata_gene_sm = anndata.read_h5ad(adata_path)
+    ft.load_analysis_results(
+        adata_gene_sm,
+        "gene",
+        utils.get_groups(runs),
+        input_dir=dirs["tables"],
+    )
+
+    ft._sanitize_uns_for_h5ad(adata_gene_sm.uns)
+    adata_gene_sm.write(adata_path)
+
+    logging.info("Uploading results with gene differential statistics to Latch...")
+    return LatchDir(str(delta_dir), results_root.remote_path)
+
+
+@custom_task(cpu=50, memory=512, storage_gib=2000)
 def motifs_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
+    gene_results_dir: LatchDir,
     project_name: str,
-    groups: List[str],
     genome: utils.Genome,
 ) -> LatchDir:
 
     # Read in data tables
     data_paths = utils.get_data_paths(results_dir)
+    groups = utils.get_groups(runs)
 
     genome = genome.value
 
@@ -376,7 +617,9 @@ def motifs_task(
     dirs = utils.create_output_directories(project_name)
 
     # Download ArchRProject
-    archrproj_path = f"{results_dir.remote_path}/{project_name}_ArchRProject"
+    archrproj_path = (
+        f"{gene_results_dir.remote_path.rstrip('/')}/{project_name}_ArchRProject"
+    )
     archrproj_path = LatchDir(archrproj_path).local_path
 
     logging.info("Running ArchR analysis...")
@@ -446,15 +689,15 @@ def motifs_task(
         bindings=PlotsArtifactBindings(
             plot_templates=[
                 PlotsArtifactTemplate(
-                    template_id="760",
+                    template_id="892",
                     widgets=[
                         Widget(
-                            transform_id="401983",
+                            transform_id="415155",
                             key="data_path",
                             value=results_dir.remote_path
                         ),
                         Widget(
-                            transform_id="401994",
+                            transform_id="415148",
                             key="coverages_genome",
                             value=genome
                         )
@@ -473,6 +716,23 @@ def motifs_task(
 
     logging.info("Uploading data to Latch...")
     return LatchDir(str(dirs['base']), results_dir.remote_path)
+
+
+@small_task(cache=True)
+def complete_results_task(
+    base_results_dir: LatchDir,
+    gene_results_dir: LatchDir,
+    gene_expression_results_dir: LatchDir,
+    gene_stats_results_dir: LatchDir,
+    motif_results_dir: LatchDir,
+) -> LatchDir:
+    _ = (
+        gene_results_dir,
+        gene_expression_results_dir,
+        gene_stats_results_dir,
+        motif_results_dir,
+    )
+    return base_results_dir
 
 
 @small_task(cache=True)

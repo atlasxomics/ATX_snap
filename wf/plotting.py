@@ -2,6 +2,7 @@ import anndata
 import os
 import logging
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import seaborn as sns
 import scanpy as sc
@@ -11,6 +12,136 @@ from typing import Callable, List, Optional
 
 from wf.spatial import squidpy_analysis
 from atx_common import filter_anndata
+
+
+def _sanitize_nhood_enrichment(
+    adata: anndata.AnnData,
+    cluster_key: str = "cluster",
+) -> None:
+    key = f"{cluster_key}_nhood_enrichment"
+    result = adata.uns.get(key)
+    if not isinstance(result, dict) or "zscore" not in result:
+        return
+
+    zscore = result["zscore"]
+    zscore_array = np.asarray(zscore, dtype=float)
+    if np.isfinite(zscore_array).all():
+        return
+
+    logging.warning(
+        "Neighborhood enrichment contains non-finite z-scores; replacing "
+        "NaN/Inf with 0 for plotting."
+    )
+    sanitized = np.nan_to_num(zscore_array, nan=0.0, posinf=0.0, neginf=0.0)
+
+    if isinstance(zscore, pd.DataFrame):
+        result["zscore"] = pd.DataFrame(
+            sanitized, index=zscore.index, columns=zscore.columns
+        )
+    else:
+        result["zscore"] = sanitized
+
+
+def _nhood_labels(adata: anndata.AnnData, cluster_key: str, n_labels: int) -> List[str]:
+    if cluster_key in adata.obs:
+        values = adata.obs[cluster_key]
+        if hasattr(values, "cat"):
+            labels = [str(label) for label in values.cat.categories]
+        else:
+            labels = sorted([str(label) for label in values.dropna().unique()])
+
+        if len(labels) == n_labels:
+            return labels
+
+    return [str(i) for i in range(n_labels)]
+
+
+def _fallback_nhood_heatmap(
+    adata: anndata.AnnData,
+    title: str,
+    cluster_key: str = "cluster",
+    cmap: str = "bwr",
+    vmin: float = -50,
+    vmax: float = 50,
+):
+    key = f"{cluster_key}_nhood_enrichment"
+    result = adata.uns.get(key)
+    if not isinstance(result, dict) or "zscore" not in result:
+        raise ValueError(f"Missing neighborhood enrichment results at adata.uns['{key}']")
+
+    zscore = np.nan_to_num(
+        np.asarray(result["zscore"], dtype=float),
+        nan=0.0,
+        posinf=0.0,
+        neginf=0.0,
+    )
+    labels = _nhood_labels(adata, cluster_key, zscore.shape[0])
+    zscore_df = pd.DataFrame(zscore, index=labels, columns=labels)
+
+    fig_size = max(6, min(18, 0.35 * len(labels)))
+    fig, ax = plt.subplots(figsize=(fig_size, fig_size))
+    sns.heatmap(
+        zscore_df,
+        ax=ax,
+        cmap=cmap,
+        vmin=vmin,
+        vmax=vmax,
+        center=0,
+        square=True,
+    )
+    ax.set_title(title)
+    ax.set_xlabel(cluster_key)
+    ax.set_ylabel(cluster_key)
+    return fig
+
+
+def _plot_nhood_enrichment(
+    adata: anndata.AnnData,
+    title: str,
+    cluster_key: str = "cluster",
+    method: str = "single",
+    cmap: str = "bwr",
+    vmin: float = -50,
+    vmax: float = 50,
+):
+    from squidpy.pl import nhood_enrichment
+
+    result = adata.uns.get(f"{cluster_key}_nhood_enrichment")
+    if isinstance(result, dict) and result.get("skipped") == "fewer_than_two_clusters":
+        logging.warning(
+            "Skipping neighborhood enrichment plot because fewer than two "
+            "clusters are present."
+        )
+        return None
+
+    _sanitize_nhood_enrichment(adata, cluster_key=cluster_key)
+    try:
+        return nhood_enrichment(
+            adata,
+            cluster_key=cluster_key,
+            method=method,
+            title=title,
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+        )
+    except ValueError as e:
+        if "finite values" not in str(e):
+            raise
+
+        logging.warning(
+            "Squidpy neighborhood enrichment plot failed because the clustered "
+            "distance matrix contained non-finite values. Falling back to an "
+            "unclustered heatmap."
+        )
+        return _fallback_nhood_heatmap(
+            adata,
+            title=title,
+            cluster_key=cluster_key,
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+        )
 
 
 def get_custom_group_order(groups):
@@ -141,7 +272,6 @@ def plot_neighborhoods(
     subgroups: Optional[List[str]],
     outdir: str = "figures"
 ):
-    from squidpy.pl import nhood_enrichment
 
     if group != "all" and subgroups:
         filtered_adatas = {}
@@ -155,28 +285,22 @@ def plot_neighborhoods(
 
         if subgroups:
             for sg in subgroups:
-                fig = nhood_enrichment(
+                fig = _plot_nhood_enrichment(
                     filtered_adatas[sg],
-                    cluster_key="cluster",
-                    method="single",
                     title=f"{group} {sg}: Neighborhood enrichment",
-                    cmap="bwr",
-                    vmin=-50,
-                    vmax=50,
                 )
+                if fig is None:
+                    continue
                 pdf.savefig(fig, bbox_inches="tight")
                 plt.close(fig)
 
         elif group == "all":
-            fig = nhood_enrichment(
+            fig = _plot_nhood_enrichment(
                 adata,
-                cluster_key="cluster",
-                method="single",
                 title="All cells: Neighborhood enrichment",
-                cmap="bwr",
-                vmin=-50,
-                vmax=50,
             )
+            if fig is None:
+                return
 
             pdf.savefig(fig, bbox_inches="tight")
             plt.close(fig)

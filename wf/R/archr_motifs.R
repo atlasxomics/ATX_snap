@@ -115,6 +115,78 @@ rownames(metadata) <- str_split_fixed(
 # Create col for log10 of fragment counts
 metadata["log10_nFrags"] <- log(metadata$nFrags)
 
+write_empty_motif_outputs <- function(runs, metadata, output_root) {
+  empty_df <- data.frame()
+
+  write.csv(empty_df, "marker_peaks_per_cluster.csv", row.names = FALSE)
+  write.csv(empty_df, "complete_peak_list_cluster.csv", row.names = FALSE)
+  write.csv(empty_df, "marker_peaks_per_sample.csv", row.names = FALSE)
+  write.csv(empty_df, "complete_peak_list_sample.csv", row.names = FALSE)
+  write.csv(empty_df, "enrichedMotifs_cluster.csv", row.names = FALSE)
+  write.csv(empty_df, "motif_per_cluster_hm.csv", row.names = FALSE)
+
+  if (n_samples > 1) {
+    write.csv(empty_df, "enrichedMotifs_sample.csv", row.names = FALSE)
+    write.csv(empty_df, "motif_per_sample_hm.csv", row.names = FALSE)
+  }
+
+  if (n_cond > 1) {
+    for (i in seq_along(treatment)) {
+      write.csv(
+        empty_df,
+        file = paste0("marker_peaks_per_condition-", i, ".csv"),
+        row.names = FALSE
+      )
+      write.csv(
+        empty_df,
+        file = paste0("complete_peak_list_condition-", i, ".csv"),
+        row.names = FALSE
+      )
+      write.csv(
+        empty_df,
+        file = paste0("enrichedMotifs_condition_", i, ".csv"),
+        row.names = FALSE
+      )
+      write.csv(
+        empty_df,
+        file = paste0("motif_per_condition_", i, "_hm.csv"),
+        row.names = FALSE
+      )
+    }
+  }
+
+  pdf("heatmaps_peaks-motifs.pdf")
+  plot.new()
+  text(0.5, 0.5, "No peak or motif heatmaps available")
+  dev.off()
+
+  dummy_matrix <- Matrix::Matrix(
+    0,
+    nrow = 1,
+    ncol = length(rownames(metadata)),
+    sparse = TRUE
+  )
+  rownames(dummy_matrix) <- "no_motifs_available"
+  colnames(dummy_matrix) <- paste0(metadata$Sample, "#", rownames(metadata))
+
+  seurat_objs_m <- c()
+  for (run in runs) {
+    obj <- build_atlas_seurat_object(
+      run_id = run[1],
+      matrix = dummy_matrix,
+      metadata = metadata,
+      spatial_path = run[5]
+    )
+    saveRDS(obj, file = paste0(run[1], "_SeuratObjMotif.rds"))
+    seurat_objs_m <- c(seurat_objs_m, obj)
+  }
+
+  all_m <- rename_cells(seurat_objs_m)
+  for (obj in all_m) {
+    seurat_to_h5ad(obj, FALSE, paste0(unique(obj$Sample), "_m"))
+  }
+}
+
 # Peak and motif analysis -----------------------------------------------------
 
 # Due to mcapply bug, too many threads in peak calling can lead to OOM error;
@@ -122,7 +194,23 @@ metadata["log10_nFrags"] <- log(metadata$nFrags)
 addArchRThreads(threads = num_threads)
 
 # Peak calling and motif enrichment for clusters ----
-proj <- get_annotated_peaks(proj, "Clusters", genome_size, genome)
+proj <- tryCatch(
+  get_annotated_peaks(proj, "Clusters", genome_size, genome),
+  error = function(e) {
+    message("Cluster peak calling failed: ", e$message)
+    NULL
+  }
+)
+
+if (is.null(proj)) {
+  message(
+    "Skipping motif analysis because cluster-level reproducible peak calling ",
+    "did not produce a usable peak set."
+  )
+  write_empty_motif_outputs(runs, metadata, output_root)
+  q(save = "no", status = 0)
+}
+
 export_peak_beds_by_group(proj, "cluster", output_root)
 
 saveArchRProject(ArchRProj = proj, archrproj_dir)
@@ -349,25 +437,38 @@ dev.off()
 # Peak calling and motifs for Sample ----
 if (n_samples > 1) {
 
-  proj <- get_annotated_peaks(proj, "Sample", genome_size, genome)
-  export_peak_beds_by_group(proj, "sample", output_root)
-
-  saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
-
-  # Repeat getMarkerPeaks for new peak-set, enriched motifs per sample --
-  sample_marker_peaks <- safe_get_marker_features(
-    ArchRProj = proj,
-    useMatrix = "PeakMatrix",
-    groupBy = "Sample",
-    bias = c("TSSEnrichment", "log10(nFrags)"),
-    k = 100,
-    testMethod = "wilcoxon",
-    context = "sample-level motif enrichment peaks"
+  proj_sample <- tryCatch(
+    get_annotated_peaks(proj, "Sample", genome_size, genome),
+    error = function(e) {
+      message("Sample-level peak calling failed: ", e$message)
+      NULL
+    }
   )
 
-  enriched_motifs_s <- get_enriched_motifs(
-    proj, sample_marker_peaks, cut_off
-  )
+  if (is.null(proj_sample)) {
+    sample_marker_peaks <- NULL
+    enriched_motifs_s <- get_enriched_motifs(proj, sample_marker_peaks, cut_off)
+  } else {
+    proj <- proj_sample
+    export_peak_beds_by_group(proj, "sample", output_root)
+
+    saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
+
+    # Repeat getMarkerPeaks for new peak-set, enriched motifs per sample --
+    sample_marker_peaks <- safe_get_marker_features(
+      ArchRProj = proj,
+      useMatrix = "PeakMatrix",
+      groupBy = "Sample",
+      bias = c("TSSEnrichment", "log10(nFrags)"),
+      k = 100,
+      testMethod = "wilcoxon",
+      context = "sample-level motif enrichment peaks"
+    )
+
+    enriched_motifs_s <- get_enriched_motifs(
+      proj, sample_marker_peaks, cut_off
+    )
+  }
 
   write.csv(enriched_motifs_s$enrich_df, "enrichedMotifs_sample.csv")
   write.csv(enriched_motifs_s$heatmap_em, "motif_per_sample_hm.csv")
@@ -381,29 +482,49 @@ if (n_cond > 1) {
 
   for (i in seq_along(treatment)) {
 
-    proj <- get_annotated_peaks(proj, treatment[i], genome_size, genome)
-    condition_group_label <- if (length(treatment) == 1) {
-      "condition"
+    proj_treatment <- tryCatch(
+      get_annotated_peaks(proj, treatment[i], genome_size, genome),
+      error = function(e) {
+        message(
+          "Condition-level peak calling failed for ",
+          treatment[i],
+          ": ",
+          e$message
+        )
+        NULL
+      }
+    )
+
+    if (is.null(proj_treatment)) {
+      treatment_marker_peaks <- NULL
+      enriched_motifs_t <- get_enriched_motifs(
+        proj, treatment_marker_peaks, cut_off
+      )
     } else {
-      paste0("condition_", i)
+      proj <- proj_treatment
+      condition_group_label <- if (length(treatment) == 1) {
+        "condition"
+      } else {
+        paste0("condition_", i)
+      }
+      export_peak_beds_by_group(proj, condition_group_label, output_root)
+
+      saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
+
+      # Get marker peaks and Enriched motifs per treatment --
+      treatment_marker_peaks <- safe_get_marker_features(
+        ArchRProj = proj,
+        useMatrix = "PeakMatrix",
+        groupBy = treatment[i],
+        bias = c("TSSEnrichment", "log10(nFrags)"),
+        k = 100,
+        testMethod = "wilcoxon",
+        context = paste0("condition-level motif enrichment peaks for ", treatment[i])
+      )
+      enriched_motifs_t <- get_enriched_motifs(
+        proj, treatment_marker_peaks, cut_off
+      )
     }
-    export_peak_beds_by_group(proj, condition_group_label, output_root)
-
-    saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
-
-    # Get marker peaks and Enriched motifs per treatment --
-    treatment_marker_peaks <- safe_get_marker_features(
-      ArchRProj = proj,
-      useMatrix = "PeakMatrix",
-      groupBy = treatment[i],
-      bias = c("TSSEnrichment", "log10(nFrags)"),
-      k = 100,
-      testMethod = "wilcoxon",
-      context = paste0("condition-level motif enrichment peaks for ", treatment[i])
-    )
-    enriched_motifs_t <- get_enriched_motifs(
-      proj, treatment_marker_peaks, cut_off
-    )
 
     write.csv(
       enriched_motifs_t$enrich_df,
@@ -447,6 +568,7 @@ if (n_cond > 1) {
       group_by =  treatment[j],
       seq_names = "z",
       matrix = "MotifMatrix",
+      max_cells = 5000,
       test_method = "wilcoxon",
       diff_metric = "MeanDiff"
     )
