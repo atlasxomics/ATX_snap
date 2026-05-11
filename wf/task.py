@@ -640,7 +640,7 @@ def motifs_task(
         bindings=PlotsArtifactBindings(
             plot_templates=[
                 PlotsArtifactTemplate(
-                    template_id="760",
+                    template_id="892",
                     widgets=[
                         Widget(
                             transform_id="415155",
