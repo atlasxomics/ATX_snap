@@ -330,9 +330,12 @@ def plot_spatial(
             axs = axs.flatten()
 
             for i, sample in enumerate(sample_batch):
+                # squidpy inverts y internally; restore positive row values before plotting.
+                sample_adata = adata[adata.obs["sample"] == sample].copy()
+                sample_adata.obsm["spatial"][:, 1] *= -1
 
                 spatial_scatter(
-                    adata[adata.obs["sample"] == sample],
+                    sample_adata,
                     color=color_by,
                     size=pt_size,
                     shape=None,
@@ -399,11 +402,15 @@ def plot_spatial_qc(
                 axs = [axs]
 
             for row_idx, sample in enumerate(sample_batch):
+                # squidpy inverts y internally; restore positive row values before plotting.
+                sample_adata = adata[adata.obs['sample'] == sample].copy()
+                sample_adata.obsm["spatial"][:, 1] *= -1
+
                 for col_idx, qc_metric in enumerate(qc_metrics):
 
                     ax = axs[row_idx][col_idx]
                     spatial_scatter(
-                        adata[adata.obs['sample'] == sample],
+                        sample_adata,
                         color=qc_metric,
                         size=pt_size,
                         shape=None,
