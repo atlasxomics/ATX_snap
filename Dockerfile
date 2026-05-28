@@ -81,6 +81,8 @@ RUN R -e "BiocManager::install('sparseMatrixStats')"
 RUN R -e "remotes::install_github('jpmcga/ArchR', ref = '619f75d')"
 RUN R -e 'remotes::install_version("ggplot2", version = "3.4.1", repos = "https://cran.r-project.org")'
 
+RUN R -e "BiocManager::install(c('BSgenome.Mmusculus.UCSC.mm39', 'TxDb.Mmusculus.UCSC.mm39.knownGene', 'org.Mm.eg.db'), ask = FALSE, update = FALSE)"
+
 COPY . /root/
 
 # Latch workflow registration metadata

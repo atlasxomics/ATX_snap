@@ -2,6 +2,7 @@ library("ArchR")
 library("BSgenome")
 library("BSgenome.Hsapiens.UCSC.hg38")
 library("BSgenome.Mmusculus.UCSC.mm10")
+library("BSgenome.Mmusculus.UCSC.mm39")
 library("BSgenome.Rnorvegicus.UCSC.rn6")
 library("chromVARmotifs")
 library("circlize")
@@ -18,6 +19,8 @@ library("Seurat")
 library("seqLogo")
 library("ShinyCell")
 library("tidyverse")
+library("TxDb.Mmusculus.UCSC.mm39.knownGene")
+library("org.Mm.eg.db")
 
 source("/root/wf/R/archr.R")
 source("/root/wf/R/seurat.R")
@@ -46,8 +49,16 @@ for (run in runs) {
 inputs
 
 # Set genome size for peak calling ----
-genome_sizes <- list("hg38" = 3.3e+09, "mm10" = 3.0e+09, "rnor6" = 2.9e+09)
+genome_sizes <- list(
+  "hg38" = 3.3e+09,
+  "mm10" = 3.0e+09,
+  "mm39" = 2.7e+09,
+  "rnor6" = 2.9e+09
+)
 genome_size <- genome_sizes[[genome]]
+if (is.null(genome_size)) {
+  stop("No genome size configured for genome: ", genome)
+}
 
 archrproj_dir <- paste0(project_name, "_ArchRProject")
 output_root <- file.path("/root", project_name)

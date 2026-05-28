@@ -110,9 +110,17 @@ empty_pdf <- function(filename, label) {
 add_motif_annotations <- function(proj, genome) {
   #' Wrapper for ArchR::addMotifAnnotations()
 
-  motif_set <- list("mm10" = "cisbp", "hg38" = "cisbp", "rnor6" = "encode")
+  motif_set <- list(
+    "mm10" = "cisbp",
+    "mm39" = "cisbp",
+    "hg38" = "cisbp",
+    "rnor6" = "encode"
+  )
   species <- list(
-    "mm10" = NULL, "hg38" = NULL, "rnor6" = ArchR::getGenome(ArchRProj = proj)
+    "mm10" = NULL,
+    "mm39" = "Mus musculus",
+    "hg38" = NULL,
+    "rnor6" = ArchR::getGenome(ArchRProj = proj)
   )
 
   proj <- ArchR::addMotifAnnotations(
@@ -123,6 +131,21 @@ add_motif_annotations <- function(proj, genome) {
     species = species[[genome]]
   )
   return(proj)
+}
+
+create_mm39_annotations <- function() {
+  genomeAnnotation <- ArchR::createGenomeAnnotation(
+    genome = BSgenome.Mmusculus.UCSC.mm39::BSgenome.Mmusculus.UCSC.mm39
+  )
+  geneAnnotation <- ArchR::createGeneAnnotation(
+    TxDb = TxDb.Mmusculus.UCSC.mm39.knownGene::TxDb.Mmusculus.UCSC.mm39.knownGene,
+    OrgDb = org.Mm.eg.db::org.Mm.eg.db
+  )
+
+  return(list(
+    geneAnnotation = geneAnnotation,
+    genomeAnnotation = genomeAnnotation
+  ))
 }
 
 add_lsi <- function(proj, iterations, var_features) {
@@ -145,14 +168,20 @@ add_lsi <- function(proj, iterations, var_features) {
 create_archrproject <- function(
   inputs, genome, min_tss, min_frags, tile_size, out_dir
 ) {
-  #' Create ArrowFiles and ArchRProject; handles mm10, hg38, rnor6.  Inputs are
-  #' a named vector mapping run_id to local fragment files path.
+  #' Create ArrowFiles and ArchRProject; handles mm10, mm39, hg38, rnor6.
+  #' Inputs are a named vector mapping run_id to local fragment files path.
 
   if (genome %in% c("mm10", "hg38")) {
 
     ArchR::addArchRGenome(genome)
     geneAnnotation <- ArchR::getGeneAnnotation()
     genomeAnnotation <- ArchR::getGenomeAnnotation()
+
+  } else if (genome == "mm39") {
+
+    annotations <- create_mm39_annotations()
+    geneAnnotation <- annotations$geneAnnotation
+    genomeAnnotation <- annotations$genomeAnnotation
 
   } else if (genome == "rnor6") {
 
@@ -164,7 +193,7 @@ create_archrproject <- function(
   } else {
 
     stop(
-      "Genome not one for 'mm10', 'hg38', 'rnor6'; please supply correct
+      "Genome not one for 'mm10', 'mm39', 'hg38', 'rnor6'; please supply correct
       genome."
     )
   }
