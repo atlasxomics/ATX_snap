@@ -509,7 +509,12 @@ def combine_gene_h5ads_task(
 
 
     # Save AnnData
-    ft.save_anndata_objects(adata_gene, "_ge", dirs["base"])
+    ft.save_anndata_objects(
+        adata_gene,
+        "_ge",
+        dirs["base"],
+        full_x_dtype="float32",
+    )
 
     delta_dir = _fresh_stage_dir(project_name, "gene_expression_delta")
     _copy_relative_files(

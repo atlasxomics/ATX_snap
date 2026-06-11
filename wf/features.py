@@ -64,6 +64,17 @@ def clean_adata(adata: anndata.AnnData) -> anndata.AnnData:
     return adata
 
 
+def _cast_X_dtype(
+    adata: anndata.AnnData,
+    dtype: str,
+    label: str,
+) -> None:
+    try:
+        adata.X = adata.X.astype(dtype)
+    except Exception as e:
+        logging.warning(f"Cannot convert {label} .X to {dtype}: {e}")
+
+
 def _sanitize_dataframe_for_h5ad(df) -> None:
     """Ensure object columns can be written as H5AD string arrays."""
     import pandas as pd
@@ -453,10 +464,13 @@ def load_volcano_plots(
 def save_anndata_objects(
     adata: anndata.AnnData,
     suffix: str,
-    base_dir: Path
+    base_dir: Path,
+    full_x_dtype: Optional[str] = None,
 ) -> None:
     """Save full and reduced AnnData objects."""
     logging.info("Saving full adata...")
+    if full_x_dtype is not None:
+        _cast_X_dtype(adata, full_x_dtype, "full adata")
     _sanitize_uns_for_h5ad(adata.uns)
     # Save full objects
     adata.write(f"{base_dir}/combined{suffix}.h5ad")
