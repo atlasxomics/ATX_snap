@@ -37,7 +37,30 @@ project_name <- args[1]
 genome <- args[2]
 metadata_path <- args[3]
 embedding_path <- args[4]
-gene_artifacts_dir <- if (length(args) >= 5) args[5] else ""
+
+is_bool_arg <- function(value) {
+  if (length(value) == 0 || is.na(value)) {
+    return(FALSE)
+  }
+  tolower(trimws(as.character(value))) %in%
+    c("true", "t", "1", "yes", "y", "false", "f", "0", "no", "n")
+}
+
+remaining_args <- function(start_idx) {
+  if (length(args) < start_idx) {
+    return(character(0))
+  }
+  args[start_idx:length(args)]
+}
+
+next_arg_idx <- 5
+include_y_chromosome <- FALSE
+if (length(args) >= next_arg_idx && is_bool_arg(args[next_arg_idx])) {
+  include_y_chromosome <- parse_bool_arg(args[next_arg_idx])
+  next_arg_idx <- next_arg_idx + 1
+}
+
+gene_artifacts_dir <- if (length(args) >= next_arg_idx) args[next_arg_idx] else ""
 resume_from_gene_artifacts <- (
   !is.na(gene_artifacts_dir) &&
     nzchar(gene_artifacts_dir) &&
@@ -51,9 +74,9 @@ min_frags <- 0  # Use filtering from SnapATAC2
 num_threads <- 50
 
 run_args <- if (resume_from_gene_artifacts) {
-  if (length(args) < 6) character(0) else args[6:length(args)]
+  remaining_args(next_arg_idx + 1)
 } else {
-  if (length(args) < 5) character(0) else args[5:length(args)]
+  remaining_args(next_arg_idx)
 }
 
 if (length(run_args) == 0) {
@@ -475,7 +498,13 @@ if (resume_from_gene_artifacts) {
 } else {
 
 proj <- create_archrproject( # from archr.R
-  inputs, genome, min_tss, min_frags, tile_size, archrproj_dir
+  inputs,
+  genome,
+  min_tss,
+  min_frags,
+  tile_size,
+  archrproj_dir,
+  include_y_chromosome = include_y_chromosome
 )
 
 # Add Conditions to CellColData ----

@@ -112,6 +112,13 @@ metadata = LatchMetadata(
             batch_table_column=True,
             hidden=True,
         ),
+        "include_y_chromosome": LatchParameter(
+            display_name="include y chromosome",
+            description="Include Y chromosome regions in SnapATAC2 and ArchR "
+            "matrices/peak calling. Defaults to excluding Y chromosome regions.",
+            batch_table_column=True,
+            hidden=True,
+        ),
         "output_dir": LatchParameter(
             display_name="output directory",
             description="Folder in Latch Data to save outputs; defaults to "
@@ -138,6 +145,7 @@ def snap_workflow(
     min_cluster_size: int = 20,
     min_tss: float = 2.0,
     min_frags: int = 10,
+    include_y_chromosome: bool = False,
     output_dir: LatchDir = LatchDir("latch:///snap_outs/"),
 ) -> LatchDir:
     """
@@ -154,6 +162,7 @@ def snap_workflow(
         min_cluster_size=min_cluster_size,
         min_tss=min_tss,
         min_frags=min_frags,
+        include_y_chromosome=include_y_chromosome,
         tile_size=tile_size,
         n_features=n_features,
         clustering_iters=clustering_iters,
@@ -165,6 +174,7 @@ def snap_workflow(
         results_dir=results,
         project_name=project_name,
         genome=genome,
+        include_y_chromosome=include_y_chromosome,
     )
 
     results_ge = combine_gene_h5ads_task(
@@ -180,6 +190,7 @@ def snap_workflow(
         gene_results_dir=gene_results,
         project_name=project_name,
         genome=genome,
+        include_y_chromosome=include_y_chromosome,
     )
 
     results_with_gene_stats = gene_stats_task(

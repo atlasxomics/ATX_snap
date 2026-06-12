@@ -37,9 +37,27 @@ project_name <- args[1]
 genome <- args[2]
 metadata_path <- args[3]
 archrproj_path <- args[4]
+is_bool_arg <- function(value) {
+  if (length(value) == 0 || is.na(value)) {
+    return(FALSE)
+  }
+  tolower(trimws(as.character(value))) %in%
+    c("true", "t", "1", "yes", "y", "false", "f", "0", "no", "n")
+}
+
+run_args_idx <- 5
+include_y_chromosome <- FALSE
+if (length(args) >= run_args_idx && is_bool_arg(args[run_args_idx])) {
+  include_y_chromosome <- parse_bool_arg(args[run_args_idx])
+  run_args_idx <- run_args_idx + 1
+}
 num_threads <- 50
 
-runs <- strsplit(args[5:length(args)], ",")
+if (length(args) < run_args_idx) {
+  stop("No runs were supplied to archr_motifs.R.")
+}
+
+runs <- strsplit(args[run_args_idx:length(args)], ",")
 runs
 
 inputs <- c()  # Inputs for ArrowFiles (run_id : fragment_file path)
@@ -206,7 +224,13 @@ addArchRThreads(threads = num_threads)
 
 # Peak calling and motif enrichment for clusters ----
 proj <- tryCatch(
-  get_annotated_peaks(proj, "Clusters", genome_size, genome),
+  get_annotated_peaks(
+    proj,
+    "Clusters",
+    genome_size,
+    genome,
+    include_y_chromosome = include_y_chromosome
+  ),
   error = function(e) {
     message("Cluster peak calling failed: ", e$message)
     NULL
@@ -449,7 +473,13 @@ dev.off()
 if (n_samples > 1) {
 
   proj_sample <- tryCatch(
-    get_annotated_peaks(proj, "Sample", genome_size, genome),
+    get_annotated_peaks(
+      proj,
+      "Sample",
+      genome_size,
+      genome,
+      include_y_chromosome = include_y_chromosome
+    ),
     error = function(e) {
       message("Sample-level peak calling failed: ", e$message)
       NULL
@@ -494,7 +524,13 @@ if (n_cond > 1) {
   for (i in seq_along(treatment)) {
 
     proj_treatment <- tryCatch(
-      get_annotated_peaks(proj, treatment[i], genome_size, genome),
+      get_annotated_peaks(
+        proj,
+        treatment[i],
+        genome_size,
+        genome,
+        include_y_chromosome = include_y_chromosome
+      ),
       error = function(e) {
         message(
           "Condition-level peak calling failed for ",

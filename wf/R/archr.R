@@ -165,8 +165,35 @@ add_lsi <- function(proj, iterations, var_features) {
 }
 
 
+parse_bool_arg <- function(value, default = FALSE) {
+  if (length(value) == 0 || is.na(value) || !nzchar(trimws(value))) {
+    return(default)
+  }
+
+  normalized <- tolower(trimws(as.character(value)))
+  if (normalized %in% c("true", "t", "1", "yes", "y")) {
+    return(TRUE)
+  }
+  if (normalized %in% c("false", "f", "0", "no", "n")) {
+    return(FALSE)
+  }
+
+  stop("Could not parse boolean argument: ", value)
+}
+
+
+archr_exclude_chroms <- function(include_y_chromosome) {
+  if (isTRUE(include_y_chromosome)) {
+    return(c("chrM", "M"))
+  }
+
+  c("chrM", "M", "chrY", "Y")
+}
+
+
 create_archrproject <- function(
-  inputs, genome, min_tss, min_frags, tile_size, out_dir
+  inputs, genome, min_tss, min_frags, tile_size, out_dir,
+  include_y_chromosome = FALSE
 ) {
   #' Create ArrowFiles and ArchRProject; handles mm10, mm39, hg38, rnor6.
   #' Inputs are a named vector mapping run_id to local fragment files path.
@@ -198,6 +225,9 @@ create_archrproject <- function(
     )
   }
 
+  exclude_chr <- archr_exclude_chroms(include_y_chromosome)
+  message("Excluding chromosomes from ArchR matrices: ", paste(exclude_chr, collapse = ", "))
+
   arrow_files <- ArchR::createArrowFiles(
     inputFiles = inputs,
     geneAnnotation = geneAnnotation,
@@ -206,6 +236,7 @@ create_archrproject <- function(
     minTSS = min_tss,
     minFrags = min_frags,
     maxFrags = 1e+07,
+    excludeChr = exclude_chr,
     addTileMat = TRUE,
     addGeneScoreMat = TRUE,
     offsetPlus = 0,
@@ -223,12 +254,16 @@ create_archrproject <- function(
   return(proj)
 }
 
-get_annotated_peaks <- function(proj, group_by, genome_size, genome) {
+get_annotated_peaks <- function(
+  proj, group_by, genome_size, genome, include_y_chromosome = FALSE
+) {
+  exclude_chr <- archr_exclude_chroms(include_y_chromosome)
 
   proj <- ArchR::addGroupCoverages(
     ArchRProj = proj,
     groupBy = group_by,
     maxCells = 1500,
+    excludeChr = exclude_chr,
     force = TRUE
   )
 
@@ -237,6 +272,7 @@ get_annotated_peaks <- function(proj, group_by, genome_size, genome) {
     groupBy = group_by,
     pathToMacs2 = ArchR::findMacs2(),
     genomeSize = genome_size,
+    excludeChr = exclude_chr,
     maxPeaks = 300000,
     force = TRUE
   )

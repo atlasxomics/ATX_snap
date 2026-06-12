@@ -195,6 +195,7 @@ def make_adata(
     min_cluster_size: int,
     min_tss: float,
     min_frags: int,
+    include_y_chromosome: bool,
     tile_size: int,
     n_features: int,
     clustering_iters: int,
@@ -241,6 +242,7 @@ def make_adata(
         ["minimum cluster size", min_cluster_size],
         ["minimum TSS", min_tss],
         ["minimum fragments", min_frags],
+        ["include y chromosome", include_y_chromosome],
         ["clustering_resolution", resolution],
         ["clustering iterations", clustering_iters],
     ]
@@ -262,7 +264,14 @@ def make_adata(
     adatas = pp.filter_adatas(adatas, min_tss=min_tss)
 
     logging.info("Adding tile matrix to objects...")
-    snap.pp.add_tile_matrix(adatas, bin_size=tile_size)
+    excluded_chroms = ["chrM", "M"]
+    if not include_y_chromosome:
+        excluded_chroms.extend(["chrY", "Y"])
+    snap.pp.add_tile_matrix(
+        adatas,
+        bin_size=tile_size,
+        exclude_chroms=excluded_chroms,
+    )
 
     if len(samples) > 1:
         logging.info("Combining objects...")
@@ -391,6 +400,7 @@ def genes_task(
     results_dir: LatchDir,
     project_name: str,
     genome: utils.Genome,
+    include_y_chromosome: bool,
 ) -> LatchDir:
 
     # Read in data tables
@@ -411,6 +421,7 @@ def genes_task(
         genome,
         data_paths['obs'],
         data_paths['spectral'],
+        str(include_y_chromosome).lower(),
     ]
 
     position_files = {}
@@ -610,6 +621,7 @@ def motifs_task(
     gene_results_dir: LatchDir,
     project_name: str,
     genome: utils.Genome,
+    include_y_chromosome: bool,
 ) -> LatchDir:
 
     # Read in data tables
@@ -636,6 +648,7 @@ def motifs_task(
         genome,
         data_paths['obs'],
         archrproj_path,
+        str(include_y_chromosome).lower(),
     ]
 
     position_files = {}
