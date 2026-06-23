@@ -263,7 +263,6 @@ get_annotated_peaks <- function(
     ArchRProj = proj,
     groupBy = group_by,
     maxCells = 1500,
-    excludeChr = exclude_chr,
     force = TRUE
   )
 
