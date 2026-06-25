@@ -1,6 +1,7 @@
 import logging
 import gc
 import glob
+import math
 
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -13,6 +14,98 @@ import scipy.sparse as sp
 logging.basicConfig(
     format="%(levelname)s - %(asctime)s - %(message)s", level=logging.INFO
 )
+
+
+def add_spatial_offset(
+    adata: anndata.AnnData,
+    sample_key: str = "sample",
+    spatial_key: str = "spatial",
+    new_obsm_key: str = "spatial_offset",
+    tile_spacing: float = 300.0,
+) -> None:
+    if (
+        sample_key not in adata.obs
+        or spatial_key not in adata.obsm
+        or new_obsm_key in adata.obsm
+    ):
+        return
+
+    sample_values = adata.obs[sample_key].astype(str)
+    samples = sorted(sample_values.unique().tolist())
+    n_samples = len(samples)
+    if n_samples == 0:
+        return
+
+    n_cols = min(2, max(1, n_samples))
+    n_rows = math.ceil(n_samples / n_cols)
+    spatial = np.asarray(adata.obsm[spatial_key])
+    offset = np.empty_like(spatial, dtype=float)
+    grid_bounds = {}
+    sample_positions = {}
+
+    for idx, sample_name in enumerate(samples):
+        row = idx // n_cols
+        col = idx % n_cols
+        sample_positions[sample_name] = (row, col)
+
+        mask = (sample_values == sample_name).to_numpy()
+        sample_spatial = spatial[mask]
+        if sample_spatial.size == 0:
+            continue
+
+        max_coords = sample_spatial.max(axis=0)
+        min_coords = sample_spatial.min(axis=0)
+        grid_bounds[(row, col)] = {
+            "width": float(max_coords[0] - min_coords[0]),
+            "height": float(max_coords[1] - min_coords[1]),
+            "min_x": float(min_coords[0]),
+            "max_y": float(max_coords[1]),
+        }
+
+    row_heights = [
+        max(
+            (
+                grid_bounds[(row, col)]["height"]
+                for col in range(n_cols)
+                if (row, col) in grid_bounds
+            ),
+            default=0.0,
+        )
+        for row in range(n_rows)
+    ]
+    col_widths = [
+        max(
+            (
+                grid_bounds[(row, col)]["width"]
+                for row in range(n_rows)
+                if (row, col) in grid_bounds
+            ),
+            default=0.0,
+        )
+        for col in range(n_cols)
+    ]
+
+    row_y_offsets = [0.0]
+    for idx in range(n_rows - 1):
+        row_y_offsets.append(row_y_offsets[-1] - row_heights[idx] - tile_spacing)
+
+    col_x_offsets = [0.0]
+    for idx in range(n_cols - 1):
+        col_x_offsets.append(col_x_offsets[-1] + col_widths[idx] + tile_spacing)
+
+    for sample_name in samples:
+        row, col = sample_positions[sample_name]
+        bounds = grid_bounds.get((row, col))
+        if bounds is None:
+            continue
+
+        mask = (sample_values == sample_name).to_numpy()
+        sample_spatial = spatial[mask].copy().astype(float)
+        sample_spatial[:, 0] += col_x_offsets[col] - bounds["min_x"]
+        sample_spatial[:, 1] += row_y_offsets[row] - bounds["max_y"]
+        offset[mask] = sample_spatial
+
+    adata.obsm[new_obsm_key] = offset
 
 
 def clean_adata(adata: anndata.AnnData) -> anndata.AnnData:
@@ -43,8 +136,10 @@ def clean_adata(adata: anndata.AnnData) -> anndata.AnnData:
     for uns in ["pca", "log1p"]:
         adata.uns.pop(uns, None)
 
+    add_spatial_offset(adata)
+
     rm_obsm = [obsm for obsm in adata.obsm.keys()
-               if obsm not in ["spatial", "X_umap"]]
+               if obsm not in ["spatial_offset", "X_umap"]]
 
     for obsm in rm_obsm:
         del adata.obsm[obsm]
@@ -471,6 +566,7 @@ def save_anndata_objects(
     logging.info("Saving full adata...")
     if full_x_dtype is not None:
         _cast_X_dtype(adata, full_x_dtype, "full adata")
+    add_spatial_offset(adata)
     _sanitize_uns_for_h5ad(adata.uns)
     # Save full objects
     adata.write(f"{base_dir}/combined{suffix}.h5ad")

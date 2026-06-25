@@ -389,6 +389,7 @@ def make_adata(
     spectral_df = pd.DataFrame(adata.obsm[spectral_key], index=adata.obs_names)
     spectral_df.to_csv(f"{tables_dir}/spectral.csv")
 
+    ft.add_spatial_offset(adata)
     adata.write(f"{result_dir}/combined.h5ad")
 
     return LatchDir(result_dir, output_dir), groups
