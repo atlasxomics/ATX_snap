@@ -1,6 +1,7 @@
 import anndata
 import logging
 import numpy as np
+import pandas as pd
 from pathlib import Path
 from typing import Optional
 
@@ -82,3 +83,47 @@ def squidpy_analysis(
     )
 
     return adata
+
+
+def run_spatial_autocorr(
+    adata: anndata.AnnData,
+    n_jobs: int = 4,
+) -> pd.DataFrame:
+    """Compute Moran's I per feature using squidpy. Returns DataFrame sorted by I descending."""
+    import squidpy as sq
+
+    sample_key = "sample" if "sample" in adata.obs.columns else None
+    if "spatial_connectivities" not in adata.obsp:
+        sq.gr.spatial_neighbors(
+            adata, coord_type="grid", n_neighs=4, n_rings=1, library_key=sample_key
+        )
+
+    layer = None
+    for candidate in ["log1p", "lognorm", "normalized"]:
+        if candidate in adata.layers:
+            layer = candidate
+            break
+
+    features_upper = pd.Index(adata.var_names.astype(str)).str.upper()
+    keep = ~(
+        features_upper.str.startswith("MT-")
+        | features_upper.str.startswith("RPS")
+        | features_upper.str.startswith("RPL")
+        | features_upper.str.startswith("MTRNR")
+    )
+    if "highly_variable" in adata.var.columns:
+        keep = keep & adata.var["highly_variable"].to_numpy()
+
+    test_features = adata.var_names[keep].tolist()
+    if not test_features:
+        raise ValueError("No features remain after filtering for spatial autocorrelation.")
+
+    logging.info(
+        "Running spatial autocorrelation (Moran's I) on %d features (layer=%s).",
+        len(test_features),
+        layer or "X",
+    )
+    sq.gr.spatial_autocorr(
+        adata, mode="moran", genes=test_features, layer=layer, n_perms=None, n_jobs=n_jobs
+    )
+    return adata.uns["moranI"].sort_values("I", ascending=False)
