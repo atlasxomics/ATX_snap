@@ -444,7 +444,7 @@ def genes_task(
             "'tissue_positions_list.csv' file."
         )
 
-    runs = [
+    run_args = [
         (
             f'{run.run_id},'
             f'{run.fragments_file.local_path},'
@@ -455,7 +455,7 @@ def genes_task(
         )
         for run in runs
     ]
-    _archr_cmd.extend(runs)
+    _archr_cmd.extend(run_args)
     subprocess.run(_archr_cmd, check=True)
 
     # Stage ArchRProject, Seurat objects, per-run h5ads, and R-side tables.
@@ -700,7 +700,7 @@ def motifs_task(
             "'tissue_positions_list.csv' file."
         )
 
-    runs = [
+    run_args = [
         (
             f'{run.run_id},'
             f'{run.fragments_file.local_path},'
@@ -711,7 +711,7 @@ def motifs_task(
         )
         for run in runs
     ]
-    _archr_cmd.extend(runs)
+    _archr_cmd.extend(run_args)
     subprocess.run(_archr_cmd, check=True)
 
     # Load and combine data
