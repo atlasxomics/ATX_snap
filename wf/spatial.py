@@ -1,10 +1,21 @@
 import anndata
 import logging
 import numpy as np
+import pandas as pd
 from pathlib import Path
 from typing import Optional
 
 import wf.plotting as pl
+
+
+def _ensure_obs_categorical(adata: anndata.AnnData, key: Optional[str]) -> None:
+    if key is None or key not in adata.obs.columns:
+        return
+
+    if adata.obs[key].dtype.name == "category":
+        adata.obs[key] = adata.obs[key].cat.remove_unused_categories()
+    else:
+        adata.obs[key] = adata.obs[key].astype("category")
 
 
 def add_spatial(
@@ -50,16 +61,8 @@ def squidpy_analysis(
     """
     from squidpy.gr import nhood_enrichment, spatial_neighbors
 
-    if not adata.obs[cluster_key].dtype.name == "category":
-        adata.obs[cluster_key] = adata.obs["cluster"].astype("category")
-    else:
-        adata.obs[cluster_key] = adata.obs[cluster_key].cat.remove_unused_categories()
-
-    if sample_key:
-        if not adata.obs[sample_key].dtype.name == "category":
-            adata.obs[sample_key] = adata.obs[sample_key].astype("category")
-        else:
-            adata.obs[sample_key] = adata.obs[sample_key].cat.remove_unused_categories()
+    _ensure_obs_categorical(adata, cluster_key)
+    _ensure_obs_categorical(adata, sample_key)
 
     n_clusters = len(adata.obs[cluster_key].cat.categories)
     spatial_neighbors(
@@ -82,3 +85,48 @@ def squidpy_analysis(
     )
 
     return adata
+
+
+def run_spatial_autocorr(
+    adata: anndata.AnnData,
+    n_jobs: int = 4,
+) -> pd.DataFrame:
+    """Compute Moran's I per feature using squidpy. Returns DataFrame sorted by I descending."""
+    import squidpy as sq
+
+    sample_key = "sample" if "sample" in adata.obs.columns else None
+    _ensure_obs_categorical(adata, sample_key)
+    if "spatial_connectivities" not in adata.obsp:
+        sq.gr.spatial_neighbors(
+            adata, coord_type="grid", n_neighs=4, n_rings=1, library_key=sample_key
+        )
+
+    layer = None
+    for candidate in ["log1p", "lognorm", "normalized"]:
+        if candidate in adata.layers:
+            layer = candidate
+            break
+
+    features_upper = pd.Index(adata.var_names.astype(str)).str.upper()
+    keep = ~(
+        features_upper.str.startswith("MT-")
+        | features_upper.str.startswith("RPS")
+        | features_upper.str.startswith("RPL")
+        | features_upper.str.startswith("MTRNR")
+    )
+    if "highly_variable" in adata.var.columns:
+        keep = keep & adata.var["highly_variable"].to_numpy()
+
+    test_features = adata.var_names[keep].tolist()
+    if not test_features:
+        raise ValueError("No features remain after filtering for spatial autocorrelation.")
+
+    logging.info(
+        "Running spatial autocorrelation (Moran's I) on %d features (layer=%s).",
+        len(test_features),
+        layer or "X",
+    )
+    sq.gr.spatial_autocorr(
+        adata, mode="moran", genes=test_features, layer=layer, n_perms=None, n_jobs=n_jobs
+    )
+    return adata.uns["moranI"].sort_values("I", ascending=False)

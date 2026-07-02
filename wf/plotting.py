@@ -437,6 +437,115 @@ def plot_spatial_qc(
         )
 
 
+def plot_svg_spatial(
+    adata: anndata.AnnData,
+    svg_df: pd.DataFrame,
+    samples: List[str],
+    output_path: str,
+    modality: str,
+    top_n: int = 10,
+    pt_size: int = 75,
+    html_output_path: Optional[str] = None,
+) -> None:
+    """Spatial scatter plots for the top N spatially variable features."""
+    import scipy.sparse as sparse_mod
+    from squidpy.pl import spatial_scatter
+
+    if svg_df.empty or "spatial" not in adata.obsm:
+        return
+
+    # svg_df index = feature names (squidpy convention)
+    top_features = [f for f in svg_df.index[:top_n] if f in adata.var_names]
+    if not top_features:
+        return
+
+    # Resolve expression layer; fallback to .X
+    layer = None
+    for candidate in ["log1p", "lognorm", "normalized"]:
+        if candidate in adata.layers:
+            layer = candidate
+            break
+
+    feat_indices = adata.var_names.get_indexer(top_features)
+    X_src = adata.layers[layer] if layer is not None else adata.X
+    if sparse_mod.issparse(X_src):
+        X_sub = X_src[:, feat_indices].toarray().astype(np.float32)
+    else:
+        X_sub = np.asarray(X_src[:, feat_indices], dtype=np.float32)
+
+    plot_adata = anndata.AnnData(
+        X=X_sub,
+        obs=adata.obs.copy(),
+        var=adata.var.iloc[feat_indices].copy(),
+        obsm={"spatial": adata.obsm["spatial"].copy()},
+    )
+
+    n_cols = 5
+    n_rows = max(1, -(-len(top_features) // n_cols))
+
+    page_captions: List[str] = []
+    save_page, close, is_pdf, image_paths = _get_page_saver(output_path)
+    try:
+        for sample in samples:
+            sample_adata = plot_adata[plot_adata.obs["sample"] == sample].copy()
+            # Restore positive y values; squidpy inverts y internally for display.
+            sample_adata.obsm["spatial"][:, 1] *= -1
+
+            fig, axes = plt.subplots(
+                n_rows, n_cols,
+                figsize=(n_cols * 4, n_rows * 4),
+                squeeze=False,
+            )
+            axes_flat = axes.ravel()
+
+            for i, feat in enumerate(top_features):
+                ax = axes_flat[i]
+                moran_i = float(svg_df.at[feat, "I"]) if feat in svg_df.index else float("nan")
+                try:
+                    spatial_scatter(
+                        sample_adata,
+                        color=feat,
+                        size=pt_size,
+                        shape=None,
+                        library_id=sample,
+                        ax=ax,
+                        title=f"{feat}  I={moran_i:.3f}",
+                        colorbar=False,
+                    )
+                    if ax.collections:
+                        fig.colorbar(ax.collections[0], ax=ax, shrink=0.6)
+                    ax.axis("off")
+                except Exception as feat_err:
+                    logging.warning("Could not plot %s: %s", feat, feat_err)
+                    ax.set_title(feat)
+                    ax.axis("off")
+
+            for ax in axes_flat[len(top_features):]:
+                ax.axis("off")
+
+            plt.suptitle(
+                f"{sample} {modality} — top {len(top_features)} spatially variable features",
+                fontsize=13,
+                fontweight="bold",
+                y=1.02,
+            )
+            plt.tight_layout()
+            page_captions.append(f"{sample}: top {len(top_features)} SVFs")
+            save_page(fig)
+            plt.close(fig)
+    finally:
+        close()
+
+    if not is_pdf:
+        _write_html_gallery(
+            output_path,
+            title=f"Top Spatially Variable {modality}",
+            image_paths=image_paths,
+            captions=page_captions,
+            html_output_path=html_output_path,
+        )
+
+
 def plot_stacked_peaks(
     data: pd.DataFrame,
     group_by: str,

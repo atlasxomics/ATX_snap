@@ -444,7 +444,7 @@ def genes_task(
             "'tissue_positions_list.csv' file."
         )
 
-    runs = [
+    run_args = [
         (
             f'{run.run_id},'
             f'{run.fragments_file.local_path},'
@@ -455,7 +455,7 @@ def genes_task(
         )
         for run in runs
     ]
-    _archr_cmd.extend(runs)
+    _archr_cmd.extend(run_args)
     subprocess.run(_archr_cmd, check=True)
 
     # Stage ArchRProject, Seurat objects, per-run h5ads, and R-side tables.
@@ -510,6 +510,25 @@ def combine_gene_h5ads_task(
         adata_gene, dirs["figures"], sample_key
     )
 
+    # Spatially variable genes
+    samples = [run.run_id for run in runs]
+    try:
+        svg_df = sp.run_spatial_autocorr(adata_gene, n_jobs=4)
+        svg_df.to_csv(dirs["tables"] / "svg_genes.csv")
+        pl.plot_svg_spatial(
+            adata_gene,
+            svg_df,
+            samples,
+            str(dirs["figures"] / "svg_spatial_genes.png"),
+            modality="Genes",
+            top_n=10,
+            html_output_path=str(dirs["figures"] / "svg_spatial_genes.html"),
+        )
+    except Exception as e:
+        warning = f"Spatial autocorrelation (genes) failed: {e}"
+        logging.warning(warning)
+        message(typ="warning", data={"title": "SVG genes failed", "body": warning})
+
     # Load differential analysis results
     ft.load_analysis_results(
         adata_gene,
@@ -529,6 +548,14 @@ def combine_gene_h5ads_task(
     )
 
     delta_dir = _fresh_stage_dir(project_name, "gene_expression_delta")
+
+    svg_table_paths = [
+        p.relative_to(dirs["base"]) for p in dirs["tables"].glob("svg_*.csv")
+    ]
+    svg_figure_paths = [
+        p.relative_to(dirs["base"]) for p in dirs["figures"].glob("svg_spatial_genes*")
+    ]
+
     _copy_relative_files(
         dirs["base"],
         delta_dir,
@@ -536,7 +563,7 @@ def combine_gene_h5ads_task(
             Path("combined_ge.h5ad"),
             Path("combined_sm_ge.h5ad"),
             Path("figures/all_neighborhoods.pdf"),
-        ],
+        ] + svg_table_paths + svg_figure_paths,
     )
 
     logging.info("Uploading gene-expression stage artifacts to Latch...")
@@ -671,7 +698,7 @@ def motifs_task(
             "'tissue_positions_list.csv' file."
         )
 
-    runs = [
+    run_args = [
         (
             f'{run.run_id},'
             f'{run.fragments_file.local_path},'
@@ -682,7 +709,7 @@ def motifs_task(
         )
         for run in runs
     ]
-    _archr_cmd.extend(runs)
+    _archr_cmd.extend(run_args)
     subprocess.run(_archr_cmd, check=True)
 
     # Load and combine data
@@ -690,6 +717,25 @@ def motifs_task(
 
     # Transfer auxiliary data to combined AnnData
     ft.transfer_auxiliary_data(adata_motif, data_paths, groups)
+
+    # Spatially variable motifs
+    samples = [run.run_id for run in runs]
+    try:
+        svg_df_motifs = sp.run_spatial_autocorr(adata_motif, n_jobs=4)
+        svg_df_motifs.to_csv(dirs["tables"] / "svg_motifs.csv")
+        pl.plot_svg_spatial(
+            adata_motif,
+            svg_df_motifs,
+            samples,
+            str(dirs["figures"] / "svg_spatial_motifs.png"),
+            modality="Motifs",
+            top_n=10,
+            html_output_path=str(dirs["figures"] / "svg_spatial_motifs.html"),
+        )
+    except Exception as e:
+        warning = f"Spatial autocorrelation (motifs) failed: {e}"
+        logging.warning(warning)
+        message(typ="warning", data={"title": "SVG motifs failed", "body": warning})
 
     # Load differential analysis results
     ft.load_analysis_results(adata_motif, "motif", groups)
