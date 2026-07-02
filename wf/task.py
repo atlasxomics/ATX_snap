@@ -522,7 +522,7 @@ def combine_gene_h5ads_task(
             str(dirs["figures"] / "svg_spatial_genes.png"),
             modality="Genes",
             top_n=10,
-            html_output_path=str(dirs["base"] / "svg_spatial_genes.html"),
+            html_output_path=str(dirs["figures"] / "svg_spatial_genes.html"),
         )
     except Exception as e:
         warning = f"Spatial autocorrelation (genes) failed: {e}"
@@ -553,8 +553,6 @@ def combine_gene_h5ads_task(
         p.relative_to(dirs["base"]) for p in dirs["tables"].glob("svg_*.csv")
     ]
     svg_figure_paths = [
-        p.relative_to(dirs["base"]) for p in dirs["base"].glob("svg_spatial_genes*")
-    ] + [
         p.relative_to(dirs["base"]) for p in dirs["figures"].glob("svg_spatial_genes*")
     ]
 
@@ -732,7 +730,7 @@ def motifs_task(
             str(dirs["figures"] / "svg_spatial_motifs.png"),
             modality="Motifs",
             top_n=10,
-            html_output_path=str(dirs["base"] / "svg_spatial_motifs.html"),
+            html_output_path=str(dirs["figures"] / "svg_spatial_motifs.html"),
         )
     except Exception as e:
         warning = f"Spatial autocorrelation (motifs) failed: {e}"

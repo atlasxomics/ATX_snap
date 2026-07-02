@@ -8,6 +8,16 @@ from typing import Optional
 import wf.plotting as pl
 
 
+def _ensure_obs_categorical(adata: anndata.AnnData, key: Optional[str]) -> None:
+    if key is None or key not in adata.obs.columns:
+        return
+
+    if adata.obs[key].dtype.name == "category":
+        adata.obs[key] = adata.obs[key].cat.remove_unused_categories()
+    else:
+        adata.obs[key] = adata.obs[key].astype("category")
+
+
 def add_spatial(
     adata: anndata.AnnData, x_key: str = "xcor", y_key: str = "ycor"
 ) -> anndata.AnnData:
@@ -51,16 +61,8 @@ def squidpy_analysis(
     """
     from squidpy.gr import nhood_enrichment, spatial_neighbors
 
-    if not adata.obs[cluster_key].dtype.name == "category":
-        adata.obs[cluster_key] = adata.obs["cluster"].astype("category")
-    else:
-        adata.obs[cluster_key] = adata.obs[cluster_key].cat.remove_unused_categories()
-
-    if sample_key:
-        if not adata.obs[sample_key].dtype.name == "category":
-            adata.obs[sample_key] = adata.obs[sample_key].astype("category")
-        else:
-            adata.obs[sample_key] = adata.obs[sample_key].cat.remove_unused_categories()
+    _ensure_obs_categorical(adata, cluster_key)
+    _ensure_obs_categorical(adata, sample_key)
 
     n_clusters = len(adata.obs[cluster_key].cat.categories)
     spatial_neighbors(
@@ -93,6 +95,7 @@ def run_spatial_autocorr(
     import squidpy as sq
 
     sample_key = "sample" if "sample" in adata.obs.columns else None
+    _ensure_obs_categorical(adata, sample_key)
     if "spatial_connectivities" not in adata.obsp:
         sq.gr.spatial_neighbors(
             adata, coord_type="grid", n_neighs=4, n_rings=1, library_key=sample_key
