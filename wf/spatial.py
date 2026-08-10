@@ -3,9 +3,13 @@ import logging
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 
 import wf.plotting as pl
+
+
+GROUPED_NHOOD_ENRICHMENT_KEY = "cluster_nhood_enrichment_by_group"
+GROUPED_NHOOD_SCHEMA_VERSION = 1
 
 
 def _ensure_obs_categorical(adata: anndata.AnnData, key: Optional[str]) -> None:
@@ -33,12 +37,20 @@ def add_spatial(
 
 
 def run_squidpy_analysis(
-    adata: anndata.AnnData, figures_dir: Path, sample_key: Optional[str] = None
+    adata: anndata.AnnData,
+    figures_dir: Path,
+    sample_key: Optional[str] = None,
+    group_keys: Optional[Iterable[str]] = None,
 ) -> anndata.AnnData:
-    """Run Squidpy analysis and generate plots."""
+    """Run Squidpy analysis, including results consumed by backed Plots."""
 
     logging.info("Running squidpy...")
     adata = squidpy_analysis(adata, sample_key=sample_key)
+    precompute_grouped_nhood_enrichment(
+        adata,
+        group_keys=group_keys or (),
+        sample_key=sample_key,
+    )
 
     # Generate neighborhood plots
     logging.info("Making neighborhood plots...")
@@ -52,10 +64,116 @@ def run_squidpy_analysis(
     return adata
 
 
+def _nhood_result_for_subgroup(
+    adata: anndata.AnnData,
+    mask: np.ndarray,
+    cluster_key: str,
+    sample_key: Optional[str],
+    spatial_key: str,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Compute enrichment without copying the feature matrix from ``adata``."""
+    obs_keys = [cluster_key]
+    if sample_key is not None and sample_key != cluster_key:
+        obs_keys.append(sample_key)
+
+    subset = anndata.AnnData(obs=adata.obs.loc[mask, obs_keys].copy())
+    subset.obsm[spatial_key] = np.asarray(adata.obsm[spatial_key])[mask].copy()
+    _ensure_obs_categorical(subset, cluster_key)
+    _ensure_obs_categorical(subset, sample_key)
+
+    categories = subset.obs[cluster_key].cat.categories.astype(str).to_numpy()
+    if subset.n_obs < 2:
+        shape = (len(categories), len(categories))
+        return categories, np.zeros(shape, dtype=float), np.zeros(shape, dtype=float)
+
+    squidpy_analysis(
+        subset,
+        cluster_key=cluster_key,
+        sample_key=sample_key,
+        spatial_key=spatial_key,
+    )
+    result = subset.uns[f"{cluster_key}_nhood_enrichment"]
+    return categories, np.asarray(result["zscore"]), np.asarray(result["count"])
+
+
+def precompute_grouped_nhood_enrichment(
+    adata: anndata.AnnData,
+    group_keys: Iterable[str],
+    cluster_key: str = "cluster",
+    sample_key: Optional[str] = None,
+    spatial_key: Optional[str] = None,
+) -> None:
+    """Store subgroup neighborhood results in a backed-AnnData-friendly schema.
+
+    The result contains only small enrichment matrices and their labels.  It is
+    deliberately indexed with numeric HDF5-safe keys because user-provided group
+    values can contain slashes and other characters that are unsafe as HDF5 paths.
+    """
+    if spatial_key is None:
+        spatial_key = next(
+            (key for key in ("spatial_offset", "spatial") if key in adata.obsm),
+            None,
+        )
+    if spatial_key is None:
+        raise KeyError(
+            "Spatial coordinates were not found in `adata.obsm`; expected "
+            "`spatial_offset` or `spatial`."
+        )
+
+    stored_groups = {}
+    seen = set()
+    for group_key in group_keys:
+        if group_key in seen or group_key == cluster_key:
+            continue
+        seen.add(group_key)
+        if group_key not in adata.obs:
+            logging.warning(
+                "Skipping neighborhood precomputation for missing obs key '%s'.",
+                group_key,
+            )
+            continue
+
+        values = pd.unique(adata.obs[group_key].dropna())
+        stored_subgroups = {}
+        for subgroup_index, group_value in enumerate(values):
+            mask = (adata.obs[group_key] == group_value).to_numpy()
+            logging.info(
+                "Precomputing neighborhood enrichment for %s=%s (%d cells).",
+                group_key,
+                group_value,
+                int(mask.sum()),
+            )
+            categories, zscore, count = _nhood_result_for_subgroup(
+                adata,
+                mask,
+                cluster_key,
+                sample_key,
+                spatial_key,
+            )
+            stored_subgroups[str(subgroup_index)] = {
+                "group_value": str(group_value),
+                "cluster_categories": categories,
+                "zscore": zscore,
+                "count": count,
+            }
+
+        stored_groups[str(len(stored_groups))] = {
+            "group_key": str(group_key),
+            "subgroups": stored_subgroups,
+        }
+
+    adata.uns[GROUPED_NHOOD_ENRICHMENT_KEY] = {
+        "schema_version": GROUPED_NHOOD_SCHEMA_VERSION,
+        "cluster_key": cluster_key,
+        "groups": stored_groups,
+    }
+
+
 def squidpy_analysis(
     adata: anndata.AnnData,
     cluster_key: str = "cluster",
-    sample_key: Optional[str] = None
+    sample_key: Optional[str] = None,
+    spatial_key: Optional[str] = None,
 ) -> anndata.AnnData:
     """Perform squidpy Neighbors enrichment analysis.
     """
@@ -65,8 +183,24 @@ def squidpy_analysis(
     _ensure_obs_categorical(adata, sample_key)
 
     n_clusters = len(adata.obs[cluster_key].cat.categories)
+    if spatial_key is None:
+        spatial_key = next(
+            (key for key in ("spatial_offset", "spatial") if key in adata.obsm),
+            None,
+        )
+    if spatial_key is None:
+        raise KeyError(
+            "Spatial coordinates were not found in `adata.obsm`; expected "
+            "`spatial_offset` or `spatial`."
+        )
+
     spatial_neighbors(
-        adata, coord_type="grid", n_neighs=4, n_rings=1, library_key=sample_key
+        adata,
+        spatial_key=spatial_key,
+        coord_type="grid",
+        n_neighs=4,
+        n_rings=1,
+        library_key=sample_key,
     )
     if n_clusters < 2:
         logging.warning(

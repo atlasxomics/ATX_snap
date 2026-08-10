@@ -507,7 +507,10 @@ def combine_gene_h5ads_task(
     # Run spatial analysis
     sample_key = "sample" if "sample" in groups else None
     adata_gene = sp.run_squidpy_analysis(
-        adata_gene, dirs["figures"], sample_key
+        adata_gene,
+        dirs["figures"],
+        sample_key,
+        group_keys=groups,
     )
 
     # Spatially variable genes
@@ -537,7 +540,6 @@ def combine_gene_h5ads_task(
         input_dir=dirs["tables"],
     )
     _organize_outputs(project_name, dirs, exclude_pattern="*_hm.csv")
-
 
     # Save AnnData
     ft.save_anndata_objects(
