@@ -170,6 +170,55 @@ def _cast_X_dtype(
         logging.warning(f"Cannot convert {label} .X to {dtype}: {e}")
 
 
+def rechunk_dense_x_for_gene_access(
+    input_path: Path,
+    output_path: Path,
+    gene_block: int = 1,
+    stream_block: int = 512,
+) -> None:
+    """Stream-copy an H5AD with dense ``X`` into gene-aligned chunks.
+
+    All fields other than ``X`` are copied verbatim. The cells-by-genes
+    orientation is retained while each HDF5 chunk spans all cells and only
+    ``gene_block`` genes, making backed single-gene reads fast.
+    """
+    import h5py
+
+    with h5py.File(input_path, "r") as src, h5py.File(output_path, "w") as dst:
+        for key, value in src.attrs.items():
+            dst.attrs[key] = value
+        for key in src.keys():
+            if key != "X":
+                src.copy(key, dst)
+
+        xsrc = src["X"]
+        if isinstance(xsrc, h5py.Group):
+            raise ValueError(
+                "X is stored sparse (an HDF5 group); gene rechunking requires "
+                "dense X."
+            )
+
+        n_obs, n_var = xsrc.shape
+        if n_obs == 0 or n_var == 0:
+            raise ValueError("Cannot gene-rechunk an AnnData object with an empty X.")
+        if gene_block < 1 or stream_block < 1:
+            raise ValueError("gene_block and stream_block must both be positive.")
+
+        x_attrs = dict(xsrc.attrs)
+        chunk_width = min(gene_block, n_var)
+        dset = dst.create_dataset(
+            "X",
+            shape=(n_obs, n_var),
+            dtype=xsrc.dtype,
+            chunks=(n_obs, chunk_width),
+        )
+        for start in range(0, n_var, stream_block):
+            stop = min(start + stream_block, n_var)
+            dset[:, start:stop] = xsrc[:, start:stop]
+        for key, value in x_attrs.items():
+            dset.attrs[key] = value
+
+
 def _sanitize_dataframe_for_h5ad(df) -> None:
     """Ensure object columns can be written as H5AD string arrays."""
     import pandas as pd
@@ -563,13 +612,14 @@ def save_anndata_objects(
     full_x_dtype: Optional[str] = None,
 ) -> None:
     """Save full and reduced AnnData objects."""
+    base_dir = Path(base_dir)
     logging.info("Saving full adata...")
     if full_x_dtype is not None:
         _cast_X_dtype(adata, full_x_dtype, "full adata")
     add_spatial_offset(adata)
     _sanitize_uns_for_h5ad(adata.uns)
     # Save full objects
-    adata.write(f"{base_dir}/combined{suffix}.h5ad")
+    adata.write(base_dir / f"combined{suffix}.h5ad")
 
     # Create and save reduced objects
     logging.info("Making reduced adata...")
@@ -577,7 +627,20 @@ def save_anndata_objects(
 
     logging.info("Saving reduced adata...")
     _sanitize_uns_for_h5ad(sm_adata.uns)
-    sm_adata.write(f"{base_dir}/combined_sm{suffix}.h5ad")
+    reduced_path = base_dir / f"combined_sm{suffix}.h5ad"
+    if suffix == "_ge":
+        logging.info("Saving reduced gene adata with gene-aligned X chunks...")
+        raw_path = base_dir / ".combined_sm_ge.unrechunked.h5ad"
+        chunked_path = base_dir / ".combined_sm_ge.rechunking.h5ad"
+        try:
+            sm_adata.write(raw_path)
+            rechunk_dense_x_for_gene_access(raw_path, chunked_path)
+            chunked_path.replace(reduced_path)
+        finally:
+            raw_path.unlink(missing_ok=True)
+            chunked_path.unlink(missing_ok=True)
+    else:
+        sm_adata.write(reduced_path)
 
 
 def transfer_auxiliary_data(
