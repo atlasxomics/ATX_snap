@@ -16,6 +16,7 @@ from wf.task import (
     gene_stats_task,
     genes_task,
     make_adata,
+    make_anndata_dataset_task,
     motifs_task,
     registry_task,
 )
@@ -152,8 +153,20 @@ def snap_workflow(
     SnapATAC2 and ArchR analysis for spatial ATAC runs.
     """
 
+    anndata_dataset = make_anndata_dataset_task(
+        runs=runs,
+        genome=genome,
+        project_name=project_name,
+        min_tss=min_tss,
+        min_frags=min_frags,
+        include_y_chromosome=include_y_chromosome,
+        tile_size=tile_size,
+        output_dir=output_dir,
+    )
+
     results, _groups = make_adata(
         runs=runs,
+        anndata_dataset=anndata_dataset,
         genome=genome,
         project_name=project_name,
         resolution=resolution,

@@ -1,3 +1,4 @@
+import json
 import logging
 import math
 
@@ -87,18 +88,18 @@ def add_metadata(
     return adata
 
 
-def combine_anndata(
-    adatas: List[anndata.AnnData], names: List[str], filename: str = "combined"
-) -> anndata.AnnData:
-    """Combines a list of AnnData objects into a combined AnnData object.
-    Converts in-memory AnnData to backend, saving to disk as .h5ad.
-    Combines as AnnDataSet (object written to disk as .h5ad), then back to
-    AnnData.
-    """
+def _validate_anndata_inputs(
+    adatas: List[anndata.AnnData], names: List[str]
+) -> None:
+    """Validate inputs before constructing a multi-sample AnnDataSet."""
     import pandas as pd
 
     if len(adatas) == 0:
         raise ValueError("No AnnData objects provided for combination.")
+    if len(adatas) != len(names):
+        raise ValueError(
+            f"Received {len(adatas)} AnnData objects but {len(names)} names."
+        )
 
     # Guard against duplicate feature names within an AnnData object.
     for i, adata in enumerate(adatas):
@@ -126,18 +127,43 @@ def combine_anndata(
                 "All inputs must have identical feature coordinates/order."
             )
 
+
+def persist_anndata_dataset(
+    adatas: List[anndata.AnnData],
+    names: List[str],
+    output_dir: Union[Path, str],
+) -> Path:
+    """Persist a multi-sample AnnDataSet without materializing its combined X.
+
+    The returned directory is self-contained so it can be uploaded as a task
+    output and reopened by a later task.  Separating these operations prevents
+    the in-memory per-sample objects and the materialized combined object from
+    existing at the same time.
+    """
+    import pandas as pd
+
+    _validate_anndata_inputs(adatas, names)
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    component_paths = [
+        output_dir / f"sample_{index:04d}_backend.h5ad"
+        for index in range(len(adatas))
+    ]
+
     # Input AnnData must be backend for AnnDataSet, not in-memory.
     logging.info("Converting AnnData objects to backend...")
     adatas_be = [
-        convert_tobackend(adata, f"{name}") for adata, name in zip(adatas, names)
+        convert_tobackend(adata, path)
+        for adata, path in zip(adatas, component_paths)
     ]
 
-    # Convert to AnnDataSet; this is what tutorial does, can we just combine
-    # in-memory AnnData objects and bypass this read/write crap?
     logging.info("Creating AnnDataSet...")
+    dataset_path = output_dir / "combined.h5ads"
     adataset = snap.AnnDataSet(
         adatas=[(name, adata) for name, adata in zip(names, adatas_be)],
-        filename=f"{filename}.h5ad",
+        filename=dataset_path,
     )
     logging.info(f"AnnDataSet created with shape {adataset.shape}")
 
@@ -148,34 +174,87 @@ def combine_anndata(
         )
         adataset.var_names = list(adatas[0].var_names)
 
-    # Convert back to AnnData so we can add metadata :/
-    combined_adata = adataset.to_adata()
-
-    # AnnDataSet does inherit .obs; add manually :/
-    combined_adata.obs = pd.concat([adata.obs for adata in adatas])
+    combined_obs = pd.concat([adata.obs for adata in adatas])
 
     # Ensure obs_names unique
-    combined_adata.obs_names = [
+    combined_obs.index = [
         run_id + "#" + bc
         for run_id, bc in zip(
-            combined_adata.obs["sample"], combined_adata.obs["barcode"]
+            combined_obs["sample"], combined_obs["barcode"]
         )
     ]
+    adataset.obs = combined_obs
+    adataset.obs_names = combined_obs.index
+
+    obs_path = output_dir / "combined_obs.pkl"
+    combined_obs.to_pickle(obs_path)
+
+    manifest = {
+        "dataset": dataset_path.name,
+        "obs": obs_path.name,
+        "components": [path.name for path in component_paths],
+    }
+    with (output_dir / "manifest.json").open("w") as stream:
+        json.dump(manifest, stream)
+
+    adataset.close()
+    for adata_backend in adatas_be:
+        adata_backend.close()
+
+    return dataset_path
+
+
+def materialize_anndata_dataset(
+    dataset_dir: Union[Path, str],
+) -> anndata.AnnData:
+    """Load a persisted AnnDataSet as an in-memory combined AnnData."""
+    import pandas as pd
+
+    dataset_dir = Path(dataset_dir)
+
+    with (dataset_dir / "manifest.json").open() as stream:
+        manifest = json.load(stream)
+
+    dataset_path = dataset_dir / manifest["dataset"]
+    logging.info(f"Opening persisted AnnDataSet at {dataset_path}...")
+    adataset = snap.read_dataset(
+        dataset_path,
+        adata_files_update=dataset_dir,
+    )
+
+    logging.info("Materializing combined AnnData in memory...")
+    combined_adata = adataset.to_adata()
+    combined_obs = pd.read_pickle(dataset_dir / manifest["obs"])
+    combined_adata.obs = combined_obs
+    combined_adata.obs_names = combined_obs.index
 
     # AnnDataSet does not inherit .obsm; add manually :/
-    frags = vstack([adata.obsm["fragment_paired"] for adata in adatas])
+    component_adatas = [
+        snap.read(dataset_dir / component, backed="r")
+        for component in manifest["components"]
+    ]
+    frags = vstack(
+        [adata.obsm["fragment_paired"] for adata in component_adatas],
+        format="csr",
+    )
     combined_adata.obsm["fragment_paired"] = frags
+
+    for component_adata in component_adatas:
+        component_adata.close()
+    adataset.close()
 
     return combined_adata
 
 
-def convert_tobackend(adata: anndata.AnnData, filename: str) -> anndata.AnnData:
+def convert_tobackend(
+    adata: anndata.AnnData, filename: Union[Path, str]
+) -> anndata.AnnData:
     """Create a new backend AnnData object; necessary for creating AnnDataSet;
     saves each AnnData object to disk as .h5ad.
     """
 
     adata_backend = snap.AnnData(
-        filename=f"{filename}_backend.h5ad",
+        filename=filename,
         X=adata.X,
         obs=adata.obs,
         var=adata.var,

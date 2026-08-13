@@ -212,9 +212,49 @@ def _organize_outputs(
     _move_files_to_directory(figures, dirs["figures"])
 
 
-@custom_task(cpu=62, memory=512, storage_gib=1000)
+@custom_task(cpu=48, memory=512, storage_gib=1000)
+def make_anndata_dataset_task(
+    runs: List[utils.Run],
+    genome: utils.Genome,
+    project_name: str,
+    min_tss: float,
+    min_frags: int,
+    include_y_chromosome: bool,
+    tile_size: int,
+    output_dir: LatchDir,
+) -> LatchDir:
+    """Create and upload the backed multi-sample dataset as its own stage."""
+    genome_name = genome.value
+    stage_dir = _fresh_stage_dir(project_name, "anndata_dataset")
+
+    logging.info("Creating AnnData objects...")
+    adatas = pp.make_anndatas(runs, genome_name, min_frags=min_frags)
+    adatas = pp.filter_adatas(adatas, min_tss=min_tss)
+
+    logging.info("Adding tile matrix to objects...")
+    excluded_chroms = ["chrM", "M"]
+    if not include_y_chromosome:
+        excluded_chroms.extend(["chrY", "Y"])
+    snap.pp.add_tile_matrix(
+        adatas,
+        bin_size=tile_size,
+        exclude_chroms=excluded_chroms,
+    )
+
+    samples = [run.run_id for run in runs]
+    logging.info("Persisting combined AnnDataSet before materialization...")
+    pp.persist_anndata_dataset(adatas, samples, stage_dir)
+
+    remote_path = (
+        f"{output_dir.remote_path.rstrip('/')}/{project_name}_anndata_dataset"
+    )
+    return LatchDir(str(stage_dir), remote_path)
+
+
+@custom_task(cpu=48, memory=960, storage_gib=2000)
 def make_adata(
     runs: List[utils.Run],
+    anndata_dataset: LatchDir,
     genome: utils.Genome,
     project_name: str,
     resolution: float,
@@ -286,26 +326,14 @@ def make_adata(
             data={"title": "min_frags", "body": "Minimum fragments set to 0."},
         )
 
-    # Preprocessing -----------------------------------------------------------
-    logging.info("Creating AnnData objects...")
-    adatas = pp.make_anndatas(runs, genome, min_frags=min_frags)
-    adatas = pp.filter_adatas(adatas, min_tss=min_tss)
-
-    logging.info("Adding tile matrix to objects...")
-    excluded_chroms = ["chrM", "M"]
-    if not include_y_chromosome:
-        excluded_chroms.extend(["chrY", "Y"])
-    snap.pp.add_tile_matrix(
-        adatas,
-        bin_size=tile_size,
-        exclude_chroms=excluded_chroms,
+    # Materialization happens in a separate task from construction of the
+    # AnnDataSet, so the per-sample in-memory objects have already been freed.
+    # Keep the combined object in memory for compatibility with the existing
+    # analysis code; the task boundary still reduces the peak memory footprint.
+    combined_path = _anndata_dir(Path(result_dir)) / "combined.h5ad"
+    adata = pp.materialize_anndata_dataset(
+        anndata_dataset.local_path,
     )
-
-    if len(samples) > 1:
-        logging.info("Combining objects...")
-        adata = pp.combine_anndata(adatas, samples, filename="combined")
-    else:
-        adata = adatas[0]
 
     logging.info(
         f"Selecting features with {n_features} features and \
@@ -418,7 +446,7 @@ def make_adata(
     spectral_df.to_csv(f"{tables_dir}/spectral.csv")
 
     ft.add_spatial_offset(adata)
-    adata.write(f"{_anndata_dir(result_dir)}/combined.h5ad")
+    adata.write(combined_path)
 
     return LatchDir(result_dir, output_dir), groups
 

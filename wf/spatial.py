@@ -27,11 +27,20 @@ def add_spatial(
 ) -> anndata.AnnData:
     """Add move x and y coordinates from .obs to .obsm["spatial"] for squidpy.
     """
-    adata.obsm["spatial"] = adata.obs[[y_key, x_key]].values
+    # Backed SnapATAC2 exposes `.obs` as a PyDataFrameElem. Its Rust-backed
+    # implementation does not support pandas-style multi-column slicing, so
+    # materialize the small observation table before selecting coordinates.
+    if hasattr(adata.obs, "to_pandas"):
+        obs = adata.obs.to_pandas()
+    else:
+        obs = adata.obs
+    spatial = obs[[y_key, x_key]].to_numpy(copy=True)
+
     # Negate row (y) so the coordinate follows Plotly convention (y increases upward).
     # squidpy's spatial_scatter inverts y internally, so static plots must reverse
     # this negation before calling squidpy (see plotting.plot_spatial).
-    adata.obsm["spatial"][:, 1] *= -1
+    spatial[:, 1] *= -1
+    adata.obsm["spatial"] = spatial
 
     return adata
 

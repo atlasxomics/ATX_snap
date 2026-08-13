@@ -38,7 +38,7 @@ def add_spatial_offset(
 
     n_cols = min(2, max(1, n_samples))
     n_rows = math.ceil(n_samples / n_cols)
-    spatial = np.asarray(adata.obsm[spatial_key])
+    spatial = np.asarray(adata.obsm[spatial_key][:])
     offset = np.empty_like(spatial, dtype=float)
     grid_bounds = {}
     sample_positions = {}
