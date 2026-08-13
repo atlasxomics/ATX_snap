@@ -789,15 +789,15 @@ def motifs_task(
         bindings=PlotsArtifactBindings(
             plot_templates=[
                 PlotsArtifactTemplate(
-                    template_id="1090",
+                    template_id="1387",
                     widgets=[
                         Widget(
-                            transform_id="433333",
+                            transform_id="475880",
                             key="data_path",
                             value=results_dir.remote_path
                         ),
                         Widget(
-                            transform_id="433323",
+                            transform_id="475872",
                             key="coverages_genome",
                             value=genome
                         )
