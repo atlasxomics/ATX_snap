@@ -26,6 +26,25 @@ import wf.spatial as sp
 import wf.utils as utils
 
 
+# Object files are organized into dedicated subfolders under the project
+# directory: Seurat .rds objects in seurat_objects/, AnnData .h5ad objects in
+# anndata/.
+SEURAT_SUBDIR = "seurat_objects"
+ANNDATA_SUBDIR = "anndata"
+
+
+def _seurat_dir(base_dir: Path) -> Path:
+    d = Path(base_dir) / SEURAT_SUBDIR
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _anndata_dir(base_dir: Path) -> Path:
+    d = Path(base_dir) / ANNDATA_SUBDIR
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 def _dirs_for_base(base_dir: Path) -> Dict[str, Path]:
     figures_dir = base_dir / "figures"
     tables_dir = base_dir / "tables"
@@ -171,8 +190,17 @@ def _organize_outputs(
 ) -> None:
     logging.info("Moving outputs to output directory...")
 
-    project_files = _unique_glob_matches([f"{project_name}_*", "*.rds", "*.h5ad"])
-    _move_files_to_directory(project_files, dirs["base"])
+    project_dirs = _unique_glob_matches([f"{project_name}_*"])
+    _move_files_to_directory(project_dirs, dirs["base"])
+
+    # Route object files into dedicated subfolders
+    rds_files = _unique_glob_matches(["*.rds"])
+    if rds_files:
+        _move_files_to_directory(rds_files, _seurat_dir(dirs["base"]))
+
+    h5ad_files = _unique_glob_matches(["*.h5ad"])
+    if h5ad_files:
+        _move_files_to_directory(h5ad_files, _anndata_dir(dirs["base"]))
 
     csv_files = _unique_glob_matches(["*.csv"], exclude_pattern=exclude_pattern)
     _move_files_to_directory(csv_files, dirs["tables"])
@@ -390,7 +418,7 @@ def make_adata(
     spectral_df.to_csv(f"{tables_dir}/spectral.csv")
 
     ft.add_spatial_offset(adata)
-    adata.write(f"{result_dir}/combined.h5ad")
+    adata.write(f"{_anndata_dir(result_dir)}/combined.h5ad")
 
     return LatchDir(result_dir, output_dir), groups
 
@@ -459,7 +487,9 @@ def genes_task(
     subprocess.run(_archr_cmd, check=True)
 
     # Stage ArchRProject, Seurat objects, per-run h5ads, and R-side tables.
-    utils.organize_outputs(project_name, dirs)
+    # Uses the local subdir-aware organizer so .rds and .h5ad objects land in
+    # seurat_objects/ and anndata/ respectively.
+    _organize_outputs(project_name, dirs)
 
     delta_dir = _fresh_stage_dir(project_name, "genes_delta")
     _copy_directory_delta(
@@ -494,11 +524,12 @@ def combine_gene_h5ads_task(
     dirs = _dirs_for_base(Path(gene_results_dir.local_path))
     _copy_required_input_tables(data_paths, dirs["tables"])
 
-    # Load and combine data
+    # Load and combine data (per-run h5ads live in the anndata/ subfolder)
+    anndata_dir = _anndata_dir(dirs["base"])
     adata_gene = ft.load_and_combine_data(
         "g_converted",
-        input_dir=dirs["base"],
-        temp_dir=dirs["base"],
+        input_dir=anndata_dir,
+        temp_dir=anndata_dir,
     )
 
     # Transfer auxiliary data to combined AnnData
@@ -541,11 +572,11 @@ def combine_gene_h5ads_task(
     )
     _organize_outputs(project_name, dirs, exclude_pattern="*_hm.csv")
 
-    # Save AnnData
+    # Save AnnData (combined objects go into the anndata/ subfolder)
     ft.save_anndata_objects(
         adata_gene,
         "_ge",
-        dirs["base"],
+        anndata_dir,
         full_x_dtype="float32",
     )
 
@@ -562,8 +593,8 @@ def combine_gene_h5ads_task(
         dirs["base"],
         delta_dir,
         [
-            Path("combined_ge.h5ad"),
-            Path("combined_sm_ge.h5ad"),
+            Path(ANNDATA_SUBDIR) / "combined_ge.h5ad",
+            Path(ANNDATA_SUBDIR) / "combined_sm_ge.h5ad",
             Path("figures/all_neighborhoods.pdf"),
         ] + svg_table_paths + svg_figure_paths,
     )
@@ -592,7 +623,9 @@ def gene_stats_task(
             "Run this task after the gene artifact task."
         )
 
-    source_adata_path = local_gene_expression / "combined_sm_ge.h5ad"
+    source_adata_path = (
+        local_gene_expression / ANNDATA_SUBDIR / "combined_sm_ge.h5ad"
+    )
     if not source_adata_path.exists():
         raise FileNotFoundError(
             f"Could not find combined_sm_ge.h5ad at {source_adata_path}."
@@ -625,7 +658,7 @@ def gene_stats_task(
     _copy_directory_contents(output_dir / "tables", dirs["tables"])
     _copy_directory_contents(output_dir / "figures", dirs["figures"])
 
-    adata_path = delta_dir / "combined_sm_ge.h5ad"
+    adata_path = _anndata_dir(delta_dir) / "combined_sm_ge.h5ad"
     shutil.copy2(source_adata_path, adata_path)
 
     logging.info(f"Patching gene statistics into {adata_path}...")
@@ -745,8 +778,8 @@ def motifs_task(
     # Organize outputs
     _organize_outputs(project_name, dirs, exclude_pattern="*_hm.csv")
 
-    # Save AnnData
-    ft.save_anndata_objects(adata_motif, "_motifs", dirs['base'])
+    # Save AnnData (combined objects go into the anndata/ subfolder)
+    ft.save_anndata_objects(adata_motif, "_motifs", _anndata_dir(dirs['base']))
 
     logging.info("Copying ArchR peak files to top directory...")
     utils.copy_peak_files(project_name, dirs)
