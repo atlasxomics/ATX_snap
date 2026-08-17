@@ -95,15 +95,16 @@ def _copy_directory_contents(source_dir: Path, destination_dir: Path) -> None:
             shutil.copy2(source, destination)
 
 
-def _copy_directory_delta(
+def _move_directory_delta(
     source_dir: Path,
     destination_dir: Path,
     skip_relative_paths: Set[Path],
 ) -> None:
+    """Stage generated files without retaining a second local copy."""
     destination_dir.mkdir(parents=True, exist_ok=True)
 
     if not source_dir.exists():
-        logging.warning(f"Directory does not exist and was not copied: {source_dir}")
+        logging.warning(f"Directory does not exist and was not staged: {source_dir}")
         return
 
     for source in source_dir.rglob("*"):
@@ -116,7 +117,7 @@ def _copy_directory_delta(
 
         destination = destination_dir / relative_path
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
+        shutil.move(str(source), str(destination))
 
 
 def _copy_relative_files(
@@ -154,6 +155,54 @@ def _fresh_stage_dir(project_name: str, stage_name: str) -> Path:
 def _gene_stats_run_args(runs: List[utils.Run]) -> List[str]:
     return [
         f"{run.run_id},{run.sample_name}"
+        for run in runs
+    ]
+
+
+def _gene_project_run_args(runs: List[utils.Run]) -> List[str]:
+    """Build ArchR run arguments without downloading unused spatial inputs."""
+    return [
+        (
+            f"{run.run_id},"
+            f"{run.fragments_file.local_path},"
+            f"{utils.sanitize_condition(run.condition)},"
+            f"unused,unused,"
+            f"{run.sample_name}"
+        )
+        for run in runs
+    ]
+
+
+def _gene_export_run_args(runs: List[utils.Run]) -> List[str]:
+    """Build run arguments needed to construct per-sample spatial objects."""
+    position_files = {}
+    missing_positions = []
+
+    for run in runs:
+        position_file = utils.get_LatchFile(
+            run.spatial_dir, "tissue_positions_list.csv"
+        )
+        if position_file is None:
+            missing_positions.append(f"{run.run_id} ({run.spatial_dir.remote_path})")
+            continue
+        position_files[run.run_id] = position_file
+
+    if missing_positions:
+        missing_str = ", ".join(missing_positions)
+        raise FileNotFoundError(
+            "Unable to resolve 'tissue_positions_list.csv' for one or more runs: "
+            f"{missing_str}. Ensure each spatial directory contains exactly one "
+            "'tissue_positions_list.csv' file."
+        )
+
+    return [
+        (
+            f"{run.run_id},unused,"
+            f"{utils.sanitize_condition(run.condition)},"
+            f"{position_files[run.run_id].local_path},"
+            f"{run.spatial_dir.local_path},"
+            f"{run.sample_name}"
+        )
         for run in runs
     ]
 
@@ -251,7 +300,7 @@ def make_anndata_dataset_task(
     return LatchDir(str(stage_dir), remote_path)
 
 
-@custom_task(cpu=48, memory=960, storage_gib=2000)
+@custom_task(cpu=48, memory=512, storage_gib=2000)
 def make_adata(
     runs: List[utils.Run],
     anndata_dataset: LatchDir,
@@ -451,8 +500,8 @@ def make_adata(
     return LatchDir(result_dir, output_dir), groups
 
 
-@custom_task(cpu=30, memory=700, storage_gib=2000)
-def genes_task(
+@custom_task(cpu=30, memory=384, storage_gib=2000)
+def gene_project_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
     project_name: str,
@@ -469,8 +518,7 @@ def genes_task(
     dirs = utils.create_output_directories(project_name)
     _copy_required_input_tables(data_paths, dirs["tables"])
 
-    logging.info("Running ArchR analysis...")
-    # run subprocess R script to make .h5ad file
+    logging.info("Building checkpointed ArchR gene project...")
     _archr_cmd = [
         'Rscript',
         '/root/wf/R/archr_genes.R',
@@ -479,48 +527,95 @@ def genes_task(
         data_paths['obs'],
         data_paths['spectral'],
         str(include_y_chromosome).lower(),
+        'prepare',
     ]
-
-    position_files = {}
-    missing_positions = []
-    for run in runs:
-        position_file = utils.get_LatchFile(
-            run.spatial_dir, "tissue_positions_list.csv"
-        )
-        if position_file is None:
-            missing_positions.append(f"{run.run_id} ({run.spatial_dir.remote_path})")
-            continue
-        position_files[run.run_id] = position_file
-
-    if missing_positions:
-        missing_str = ", ".join(missing_positions)
-        raise FileNotFoundError(
-            "Unable to resolve 'tissue_positions_list.csv' for one or more runs: "
-            f"{missing_str}. Ensure each spatial directory contains exactly one "
-            "'tissue_positions_list.csv' file."
-        )
-
-    run_args = [
-        (
-            f'{run.run_id},'
-            f'{run.fragments_file.local_path},'
-            f'{utils.sanitize_condition(run.condition)},'
-            f'{position_files[run.run_id].local_path},'
-            f'{run.spatial_dir.local_path},'
-            f'{run.sample_name}'
-        )
-        for run in runs
-    ]
-    _archr_cmd.extend(run_args)
+    _archr_cmd.extend(_gene_project_run_args(runs))
     subprocess.run(_archr_cmd, check=True)
 
-    # Stage ArchRProject, Seurat objects, per-run h5ads, and R-side tables.
-    # Uses the local subdir-aware organizer so .rds and .h5ad objects land in
-    # seurat_objects/ and anndata/ respectively.
+    # Persist the project and its on-disk imputation weights before any dense
+    # GeneScoreMatrix extraction begins.
     _organize_outputs(project_name, dirs)
 
+    checkpoint_file = (
+        dirs["base"]
+        / f"{project_name}_ArchRProject"
+        / "Save-ArchR-Project.rds"
+    )
+    if not checkpoint_file.is_file():
+        raise FileNotFoundError(
+            f"ArchR gene-project checkpoint was not created at {checkpoint_file}."
+        )
+
+    delta_dir = _fresh_stage_dir(project_name, "gene_project_delta")
+    _move_directory_delta(
+        dirs["base"],
+        delta_dir,
+        {
+            Path("tables/obs.csv"),
+            Path("tables/spatial.csv"),
+            Path("tables/X_umap.csv"),
+            Path("tables/spectral.csv"),
+        },
+    )
+
+    logging.info("Uploading the ArchR gene-project checkpoint to Latch...")
+    return LatchDir(str(delta_dir), results_dir.remote_path)
+
+
+@custom_task(cpu=24, memory=700, storage_gib=2000)
+def genes_task(
+    runs: List[utils.Run],
+    results_dir: LatchDir,
+    gene_project_dir: LatchDir,
+    project_name: str,
+    genome: utils.Genome,
+    include_y_chromosome: bool,
+) -> LatchDir:
+
+    data_paths = utils.get_data_paths(results_dir)
+    genome = genome.value
+
+    dirs = utils.create_output_directories(project_name)
+    _copy_required_input_tables(data_paths, dirs["tables"])
+
+    logging.info("Exporting checkpointed ArchR gene scores in bounded chunks...")
+    _archr_cmd = [
+        'Rscript',
+        '/root/wf/R/archr_genes.R',
+        project_name,
+        genome,
+        data_paths['obs'],
+        data_paths['spectral'],
+        str(include_y_chromosome).lower(),
+        'export',
+        gene_project_dir.local_path,
+    ]
+    _archr_cmd.extend(_gene_export_run_args(runs))
+    subprocess.run(_archr_cmd, check=True)
+
+    # Stage Seurat objects, per-run h5ads, and R-side tables. The ArchRProject
+    # has already been persisted by gene_project_task at the same remote root.
+    _organize_outputs(project_name, dirs)
+
+    missing_outputs = []
+    seurat_dir = _seurat_dir(dirs["base"])
+    anndata_dir = _anndata_dir(dirs["base"])
+    for run in runs:
+        rds_path = seurat_dir / f"{run.run_id}_SeuratObj.rds"
+        h5ad_path = anndata_dir / f"{run.run_id}_g_converted.h5ad"
+        if not rds_path.is_file():
+            missing_outputs.append(str(rds_path))
+        if not h5ad_path.is_file():
+            missing_outputs.append(str(h5ad_path))
+
+    if missing_outputs:
+        raise FileNotFoundError(
+            "Gene export completed without all expected per-run outputs: "
+            + ", ".join(missing_outputs)
+        )
+
     delta_dir = _fresh_stage_dir(project_name, "genes_delta")
-    _copy_directory_delta(
+    _move_directory_delta(
         dirs["base"],
         delta_dir,
         {
@@ -535,7 +630,7 @@ def genes_task(
     return LatchDir(str(delta_dir), results_dir.remote_path)
 
 
-@custom_task(cpu=16, memory=512, storage_gib=2000)
+@custom_task(cpu=16, memory=800, storage_gib=2000)
 def combine_gene_h5ads_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
@@ -631,7 +726,7 @@ def combine_gene_h5ads_task(
     return LatchDir(str(delta_dir), results_dir.remote_path)
 
 
-@custom_task(cpu=26, memory=700, storage_gib=3000)
+@custom_task(cpu=26, memory=960, storage_gib=3000)
 def gene_stats_task(
     runs: List[utils.Run],
     gene_results_dir: LatchDir,
@@ -705,7 +800,7 @@ def gene_stats_task(
     return LatchDir(str(delta_dir), results_root.remote_path)
 
 
-@custom_task(cpu=50, memory=512, storage_gib=2000)
+@custom_task(cpu=50, memory=700, storage_gib=2000)
 def motifs_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
