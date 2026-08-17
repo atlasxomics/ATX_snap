@@ -418,10 +418,15 @@ write_gene_score_chunks <- function(
       colnames(imputed_chunk) <- colnames(mat_chunk)
 
       for (run_id in run_ids) {
-        run_chunk <- Matrix::Matrix(
-          imputed_chunk[, run_col_indices[[run_id]], drop = FALSE],
-          sparse = TRUE
-        )
+        # Imputed gene scores are effectively dense. Keep each bounded,
+        # per-sample chunk dense instead of paying the larger dgCMatrix
+        # overhead or introducing its nonzero-element limit.
+        run_chunk <- imputed_chunk[
+          , run_col_indices[[run_id]], drop = FALSE
+        ]
+        if (!is.matrix(run_chunk) || inherits(run_chunk, "sparseMatrix")) {
+          run_chunk <- as.matrix(run_chunk)
+        }
         chunk_path <- file.path(
           run_chunk_dirs[[run_id]],
           sprintf("chunk_%05d.rds", chunk_index)
@@ -465,6 +470,9 @@ export_gene_score_objects <- function(runs, metadata, run_chunk_dirs) {
     )
     run_chunks <- lapply(chunk_files, readRDS)
     matrix <- do.call(rbind, run_chunks)
+    if (!is.matrix(matrix) || inherits(matrix, "sparseMatrix")) {
+      matrix <- as.matrix(matrix)
+    }
     rm(run_chunks)
     gc(verbose = FALSE, full = TRUE)
 
@@ -472,7 +480,8 @@ export_gene_score_objects <- function(runs, metadata, run_chunk_dirs) {
       run_id = run_id,
       matrix = matrix,
       metadata = metadata,
-      spatial_path = run[[5]]
+      spatial_path = run[[5]],
+      sparse_counts = FALSE
     )
     saveRDS(obj, file = paste0(run_id, "_SeuratObj.rds"))
 

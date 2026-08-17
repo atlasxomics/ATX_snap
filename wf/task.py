@@ -45,6 +45,44 @@ def _anndata_dir(base_dir: Path) -> Path:
     return d
 
 
+def _ensure_dense_h5ad_x(h5ad_path: Path) -> None:
+    """Ensure a per-sample gene H5AD stores X as a dense HDF5 dataset."""
+    import anndata
+    import h5py
+    import scipy.sparse as sparse
+
+    h5ad_path = Path(h5ad_path)
+    if not h5ad_path.is_file():
+        raise FileNotFoundError(f"Expected gene H5AD was not created: {h5ad_path}")
+
+    with h5py.File(h5ad_path, "r") as handle:
+        x_node = handle.get("X")
+        if x_node is None:
+            raise ValueError(f"H5AD has no X matrix: {h5ad_path}")
+        if isinstance(x_node, h5py.Dataset):
+            logging.info(f"Verified dense H5AD X: {h5ad_path.name}")
+            return
+
+    logging.info(f"Converting sparse H5AD X to dense: {h5ad_path.name}")
+    adata = anndata.read_h5ad(h5ad_path)
+    if sparse.issparse(adata.X):
+        adata.X = adata.X.toarray()
+
+    temporary_path = h5ad_path.with_name(
+        f".{h5ad_path.stem}.dense.tmp.h5ad"
+    )
+    try:
+        adata.write_h5ad(temporary_path, compression="gzip")
+        os.replace(temporary_path, h5ad_path)
+    finally:
+        if temporary_path.exists():
+            temporary_path.unlink()
+
+    with h5py.File(h5ad_path, "r") as handle:
+        if not isinstance(handle["X"], h5py.Dataset):
+            raise ValueError(f"Unable to store H5AD X densely: {h5ad_path}")
+
+
 def _dirs_for_base(base_dir: Path) -> Dict[str, Path]:
     figures_dir = base_dir / "figures"
     tables_dir = base_dir / "tables"
@@ -592,6 +630,11 @@ def genes_task(
     ]
     _archr_cmd.extend(_gene_export_run_args(runs))
     subprocess.run(_archr_cmd, check=True)
+
+    # SeuratDisk normally preserves the dense counts supplied above. Verify
+    # that representation and repair it one sample at a time if necessary.
+    for run in runs:
+        _ensure_dense_h5ad_x(Path(f"{run.run_id}_g_converted.h5ad"))
 
     # Stage Seurat objects, per-run h5ads, and R-side tables. The ArchRProject
     # has already been persisted by gene_project_task at the same remote root.
