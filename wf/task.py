@@ -45,7 +45,42 @@ def _anndata_dir(base_dir: Path) -> Path:
     return d
 
 
-def _ensure_dense_h5ad_x(h5ad_path: Path) -> None:
+def _rebuild_gene_h5ad_from_rds(rds_path: Path, h5ad_path: Path) -> None:
+    """Recreate a legacy gene H5AD without rerunning ArchR imputation."""
+    import tempfile
+
+    rds_path = Path(rds_path)
+    h5ad_path = Path(h5ad_path)
+    if not rds_path.is_file():
+        raise FileNotFoundError(
+            f"Cannot rebuild {h5ad_path.name}; Seurat RDS is missing: {rds_path}"
+        )
+
+    with tempfile.TemporaryDirectory(
+        prefix="gene_h5ad_rebuild_",
+        dir=h5ad_path.parent,
+    ) as temporary_dir:
+        rebuilt_path = Path(temporary_dir) / h5ad_path.name
+        subprocess.run(
+            [
+                "Rscript",
+                "/root/wf/R/rebuild_gene_h5ad.R",
+                str(rds_path),
+                str(rebuilt_path),
+            ],
+            check=True,
+        )
+        if not rebuilt_path.is_file():
+            raise FileNotFoundError(
+                f"RDS conversion did not create expected H5AD: {rebuilt_path}"
+            )
+        os.replace(rebuilt_path, h5ad_path)
+
+
+def _ensure_dense_h5ad_x(
+    h5ad_path: Path,
+    recovery_rds_path: Optional[Path] = None,
+) -> None:
     """Ensure a per-sample gene H5AD stores X as a dense HDF5 dataset."""
     import anndata
     import h5py
@@ -53,20 +88,54 @@ def _ensure_dense_h5ad_x(h5ad_path: Path) -> None:
 
     h5ad_path = Path(h5ad_path)
     if not h5ad_path.is_file():
+        if recovery_rds_path is not None:
+            logging.warning(
+                f"Rebuilding missing H5AD from Seurat RDS: {h5ad_path.name}"
+            )
+            _rebuild_gene_h5ad_from_rds(recovery_rds_path, h5ad_path)
+            _ensure_dense_h5ad_x(h5ad_path)
+            return
         raise FileNotFoundError(f"Expected gene H5AD was not created: {h5ad_path}")
 
-    with h5py.File(h5ad_path, "r") as handle:
-        x_node = handle.get("X")
-        if x_node is None:
-            raise ValueError(f"H5AD has no X matrix: {h5ad_path}")
-        if isinstance(x_node, h5py.Dataset):
-            logging.info(f"Verified dense H5AD X: {h5ad_path.name}")
-            return
+    try:
+        with h5py.File(h5ad_path, "r") as handle:
+            x_node = handle.get("X")
+            if x_node is None:
+                raise ValueError(f"H5AD has no X matrix: {h5ad_path}")
+            if isinstance(x_node, h5py.Dataset):
+                logging.info(f"Verified dense H5AD X: {h5ad_path.name}")
+                return
+    except (OSError, ValueError) as error:
+        if recovery_rds_path is None:
+            raise
+        logging.warning(
+            f"Rebuilding unreadable H5AD from Seurat RDS: {h5ad_path.name}: "
+            f"{error}"
+        )
+        _rebuild_gene_h5ad_from_rds(recovery_rds_path, h5ad_path)
+        _ensure_dense_h5ad_x(h5ad_path)
+        return
+
+    if recovery_rds_path is not None:
+        logging.warning(
+            f"Rebuilding legacy sparse H5AD from Seurat RDS: {h5ad_path.name}"
+        )
+        _rebuild_gene_h5ad_from_rds(recovery_rds_path, h5ad_path)
+        _ensure_dense_h5ad_x(h5ad_path)
+        return
 
     logging.info(f"Converting sparse H5AD X to dense: {h5ad_path.name}")
     adata = anndata.read_h5ad(h5ad_path)
     if sparse.issparse(adata.X):
         adata.X = adata.X.toarray()
+
+    # Older SeuratDisk files can contain reserved `_index` columns and a raw
+    # copy of the same gene assay. The downstream workflow does not use raw and
+    # already removes it before final output, so discard that duplicate here.
+    ft.clean_index_columns(adata)
+    if adata.raw is not None:
+        logging.info(f"Dropping duplicate raw matrix from {h5ad_path.name}")
+        adata.raw = None
 
     temporary_path = h5ad_path.with_name(
         f".{h5ad_path.stem}.dense.tmp.h5ad"
@@ -673,36 +742,99 @@ def genes_task(
     return LatchDir(str(delta_dir), results_dir.remote_path)
 
 
-@custom_task(cpu=16, memory=800, storage_gib=2000)
+@custom_task(cpu=8, memory=500, storage_gib=2000)
 def combine_gene_h5ads_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
     gene_results_dir: LatchDir,
     project_name: str,
 ) -> LatchDir:
-
-    # Read in data tables from the original make_adata output.
-    data_paths = utils.get_data_paths(results_dir)
-    groups = utils.get_groups(runs)
-
     # Continue in the uploaded gene artifact directory so a combine failure
     # does not discard the already-materialized Seurat and per-run h5ad files.
     dirs = _dirs_for_base(Path(gene_results_dir.local_path))
-    _copy_required_input_tables(data_paths, dirs["tables"])
 
     # Load and combine data (per-run h5ads live in the anndata/ subfolder)
     anndata_dir = _anndata_dir(dirs["base"])
+    seurat_dir = _seurat_dir(dirs["base"])
+    for run in runs:
+        _ensure_dense_h5ad_x(
+            anndata_dir / f"{run.run_id}_g_converted.h5ad",
+            recovery_rds_path=seurat_dir / f"{run.run_id}_SeuratObj.rds",
+        )
+
     adata_gene = ft.load_and_combine_data(
         "g_converted",
         input_dir=anndata_dir,
         temp_dir=anndata_dir,
     )
 
-    # Transfer auxiliary data to combined AnnData
+    # Persist the expensive repair/combination result before any Squidpy work.
+    # The final gene-expression outputs are already float32, so cast at this
+    # checkpoint to halve its size without changing downstream precision.
+    ft._cast_X_dtype(adata_gene, "float32", "combined gene checkpoint")
+    checkpoint_dir = _fresh_stage_dir(project_name, "gene_combined")
+    checkpoint_path = (
+        _anndata_dir(checkpoint_dir) / "combined_g_pre_squidpy.h5ad"
+    )
+    logging.info(f"Saving dense pre-Squidpy checkpoint to {checkpoint_path}...")
+    adata_gene.write_h5ad(checkpoint_path)
+    if not checkpoint_path.is_file():
+        raise FileNotFoundError(
+            f"Dense pre-Squidpy checkpoint was not created: {checkpoint_path}"
+        )
+
+    logging.info("Uploading dense combined gene checkpoint...")
+    checkpoint_remote_path = (
+        f"{results_dir.remote_path.rstrip('/')}/checkpoints/gene_combined"
+    )
+    return LatchDir(str(checkpoint_dir), checkpoint_remote_path)
+
+
+@custom_task(cpu=16, memory=800, storage_gib=2000)
+def gene_spatial_task(
+    runs: List[utils.Run],
+    results_dir: LatchDir,
+    gene_results_dir: LatchDir,
+    gene_combined_dir: LatchDir,
+    project_name: str,
+) -> LatchDir:
+    import anndata
+
+    checkpoint_path = (
+        Path(gene_combined_dir.local_path)
+        / ANNDATA_SUBDIR
+        / "combined_g_pre_squidpy.h5ad"
+    )
+    if not checkpoint_path.is_file():
+        raise FileNotFoundError(
+            f"Could not find dense pre-Squidpy checkpoint at {checkpoint_path}."
+        )
+
+    logging.info(f"Loading dense pre-Squidpy checkpoint from {checkpoint_path}...")
+    adata_gene = anndata.read_h5ad(checkpoint_path)
+    groups = utils.get_groups(runs)
+    data_paths = utils.get_data_paths(results_dir)
+    dirs = _dirs_for_base(_fresh_stage_dir(project_name, "gene_spatial_work"))
+    anndata_dir = _anndata_dir(dirs["base"])
+
+    # Cell-ID alignment and auxiliary transfer are intentionally downstream of
+    # the durable dense checkpoint so failures here never repeat combination.
     ft.transfer_auxiliary_data(adata_gene, data_paths, groups)
+    missing_obsm = [
+        key for key in ("X_umap", "spatial") if key not in adata_gene.obsm
+    ]
+    if missing_obsm:
+        raise KeyError(
+            "Dense gene checkpoint is missing required auxiliary coordinates: "
+            + ", ".join(missing_obsm)
+        )
+    if not adata_gene.obs_names.is_unique:
+        raise ValueError(
+            "Gene observation names remain non-unique after auxiliary alignment."
+        )
 
     # Run spatial analysis
-    sample_key = "sample" if "sample" in groups else None
+    sample_key = "sample" if "sample" in adata_gene.obs.columns else None
     adata_gene = sp.run_squidpy_analysis(
         adata_gene,
         dirs["figures"],
@@ -734,10 +866,8 @@ def combine_gene_h5ads_task(
         adata_gene,
         "gene",
         groups,
-        input_dir=dirs["tables"],
+        input_dir=Path(gene_results_dir.local_path) / "tables",
     )
-    _organize_outputs(project_name, dirs, exclude_pattern="*_hm.csv")
-
     # Save AnnData (combined objects go into the anndata/ subfolder)
     ft.save_anndata_objects(
         adata_gene,
