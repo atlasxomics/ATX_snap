@@ -1120,13 +1120,11 @@ def complete_results_task(
     gene_results_dir: LatchDir,
     gene_expression_results_dir: LatchDir,
     gene_stats_results_dir: LatchDir,
-    motif_results_dir: LatchDir,
 ) -> LatchDir:
     _ = (
         gene_results_dir,
         gene_expression_results_dir,
         gene_stats_results_dir,
-        motif_results_dir,
     )
     return base_results_dir
 
