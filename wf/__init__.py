@@ -350,51 +350,51 @@ resume_from_gene_spatial_metadata = LatchMetadata(
 #     return uploaded_results
 
 
-@workflow(resume_from_gene_combine_metadata)
-def snap_workflow(
-    runs: List[Run],
-    results_dir: LatchDir,
-    genome: Genome,
-    project_name: str,
-    include_y_chromosome: bool = False,
-) -> LatchDir:
-    """Resume ATX Snap analysis from gene H5AD combination.
+# @workflow(resume_from_gene_combine_metadata)
+# def snap_workflow(
+#     runs: List[Run],
+#     results_dir: LatchDir,
+#     genome: Genome,
+#     project_name: str,
+#     include_y_chromosome: bool = False,
+# ) -> LatchDir:
+#     """Resume ATX Snap analysis from gene H5AD combination.
 
-    Uses the persisted per-sample gene H5AD and Seurat files and runs the
-    combination and remaining tasks without repeating ArchR gene imputation.
-    """
+#     Uses the persisted per-sample gene H5AD and Seurat files and runs the
+#     combination and remaining tasks without repeating ArchR gene imputation.
+#     """
 
-    combined_gene = combine_gene_h5ads_task(
-        runs=runs,
-        results_dir=results_dir,
-        gene_results_dir=results_dir,
-        project_name=project_name,
-    )
+#     combined_gene = combine_gene_h5ads_task(
+#         runs=runs,
+#         results_dir=results_dir,
+#         gene_results_dir=results_dir,
+#         project_name=project_name,
+#     )
 
-    results_ge = gene_spatial_task(
-        runs=runs,
-        results_dir=results_dir,
-        gene_results_dir=results_dir,
-        gene_combined_dir=combined_gene,
-        project_name=project_name,
-    )
+#     results_ge = gene_spatial_task(
+#         runs=runs,
+#         results_dir=results_dir,
+#         gene_results_dir=results_dir,
+#         gene_combined_dir=combined_gene,
+#         project_name=project_name,
+#     )
 
-    results_with_gene_stats = gene_stats_task(
-        runs=runs,
-        gene_results_dir=results_dir,
-        gene_expression_results_dir=results_ge,
-        results_root=results_dir,
-        project_name=project_name,
-    )
+#     results_with_gene_stats = gene_stats_task(
+#         runs=runs,
+#         gene_results_dir=results_dir,
+#         gene_expression_results_dir=results_ge,
+#         results_root=results_dir,
+#         project_name=project_name,
+#     )
 
-    final_results = complete_results_task(
-        base_results_dir=results_dir,
-        gene_results_dir=results_dir,
-        gene_expression_results_dir=results_ge,
-        gene_stats_results_dir=results_with_gene_stats,
-    )
+#     final_results = complete_results_task(
+#         base_results_dir=results_dir,
+#         gene_results_dir=results_dir,
+#         gene_expression_results_dir=results_ge,
+#         gene_stats_results_dir=results_with_gene_stats,
+#     )
 
-    return registry_task(runs=runs, results=final_results)
+#     return registry_task(runs=runs, results=final_results)
 
 
 @workflow(resume_from_gene_spatial_metadata)

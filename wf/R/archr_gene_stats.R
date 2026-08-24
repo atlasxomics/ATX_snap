@@ -120,20 +120,59 @@ print(paste(
 n_samples <- length(unique(proj$Sample))
 n_cond <- length(unique(proj$Condition))
 
-# Identify empty features for filtering volcano plots.
-print("Identifying empty gene features...")
-gene_matrix <- ArchR::getMatrixFromProject(
+# Identify empty features for filtering volcano plots. The pinned ArchR fork
+# densifies Arrow matrices when asMatrix is TRUE, so loading every gene at once
+# can exhaust memory on large projects. Process one seqname at a time and use a
+# single reader thread to bound the peak allocation.
+print("Identifying empty gene features by seqname...")
+matrix_seqnames <- ArchR::getSeqnames(
   ArchRProj = proj,
-  useMatrix = "GeneScoreMatrix",
-  asMatrix = TRUE
+  useMatrix = "GeneScoreMatrix"
 )
-gene_row_names <- get_gene_feature_names(gene_matrix)
-empty_feat_idx <- which(Matrix::rowSums(
-  SummarizedExperiment::assay(gene_matrix, "GeneScoreMatrix")
-) == 0)
-empty_feat <- gene_row_names[empty_feat_idx]
+if (length(matrix_seqnames) == 0) {
+  stop("No GeneScoreMatrix seqnames found in the ArchR project.")
+}
+
+empty_feat <- character(0)
+for (seq_index in seq_along(matrix_seqnames)) {
+  seqname <- matrix_seqnames[[seq_index]]
+  message(
+    "Scanning GeneScoreMatrix seqname ",
+    seq_index,
+    " of ",
+    length(matrix_seqnames),
+    ": ",
+    seqname
+  )
+
+  gene_matrix <- ArchR::getMatrixFromProject(
+    ArchRProj = proj,
+    useMatrix = "GeneScoreMatrix",
+    useSeqnames = seqname,
+    threads = 1,
+    asMatrix = TRUE
+  )
+  gene_assay <- SummarizedExperiment::assay(
+    gene_matrix,
+    "GeneScoreMatrix"
+  )
+  gene_row_names <- get_gene_feature_names(gene_matrix)
+  if (length(gene_row_names) != nrow(gene_assay)) {
+    stop("Gene feature names do not match matrix rows for seqname ", seqname)
+  }
+
+  empty_feat <- c(
+    empty_feat,
+    gene_row_names[which(Matrix::rowSums(gene_assay) == 0)]
+  )
+
+  rm(gene_matrix, gene_assay, gene_row_names)
+  gc(verbose = FALSE, full = TRUE)
+}
+
+empty_feat <- unique(empty_feat)
 print(paste("Found", length(empty_feat), "empty features"))
-rm(gene_matrix, gene_row_names, empty_feat_idx)
+rm(matrix_seqnames, seq_index, seqname)
 gc(verbose = FALSE, full = TRUE)
 
 # Marker genes per cluster, save marker gene csv, heatmap csv, and heatmap pdf.
