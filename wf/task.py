@@ -790,7 +790,7 @@ def combine_gene_h5ads_task(
     return LatchDir(str(checkpoint_dir), checkpoint_remote_path)
 
 
-@custom_task(cpu=16, memory=800, storage_gib=2000)
+@custom_task(cpu=16, memory=800, storage_gib=4000)
 def gene_spatial_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
@@ -899,7 +899,7 @@ def gene_spatial_task(
     return LatchDir(str(delta_dir), results_dir.remote_path)
 
 
-@custom_task(cpu=26, memory=960, storage_gib=3000)
+@custom_task(cpu=26, memory=960, storage_gib=4000)
 def gene_stats_task(
     runs: List[utils.Run],
     gene_results_dir: LatchDir,
@@ -1120,13 +1120,11 @@ def complete_results_task(
     gene_results_dir: LatchDir,
     gene_expression_results_dir: LatchDir,
     gene_stats_results_dir: LatchDir,
-    motif_results_dir: LatchDir,
 ) -> LatchDir:
     _ = (
         gene_results_dir,
         gene_expression_results_dir,
         gene_stats_results_dir,
-        motif_results_dir,
     )
     return base_results_dir
 

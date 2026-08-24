@@ -379,15 +379,6 @@ def snap_workflow(
         project_name=project_name,
     )
 
-    results_motifs = motifs_task(
-        runs=runs,
-        results_dir=results_dir,
-        gene_results_dir=results_dir,
-        project_name=project_name,
-        genome=genome,
-        include_y_chromosome=include_y_chromosome,
-    )
-
     results_with_gene_stats = gene_stats_task(
         runs=runs,
         gene_results_dir=results_dir,
@@ -401,7 +392,6 @@ def snap_workflow(
         gene_results_dir=results_dir,
         gene_expression_results_dir=results_ge,
         gene_stats_results_dir=results_with_gene_stats,
-        motif_results_dir=results_motifs,
     )
 
     return registry_task(runs=runs, results=final_results)
@@ -430,15 +420,6 @@ def resume_gene_spatial_workflow(
         project_name=project_name,
     )
 
-    results_motifs = motifs_task(
-        runs=runs,
-        results_dir=results_dir,
-        gene_results_dir=results_dir,
-        project_name=project_name,
-        genome=genome,
-        include_y_chromosome=include_y_chromosome,
-    )
-
     results_with_gene_stats = gene_stats_task(
         runs=runs,
         gene_results_dir=results_dir,
@@ -452,7 +433,6 @@ def resume_gene_spatial_workflow(
         gene_results_dir=results_dir,
         gene_expression_results_dir=results_ge,
         gene_stats_results_dir=results_with_gene_stats,
-        motif_results_dir=results_motifs,
     )
 
     return registry_task(runs=runs, results=final_results)
