@@ -19,6 +19,8 @@ from wf.task import (
     genes_task,
     make_adata,
     make_anndata_dataset_task,
+    motif_coverages_task,
+    motif_peaks_task,
     motifs_task,
     registry_task,
 )
@@ -286,6 +288,112 @@ motif_metadata = LatchMetadata(
 )
 
 
+motif_from_coverages_metadata = LatchMetadata(
+    display_name="atx_snap_motifs_resume_from_coverages",
+    author=LatchAuthor(
+        name="James McGann",
+        email="jamesm@atlasxomics.com",
+        github="github.com/atlasxomics",
+    ),
+    repository="https://github.com/atlasxomics/ATX_snap",
+    license="MIT",
+    parameters={
+        "runs": LatchParameter(
+            display_name="runs",
+            description="The same run metadata used for the gene workflow.",
+            batch_table_column=True,
+            samplesheet=True,
+        ),
+        "results_dir": LatchParameter(
+            display_name="gene results directory",
+            description="The original project results directory.",
+            batch_table_column=True,
+        ),
+        "motif_coverages_dir": LatchParameter(
+            display_name="motif coverage checkpoint",
+            description=(
+                "The checkpoints/motifs/coverages directory produced by "
+                "motif_coverages_task."
+            ),
+            batch_table_column=True,
+        ),
+        "genome": LatchParameter(
+            display_name="genome",
+            description="The reference genome used for the gene workflow.",
+            batch_table_column=True,
+        ),
+        "project_name": LatchParameter(
+            display_name="project name",
+            description="The project name used for the gene workflow.",
+            batch_table_column=True,
+            rules=[
+                LatchRule(
+                    regex="^[^/].*", message="project name cannot start with a '/'"
+                )
+            ],
+        ),
+        "include_y_chromosome": LatchParameter(
+            display_name="include y chromosome",
+            description="Use the same setting as the gene workflow.",
+            batch_table_column=True,
+        ),
+    },
+)
+
+
+motif_from_peaks_metadata = LatchMetadata(
+    display_name="atx_snap_motifs_resume_from_peaks",
+    author=LatchAuthor(
+        name="James McGann",
+        email="jamesm@atlasxomics.com",
+        github="github.com/atlasxomics",
+    ),
+    repository="https://github.com/atlasxomics/ATX_snap",
+    license="MIT",
+    parameters={
+        "runs": LatchParameter(
+            display_name="runs",
+            description="The same run metadata used for the gene workflow.",
+            batch_table_column=True,
+            samplesheet=True,
+        ),
+        "results_dir": LatchParameter(
+            display_name="gene results directory",
+            description="The original project results directory.",
+            batch_table_column=True,
+        ),
+        "motif_peaks_dir": LatchParameter(
+            display_name="motif peak checkpoint",
+            description=(
+                "The checkpoints/motifs/peaks directory produced by "
+                "motif_peaks_task."
+            ),
+            batch_table_column=True,
+        ),
+        "genome": LatchParameter(
+            display_name="genome",
+            description="The reference genome used for the gene workflow.",
+            batch_table_column=True,
+        ),
+        "project_name": LatchParameter(
+            display_name="project name",
+            description="The project name used for the gene workflow.",
+            batch_table_column=True,
+            rules=[
+                LatchRule(
+                    regex="^[^/].*", message="project name cannot start with a '/'"
+                )
+            ],
+        ),
+        "include_y_chromosome": LatchParameter(
+            display_name="include y chromosome",
+            description="Use the same setting as the gene workflow.",
+            batch_table_column=True,
+        ),
+    },
+)
+
+
 # @workflow(metadata)
 # def snap_workflow(
 #     runs: List[Run],
@@ -500,10 +608,79 @@ def motif_workflow(
     separate workflow execution and is not cancelled by gene spatial failures.
     """
 
+    motif_coverages = motif_coverages_task(
+        gene_results_dir=results_dir,
+        project_name=project_name,
+    )
+
+    motif_peaks = motif_peaks_task(
+        motif_coverages_dir=motif_coverages,
+        project_name=project_name,
+        genome=genome,
+        include_y_chromosome=include_y_chromosome,
+    )
+
     return motifs_task(
         runs=runs,
         results_dir=results_dir,
-        gene_results_dir=results_dir,
+        motif_peaks_dir=motif_peaks,
+        project_name=project_name,
+        genome=genome,
+        include_y_chromosome=include_y_chromosome,
+    )
+
+
+@workflow(motif_from_coverages_metadata)
+def motif_from_coverages_workflow(
+    runs: List[Run],
+    results_dir: LatchDir,
+    motif_coverages_dir: LatchDir,
+    genome: Genome,
+    project_name: str,
+    include_y_chromosome: bool = False,
+) -> LatchDir:
+    """Resume motif analysis from group coverages.
+
+    Reuses a completed coverage checkpoint and begins with reproducible peak
+    calling, followed by downstream motif analysis.
+    """
+
+    motif_peaks = motif_peaks_task(
+        motif_coverages_dir=motif_coverages_dir,
+        project_name=project_name,
+        genome=genome,
+        include_y_chromosome=include_y_chromosome,
+    )
+
+    return motifs_task(
+        runs=runs,
+        results_dir=results_dir,
+        motif_peaks_dir=motif_peaks,
+        project_name=project_name,
+        genome=genome,
+        include_y_chromosome=include_y_chromosome,
+    )
+
+
+@workflow(motif_from_peaks_metadata)
+def motif_from_peaks_workflow(
+    runs: List[Run],
+    results_dir: LatchDir,
+    motif_peaks_dir: LatchDir,
+    genome: Genome,
+    project_name: str,
+    include_y_chromosome: bool = False,
+) -> LatchDir:
+    """Resume motif analysis from annotated peaks.
+
+    Reuses both completed motif checkpoints and runs only downstream motif
+    statistics, object conversion, spatial analysis, and output assembly.
+    """
+
+    return motifs_task(
+        runs=runs,
+        results_dir=results_dir,
+        motif_peaks_dir=motif_peaks_dir,
         project_name=project_name,
         genome=genome,
         include_y_chromosome=include_y_chromosome,

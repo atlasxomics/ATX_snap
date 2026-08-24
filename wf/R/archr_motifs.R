@@ -51,7 +51,9 @@ if (length(args) >= run_args_idx && is_bool_arg(args[run_args_idx])) {
   include_y_chromosome <- parse_bool_arg(args[run_args_idx])
   run_args_idx <- run_args_idx + 1
 }
-num_threads <- 50
+# ArchR parallelizes coverage generation across groups. Large projects can
+# exhaust memory when every available CPU launches a coverage worker at once.
+num_threads <- 8
 
 if (length(args) < run_args_idx) {
   stop("No runs were supplied to archr_motifs.R.")
@@ -82,7 +84,7 @@ archrproj_dir <- paste0(project_name, "_ArchRProject")
 output_root <- file.path("/root", project_name)
 
 # Create ArchRProject ---------------------------------------------------------
-addArchRThreads(threads = 50)
+addArchRThreads(threads = num_threads)
 
 proj <- loadArchRProject(archrproj_path)
 
@@ -218,32 +220,13 @@ write_empty_motif_outputs <- function(runs, metadata, output_root) {
 
 # Peak and motif analysis -----------------------------------------------------
 
-# Due to mcapply bug, too many threads in peak calling can lead to OOM error;
-# decrease theads here, per specification from input parameters ----
-addArchRThreads(threads = num_threads)
-
-# Peak calling and motif enrichment for clusters ----
-proj <- tryCatch(
-  get_annotated_peaks(
-    proj,
-    "Clusters",
-    genome_size,
-    genome,
-    include_y_chromosome = include_y_chromosome
-  ),
-  error = function(e) {
-    message("Cluster peak calling failed: ", e$message)
-    NULL
-  }
-)
-
-if (is.null(proj)) {
-  message(
-    "Skipping motif analysis because cluster-level reproducible peak calling ",
-    "did not produce a usable peak set."
-  )
-  write_empty_motif_outputs(runs, metadata, output_root)
-  q(save = "no", status = 0)
+# Cluster coverages, reproducible peaks, the PeakMatrix, and motif annotations
+# are built in separate checkpoint tasks before this script is launched.
+if (length(proj@peakSet) == 0) {
+  stop("The motif peak checkpoint does not contain an ArchR peak set.")
+}
+if (!"PeakMatrix" %in% ArchR::getAvailableMatrices(proj)) {
+  stop("The motif peak checkpoint does not contain a PeakMatrix.")
 }
 
 export_peak_beds_by_group(proj, "cluster", output_root)
