@@ -594,72 +594,72 @@ motif_from_peaks_metadata = LatchMetadata(
 #     return registry_task(runs=runs, results=final_results)
 
 
-@workflow(motif_metadata)
-def motif_workflow(
-    runs: List[Run],
-    results_dir: LatchDir,
-    genome: Genome,
-    project_name: str,
-    include_y_chromosome: bool = False,
-) -> LatchDir:
-    """Run motif analysis independently.
+# @workflow(motif_metadata)
+# def motif_workflow(
+#     runs: List[Run],
+#     results_dir: LatchDir,
+#     genome: Genome,
+#     project_name: str,
+#     include_y_chromosome: bool = False,
+# ) -> LatchDir:
+#     """Run motif analysis independently.
 
-    Uses an existing gene results directory so motif analysis runs in a
-    separate workflow execution and is not cancelled by gene spatial failures.
-    """
+#     Uses an existing gene results directory so motif analysis runs in a
+#     separate workflow execution and is not cancelled by gene spatial failures.
+#     """
 
-    motif_coverages = motif_coverages_task(
-        gene_results_dir=results_dir,
-        project_name=project_name,
-    )
+#     motif_coverages = motif_coverages_task(
+#         gene_results_dir=results_dir,
+#         project_name=project_name,
+#     )
 
-    motif_peaks = motif_peaks_task(
-        motif_coverages_dir=motif_coverages,
-        project_name=project_name,
-        genome=genome,
-        include_y_chromosome=include_y_chromosome,
-    )
+#     motif_peaks = motif_peaks_task(
+#         motif_coverages_dir=motif_coverages,
+#         project_name=project_name,
+#         genome=genome,
+#         include_y_chromosome=include_y_chromosome,
+#     )
 
-    return motifs_task(
-        runs=runs,
-        results_dir=results_dir,
-        motif_peaks_dir=motif_peaks,
-        project_name=project_name,
-        genome=genome,
-        include_y_chromosome=include_y_chromosome,
-    )
+#     return motifs_task(
+#         runs=runs,
+#         results_dir=results_dir,
+#         motif_peaks_dir=motif_peaks,
+#         project_name=project_name,
+#         genome=genome,
+#         include_y_chromosome=include_y_chromosome,
+#     )
 
 
-@workflow(motif_from_coverages_metadata)
-def motif_from_coverages_workflow(
-    runs: List[Run],
-    results_dir: LatchDir,
-    motif_coverages_dir: LatchDir,
-    genome: Genome,
-    project_name: str,
-    include_y_chromosome: bool = False,
-) -> LatchDir:
-    """Resume motif analysis from group coverages.
+# @workflow(motif_from_coverages_metadata)
+# def motif_from_coverages_workflow(
+#     runs: List[Run],
+#     results_dir: LatchDir,
+#     motif_coverages_dir: LatchDir,
+#     genome: Genome,
+#     project_name: str,
+#     include_y_chromosome: bool = False,
+# ) -> LatchDir:
+#     """Resume motif analysis from group coverages.
 
-    Reuses a completed coverage checkpoint and begins with reproducible peak
-    calling, followed by downstream motif analysis.
-    """
+#     Reuses a completed coverage checkpoint and begins with reproducible peak
+#     calling, followed by downstream motif analysis.
+#     """
 
-    motif_peaks = motif_peaks_task(
-        motif_coverages_dir=motif_coverages_dir,
-        project_name=project_name,
-        genome=genome,
-        include_y_chromosome=include_y_chromosome,
-    )
+#     motif_peaks = motif_peaks_task(
+#         motif_coverages_dir=motif_coverages_dir,
+#         project_name=project_name,
+#         genome=genome,
+#         include_y_chromosome=include_y_chromosome,
+#     )
 
-    return motifs_task(
-        runs=runs,
-        results_dir=results_dir,
-        motif_peaks_dir=motif_peaks,
-        project_name=project_name,
-        genome=genome,
-        include_y_chromosome=include_y_chromosome,
-    )
+#     return motifs_task(
+#         runs=runs,
+#         results_dir=results_dir,
+#         motif_peaks_dir=motif_peaks,
+#         project_name=project_name,
+#         genome=genome,
+#         include_y_chromosome=include_y_chromosome,
+#     )
 
 
 @workflow(motif_from_peaks_metadata)

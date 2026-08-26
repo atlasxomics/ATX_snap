@@ -1,9 +1,5 @@
 library("ArchR")
-library("BSgenome")
-library("BSgenome.Hsapiens.UCSC.hg38")
-library("BSgenome.Mmusculus.UCSC.mm10")
-library("BSgenome.Mmusculus.UCSC.mm39")
-library("BSgenome.Rnorvegicus.UCSC.rn6")
+source("/root/wf/R/load_genomes.R")
 library("chromVARmotifs")
 library("circlize")
 library("ComplexHeatmap")
@@ -80,7 +76,6 @@ if (is.null(genome_size)) {
   stop("No genome size configured for genome: ", genome)
 }
 
-archrproj_dir <- paste0(project_name, "_ArchRProject")
 output_root <- file.path("/root", project_name)
 
 # Create ArchRProject ---------------------------------------------------------
@@ -230,8 +225,6 @@ if (!"PeakMatrix" %in% ArchR::getAvailableMatrices(proj)) {
 }
 
 export_peak_beds_by_group(proj, "cluster", output_root)
-
-saveArchRProject(ArchRProj = proj, archrproj_dir)
 
 # Save run metrics in medians.csv ----
 medians <- get_proj_medians(proj)
@@ -476,8 +469,6 @@ if (n_samples > 1) {
     proj <- proj_sample
     export_peak_beds_by_group(proj, "sample", output_root)
 
-    saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
-
     # Repeat getMarkerPeaks for new peak-set, enriched motifs per sample --
     sample_marker_peaks <- safe_get_marker_features(
       ArchRProj = proj,
@@ -538,8 +529,6 @@ if (n_cond > 1) {
         paste0("condition_", i)
       }
       export_peak_beds_by_group(proj, condition_group_label, output_root)
-
-      saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
 
       # Get marker peaks and Enriched motifs per treatment --
       treatment_marker_peaks <- safe_get_marker_features(
@@ -645,8 +634,6 @@ if (n_cond > 1) {
 } else {
   print("There are not enough conditions to be compared with!")
 }
-
-saveArchRProject(ArchRProj = proj, outputDirectory = archrproj_dir)
 
 all_m <- rename_cells(seurat_objs_m)
 

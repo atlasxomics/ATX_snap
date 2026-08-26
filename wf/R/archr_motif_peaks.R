@@ -1,9 +1,5 @@
 library("ArchR")
-library("BSgenome")
-library("BSgenome.Hsapiens.UCSC.hg38")
-library("BSgenome.Mmusculus.UCSC.mm10")
-library("BSgenome.Mmusculus.UCSC.mm39")
-library("BSgenome.Rnorvegicus.UCSC.rn6")
+source("/root/wf/R/load_genomes.R")
 library("TxDb.Mmusculus.UCSC.mm39.knownGene")
 library("org.Mm.eg.db")
 
@@ -30,6 +26,7 @@ num_threads <- max(1, as.integer(args[[6]]))
 
 ArchR::addArchRThreads(threads = num_threads)
 proj <- ArchR::loadArchRProject(input_project, force = TRUE, showLogo = FALSE)
+proj <- rebase_group_coverage_paths(proj, input_project)
 exclude_chr <- archr_exclude_chroms(include_y_chromosome)
 
 message("Calling reproducible cluster peaks with ", num_threads, " worker(s).")
@@ -51,3 +48,4 @@ ArchR::saveArchRProject(
   outputDirectory = output_project,
   load = FALSE
 )
+rebase_saved_archr_project(output_project)

@@ -1,4 +1,5 @@
 library("ArchR")
+source("/root/wf/R/load_genomes.R")
 
 source("/root/wf/R/archr.R")
 
@@ -47,3 +48,4 @@ ArchR::saveArchRProject(
   outputDirectory = output_project,
   load = FALSE
 )
+rebase_saved_archr_project(output_project)
