@@ -3,19 +3,14 @@ from typing import List
 from atx_common import Genome
 from latch.resources.workflow import workflow
 from latch.types import LatchDir
-from latch.types.metadata import (
-    LatchAuthor,
-    LatchMetadata,
-    LatchParameter,
-    LatchRule,
-)
+from latch.types.metadata import LatchAuthor, LatchMetadata, LatchParameter, LatchRule
 
 from wf.task import (
     combine_gene_h5ads_task,
     complete_results_task,
-    gene_stats_task,
     gene_project_task,
     gene_spatial_task,
+    gene_stats_task,
     genes_task,
     make_adata,
     make_anndata_dataset_task,
@@ -136,389 +131,122 @@ metadata = LatchMetadata(
 )
 
 
-resume_from_gene_combine_metadata = LatchMetadata(
-    display_name="atx_snap_resume_from_gene_combine",
-    author=LatchAuthor(
-        name="James McGann",
-        email="jamesm@atlasxomics.com",
-        github="github.com/atlasxomics",
-    ),
-    repository="https://github.com/atlasxomics/ATX_snap",
-    license="MIT",
-    parameters={
-        "runs": LatchParameter(
-            display_name="runs",
-            description="The same run metadata used for the original workflow run.",
-            batch_table_column=True,
-            samplesheet=True,
-        ),
-        "results_dir": LatchParameter(
-            display_name="gene results directory",
-            description=(
-                "The results directory containing the make_adata outputs, "
-                "per-sample gene H5AD files, and Seurat RDS files."
-            ),
-            batch_table_column=True,
-        ),
-        "genome": LatchParameter(
-            display_name="genome",
-            description="The reference genome used for the original workflow run.",
-            batch_table_column=True,
-        ),
-        "project_name": LatchParameter(
-            display_name="project name",
-            description="The project name used for the original workflow run.",
-            batch_table_column=True,
-            rules=[
-                LatchRule(
-                    regex="^[^/].*", message="project name cannot start with a '/'"
-                )
-            ],
-        ),
-        "include_y_chromosome": LatchParameter(
-            display_name="include y chromosome",
-            description="Use the same setting as the original workflow run.",
-            batch_table_column=True,
-        ),
-    },
-)
-
-
-resume_from_gene_spatial_metadata = LatchMetadata(
-    display_name="atx_snap_resume_from_gene_spatial",
-    author=LatchAuthor(
-        name="James McGann",
-        email="jamesm@atlasxomics.com",
-        github="github.com/atlasxomics",
-    ),
-    repository="https://github.com/atlasxomics/ATX_snap",
-    license="MIT",
-    parameters={
-        "runs": LatchParameter(
-            display_name="runs",
-            description="The same run metadata used for the original workflow run.",
-            batch_table_column=True,
-            samplesheet=True,
-        ),
-        "results_dir": LatchParameter(
-            display_name="gene results directory",
-            description=(
-                "The results directory containing make_adata, ArchR, gene, and "
-                "Seurat outputs."
-            ),
-            batch_table_column=True,
-        ),
-        "gene_combined_dir": LatchParameter(
-            display_name="dense gene checkpoint",
-            description=(
-                "The gene_combined checkpoint directory containing "
-                "anndata/combined_g_pre_squidpy.h5ad."
-            ),
-            batch_table_column=True,
-        ),
-        "genome": LatchParameter(
-            display_name="genome",
-            description="The reference genome used for the original workflow run.",
-            batch_table_column=True,
-        ),
-        "project_name": LatchParameter(
-            display_name="project name",
-            description="The project name used for the original workflow run.",
-            batch_table_column=True,
-            rules=[
-                LatchRule(
-                    regex="^[^/].*", message="project name cannot start with a '/'"
-                )
-            ],
-        ),
-        "include_y_chromosome": LatchParameter(
-            display_name="include y chromosome",
-            description="Use the same setting as the original workflow run.",
-            batch_table_column=True,
-        ),
-    },
-)
-
-
-motif_metadata = LatchMetadata(
-    display_name="atx_snap_motifs",
-    author=LatchAuthor(
-        name="James McGann",
-        email="jamesm@atlasxomics.com",
-        github="github.com/atlasxomics",
-    ),
-    repository="https://github.com/atlasxomics/ATX_snap",
-    license="MIT",
-    parameters={
-        "runs": LatchParameter(
-            display_name="runs",
-            description="The same run metadata used for the gene workflow.",
-            batch_table_column=True,
-            samplesheet=True,
-        ),
-        "results_dir": LatchParameter(
-            display_name="gene results directory",
-            description=(
-                "The results directory containing the ArchR project and "
-                "make_adata outputs required for motif analysis."
-            ),
-            batch_table_column=True,
-        ),
-        "genome": LatchParameter(
-            display_name="genome",
-            description="The reference genome used for the gene workflow.",
-            batch_table_column=True,
-        ),
-        "project_name": LatchParameter(
-            display_name="project name",
-            description="The project name used for the gene workflow.",
-            batch_table_column=True,
-            rules=[
-                LatchRule(
-                    regex="^[^/].*", message="project name cannot start with a '/'"
-                )
-            ],
-        ),
-        "include_y_chromosome": LatchParameter(
-            display_name="include y chromosome",
-            description="Use the same setting as the gene workflow.",
-            batch_table_column=True,
-        ),
-    },
-)
-
-
-# @workflow(metadata)
-# def snap_workflow(
-#     runs: List[Run],
-#     genome: Genome,
-#     project_name: str,
-#     tile_size: int = 5000,
-#     n_features: int = 25000,
-#     n_comps: int = 30,
-#     resolution: float = 1.0,
-#     clustering_iters: int = 1,
-#     leiden_iters: int = -1,
-#     min_cluster_size: int = 20,
-#     min_tss: float = 2.0,
-#     min_frags: int = 10,
-#     include_y_chromosome: bool = False,
-#     output_dir: LatchDir = LatchDir("latch:///atac_analysis_snap/"),
-# ) -> LatchDir:
-#     """
-#     SnapATAC2 and ArchR analysis for spatial ATAC runs.
-#     """
-
-#     anndata_dataset = make_anndata_dataset_task(
-#         runs=runs,
-#         genome=genome,
-#         project_name=project_name,
-#         min_tss=min_tss,
-#         min_frags=min_frags,
-#         include_y_chromosome=include_y_chromosome,
-#         tile_size=tile_size,
-#         output_dir=output_dir,
-#     )
-
-#     results, _groups = make_adata(
-#         runs=runs,
-#         anndata_dataset=anndata_dataset,
-#         genome=genome,
-#         project_name=project_name,
-#         resolution=resolution,
-#         leiden_iters=leiden_iters,
-#         n_comps=n_comps,
-#         min_cluster_size=min_cluster_size,
-#         min_tss=min_tss,
-#         min_frags=min_frags,
-#         include_y_chromosome=include_y_chromosome,
-#         tile_size=tile_size,
-#         n_features=n_features,
-#         clustering_iters=clustering_iters,
-#         output_dir=output_dir,
-#     )
-
-#     gene_project = gene_project_task(
-#         runs=runs,
-#         results_dir=results,
-#         project_name=project_name,
-#         genome=genome,
-#         include_y_chromosome=include_y_chromosome,
-#     )
-
-#     gene_results = genes_task(
-#         runs=runs,
-#         results_dir=results,
-#         gene_project_dir=gene_project,
-#         project_name=project_name,
-#         genome=genome,
-#         include_y_chromosome=include_y_chromosome,
-#     )
-
-#     combined_gene = combine_gene_h5ads_task(
-#         runs=runs,
-#         results_dir=results,
-#         gene_results_dir=gene_results,
-#         project_name=project_name,
-#     )
-
-#     results_ge = gene_spatial_task(
-#         runs=runs,
-#         results_dir=results,
-#         gene_results_dir=gene_results,
-#         gene_combined_dir=combined_gene,
-#         project_name=project_name,
-#     )
-
-#     results_motifs = motifs_task(
-#         runs=runs,
-#         results_dir=results,
-#         gene_results_dir=gene_results,
-#         project_name=project_name,
-#         genome=genome,
-#         include_y_chromosome=include_y_chromosome,
-#     )
-
-#     results_with_gene_stats = gene_stats_task(
-#         runs=runs,
-#         gene_results_dir=gene_results,
-#         gene_expression_results_dir=results_ge,
-#         results_root=results,
-#         project_name=project_name,
-#     )
-
-#     final_results = complete_results_task(
-#         base_results_dir=results,
-#         gene_results_dir=gene_results,
-#         gene_expression_results_dir=results_ge,
-#         gene_stats_results_dir=results_with_gene_stats,
-#         motif_results_dir=results_motifs,
-#     )
-
-#     uploaded_results = registry_task(runs=runs, results=final_results)
-
-#     return uploaded_results
-
-
-# @workflow(resume_from_gene_combine_metadata)
-# def snap_workflow(
-#     runs: List[Run],
-#     results_dir: LatchDir,
-#     genome: Genome,
-#     project_name: str,
-#     include_y_chromosome: bool = False,
-# ) -> LatchDir:
-#     """Resume ATX Snap analysis from gene H5AD combination.
-
-#     Uses the persisted per-sample gene H5AD and Seurat files and runs the
-#     combination and remaining tasks without repeating ArchR gene imputation.
-#     """
-
-#     combined_gene = combine_gene_h5ads_task(
-#         runs=runs,
-#         results_dir=results_dir,
-#         gene_results_dir=results_dir,
-#         project_name=project_name,
-#     )
-
-#     results_ge = gene_spatial_task(
-#         runs=runs,
-#         results_dir=results_dir,
-#         gene_results_dir=results_dir,
-#         gene_combined_dir=combined_gene,
-#         project_name=project_name,
-#     )
-
-#     results_with_gene_stats = gene_stats_task(
-#         runs=runs,
-#         gene_results_dir=results_dir,
-#         gene_expression_results_dir=results_ge,
-#         results_root=results_dir,
-#         project_name=project_name,
-#     )
-
-#     final_results = complete_results_task(
-#         base_results_dir=results_dir,
-#         gene_results_dir=results_dir,
-#         gene_expression_results_dir=results_ge,
-#         gene_stats_results_dir=results_with_gene_stats,
-#     )
-
-#     return registry_task(runs=runs, results=final_results)
-
-
-@workflow(resume_from_gene_spatial_metadata)
-def resume_gene_spatial_workflow(
+@workflow(metadata)
+def snap_workflow(
     runs: List[Run],
-    results_dir: LatchDir,
-    gene_combined_dir: LatchDir,
     genome: Genome,
     project_name: str,
+    tile_size: int = 5000,
+    n_features: int = 25000,
+    n_comps: int = 30,
+    resolution: float = 1.0,
+    clustering_iters: int = 1,
+    leiden_iters: int = -1,
+    min_cluster_size: int = 20,
+    min_tss: float = 2.0,
+    min_frags: int = 10,
     include_y_chromosome: bool = False,
+    output_dir: LatchDir = LatchDir("latch:///atac_analysis_snap/"),
 ) -> LatchDir:
-    """Resume ATX Snap analysis from the dense pre-Squidpy checkpoint.
+    """Run the complete ATX Snap spatial ATAC analysis.
 
-    Runs spatial gene analysis and all downstream tasks without repairing or
-    recombining the per-sample gene H5AD files.
+    Produces SnapATAC2, gene, motif, spatial, and differential-analysis outputs.
     """
+
+    anndata_dataset = make_anndata_dataset_task(
+        runs=runs,
+        genome=genome,
+        project_name=project_name,
+        min_tss=min_tss,
+        min_frags=min_frags,
+        include_y_chromosome=include_y_chromosome,
+        tile_size=tile_size,
+        output_dir=output_dir,
+    )
+
+    results, _groups = make_adata(
+        runs=runs,
+        anndata_dataset=anndata_dataset,
+        genome=genome,
+        project_name=project_name,
+        resolution=resolution,
+        leiden_iters=leiden_iters,
+        n_comps=n_comps,
+        min_cluster_size=min_cluster_size,
+        min_tss=min_tss,
+        min_frags=min_frags,
+        include_y_chromosome=include_y_chromosome,
+        tile_size=tile_size,
+        n_features=n_features,
+        clustering_iters=clustering_iters,
+        output_dir=output_dir,
+    )
+
+    gene_project = gene_project_task(
+        runs=runs,
+        results_dir=results,
+        project_name=project_name,
+        genome=genome,
+        include_y_chromosome=include_y_chromosome,
+    )
+
+    gene_results = genes_task(
+        runs=runs,
+        results_dir=results,
+        gene_project_dir=gene_project,
+        project_name=project_name,
+        genome=genome,
+        include_y_chromosome=include_y_chromosome,
+    )
+
+    combined_gene = combine_gene_h5ads_task(
+        runs=runs,
+        results_dir=results,
+        gene_results_dir=gene_results,
+        project_name=project_name,
+    )
 
     results_ge = gene_spatial_task(
         runs=runs,
-        results_dir=results_dir,
-        gene_results_dir=results_dir,
-        gene_combined_dir=gene_combined_dir,
+        results_dir=results,
+        gene_results_dir=gene_results,
+        gene_combined_dir=combined_gene,
         project_name=project_name,
     )
-
-    results_with_gene_stats = gene_stats_task(
-        runs=runs,
-        gene_results_dir=results_dir,
-        gene_expression_results_dir=results_ge,
-        results_root=results_dir,
-        project_name=project_name,
-    )
-
-    final_results = complete_results_task(
-        base_results_dir=results_dir,
-        gene_results_dir=results_dir,
-        gene_expression_results_dir=results_ge,
-        gene_stats_results_dir=results_with_gene_stats,
-    )
-
-    return registry_task(runs=runs, results=final_results)
-
-
-@workflow(motif_metadata)
-def motif_workflow(
-    runs: List[Run],
-    results_dir: LatchDir,
-    genome: Genome,
-    project_name: str,
-    include_y_chromosome: bool = False,
-) -> LatchDir:
-    """Run checkpointed motif analysis independently.
-
-    Generates durable group-coverage and annotated-peak checkpoints before
-    running downstream motif statistics, conversion, and spatial analysis.
-    """
 
     motif_coverages = motif_coverages_task(
-        gene_results_dir=results_dir,
+        gene_results_dir=gene_results,
         project_name=project_name,
     )
-
     motif_peaks = motif_peaks_task(
         motif_coverages_dir=motif_coverages,
         project_name=project_name,
         genome=genome,
         include_y_chromosome=include_y_chromosome,
     )
-
-    return motifs_task(
+    results_motifs = motifs_task(
         runs=runs,
-        results_dir=results_dir,
+        results_dir=results,
         motif_peaks_dir=motif_peaks,
         project_name=project_name,
         genome=genome,
         include_y_chromosome=include_y_chromosome,
     )
+
+    results_with_gene_stats = gene_stats_task(
+        runs=runs,
+        gene_results_dir=gene_results,
+        gene_expression_results_dir=results_ge,
+        results_root=results,
+        project_name=project_name,
+    )
+
+    final_results = complete_results_task(
+        base_results_dir=results,
+        gene_results_dir=gene_results,
+        gene_expression_results_dir=results_ge,
+        gene_stats_results_dir=results_with_gene_stats,
+        motif_results_dir=results_motifs,
+    )
+
+    return registry_task(runs=runs, results=final_results)
