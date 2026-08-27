@@ -368,7 +368,7 @@ def _organize_outputs(
     _move_files_to_directory(figures, dirs["figures"])
 
 
-@custom_task(cpu=48, memory=512, storage_gib=1000)
+@custom_task(cpu=32, memory=512, storage_gib=1000)
 def make_anndata_dataset_task(
     runs: List[utils.Run],
     genome: utils.Genome,
@@ -402,7 +402,8 @@ def make_anndata_dataset_task(
     pp.persist_anndata_dataset(adatas, samples, stage_dir)
 
     remote_path = (
-        f"{output_dir.remote_path.rstrip('/')}/{project_name}_anndata_dataset"
+        f"{output_dir.remote_path.rstrip('/')}/{project_name}"
+        "/checkpoints/anndata_dataset"
     )
     return LatchDir(str(stage_dir), remote_path)
 
@@ -1228,6 +1229,45 @@ def complete_results_task(
         motif_results_dir,
     )
     return base_results_dir
+
+
+@small_task(cache=False)
+def cleanup_checkpoints_task(results: LatchDir) -> LatchDir:
+    """Remove durable intermediates after every result branch succeeds."""
+    from latch.ldata.path import LPath
+
+    results_remote_path = results.remote_path
+    if results_remote_path is None:
+        raise ValueError("Cannot clean checkpoints without a remote results path.")
+
+    results_remote_path = results_remote_path.rstrip("/")
+    if not results_remote_path.startswith("latch://"):
+        raise ValueError(
+            "Checkpoint cleanup only supports Latch Data paths; got "
+            f"{results_remote_path}."
+        )
+
+    checkpoint_remote_path = f"{results_remote_path}/checkpoints"
+    if checkpoint_remote_path in {"latch://checkpoints", "latch:///checkpoints"}:
+        raise ValueError(
+            f"Refusing to clean unsafe checkpoint path: {checkpoint_remote_path}"
+        )
+
+    checkpoint_path = LPath(checkpoint_remote_path)
+    if checkpoint_path.exists():
+        logging.info(
+            "Removing completed workflow checkpoints from "
+            f"{checkpoint_remote_path}..."
+        )
+        checkpoint_path.rmr()
+        logging.info("Checkpoint cleanup complete.")
+    else:
+        logging.info(
+            f"No workflow checkpoints found at {checkpoint_remote_path}."
+        )
+
+    # Reuse the existing remote directory rather than uploading a local copy.
+    return LatchDir(results_remote_path)
 
 
 @small_task(cache=True)

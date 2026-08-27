@@ -6,6 +6,7 @@ from latch.types import LatchDir
 from latch.types.metadata import LatchAuthor, LatchMetadata, LatchParameter, LatchRule
 
 from wf.task import (
+    cleanup_checkpoints_task,
     combine_gene_h5ads_task,
     complete_results_task,
     gene_project_task,
@@ -249,4 +250,5 @@ def snap_workflow(
         motif_results_dir=results_motifs,
     )
 
-    return registry_task(runs=runs, results=final_results)
+    cleaned_results = cleanup_checkpoints_task(results=final_results)
+    return registry_task(runs=runs, results=cleaned_results)

@@ -68,6 +68,9 @@ The **ATX snap** workflow can be found in the [Workflows](https://wiki.latch.bio
 
 Outputs from **ATX snap** are loaded into LatchBio [Data module](https://wiki.latch.bio/wiki/data/overview) in the `atac_analysis_snap` directory.
 AnnData `.h5ad` objects are collected in the `anndata/` subfolder and Seurat `.rds` objects in the `seurat_objects/` subfolder.
+Intermediate files are stored under `checkpoints/` while the workflow is running.
+They remain available after a failed execution for recovery, but are automatically
+deleted after every result-producing task succeeds.
 * anndata/combined.h5ad: combined (all runs) AnnData object with .X as a tile matrix.
 * anndata/combined_ge.h5ad: combined (all runs) AnnData object with .X as a gene accessibility matrix; created with [`snapatac2.pp.make_gene_matrix`](https://kzhang.org/SnapATAC2/api/_autosummary/snapatac2.pp.make_gene_matrix.html).
 * anndata/combined_motifs.h5ad: combined (all runs) AnnData object with .X as a motif deviation matrix; created with [`pychromvar.compute_deviations`](https://pychromvar.readthedocs.io/en/latest/generated/pychromvar.compute_deviations.html#pychromvar.compute_deviations);
