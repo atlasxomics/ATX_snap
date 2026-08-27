@@ -299,6 +299,45 @@ if (!isTRUE(enriched_motifs_c$has_enrichment)) {
   message("No enrichments found; wrote empty motif_per_cluster_hm.csv.")
 }
 
+# Save motif probability matrices for sequence-logo plotting. This uses the
+# genome-specific motif annotation already attached to the ArchR project (for
+# mm39, the Mus musculus CIS-BP motif collection).
+if (!requireNamespace("TFBSTools", quietly = TRUE)) {
+  stop("TFBSTools is required to create seqlogo.rds.")
+}
+
+motif_pwms <- ArchR::getPeakAnnotation(proj, "Motif")$motifs
+if (is.null(motif_pwms) || length(motif_pwms) == 0) {
+  stop("The ArchR Motif annotation does not contain any position weight matrices.")
+}
+
+pw_matrix_to_probability <- function(pwm) {
+  if (!methods::is(pwm, "PWMatrix")) {
+    stop("Expected a TFBSTools::PWMatrix while creating seqlogo.rds.")
+  }
+
+  background <- TFBSTools::bg(pwm)
+  probability <- exp(methods::as(pwm, "matrix")) *
+    background / sum(background)
+  column_totals <- colSums(probability)
+  if (any(!is.finite(column_totals)) || any(column_totals <= 0)) {
+    stop("Encountered an invalid motif probability column in seqlogo.rds.")
+  }
+
+  sweep(probability, 2, column_totals, "/")
+}
+
+motif_probability_matrices <- lapply(
+  motif_pwms,
+  pw_matrix_to_probability
+)
+saveRDS(motif_probability_matrices, "seqlogo.rds")
+message(
+  "Saved ",
+  length(motif_probability_matrices),
+  " motif probability matrices to seqlogo.rds."
+)
+
 # Create motif SeuratObjects ----
 # Create motif count matrix --
 proj <- addBgdPeaks(proj, force = TRUE)

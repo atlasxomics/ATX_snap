@@ -19,6 +19,8 @@ from wf.task import (
     genes_task,
     make_adata,
     make_anndata_dataset_task,
+    motif_coverages_task,
+    motif_peaks_task,
     motifs_task,
     registry_task,
 )
@@ -238,6 +240,54 @@ resume_from_gene_spatial_metadata = LatchMetadata(
 )
 
 
+motif_metadata = LatchMetadata(
+    display_name="atx_snap_motifs",
+    author=LatchAuthor(
+        name="James McGann",
+        email="jamesm@atlasxomics.com",
+        github="github.com/atlasxomics",
+    ),
+    repository="https://github.com/atlasxomics/ATX_snap",
+    license="MIT",
+    parameters={
+        "runs": LatchParameter(
+            display_name="runs",
+            description="The same run metadata used for the gene workflow.",
+            batch_table_column=True,
+            samplesheet=True,
+        ),
+        "results_dir": LatchParameter(
+            display_name="gene results directory",
+            description=(
+                "The results directory containing the ArchR project and "
+                "make_adata outputs required for motif analysis."
+            ),
+            batch_table_column=True,
+        ),
+        "genome": LatchParameter(
+            display_name="genome",
+            description="The reference genome used for the gene workflow.",
+            batch_table_column=True,
+        ),
+        "project_name": LatchParameter(
+            display_name="project name",
+            description="The project name used for the gene workflow.",
+            batch_table_column=True,
+            rules=[
+                LatchRule(
+                    regex="^[^/].*", message="project name cannot start with a '/'"
+                )
+            ],
+        ),
+        "include_y_chromosome": LatchParameter(
+            display_name="include y chromosome",
+            description="Use the same setting as the gene workflow.",
+            batch_table_column=True,
+        ),
+    },
+)
+
+
 # @workflow(metadata)
 # def snap_workflow(
 #     runs: List[Run],
@@ -436,3 +486,39 @@ def resume_gene_spatial_workflow(
     )
 
     return registry_task(runs=runs, results=final_results)
+
+
+@workflow(motif_metadata)
+def motif_workflow(
+    runs: List[Run],
+    results_dir: LatchDir,
+    genome: Genome,
+    project_name: str,
+    include_y_chromosome: bool = False,
+) -> LatchDir:
+    """Run checkpointed motif analysis independently.
+
+    Generates durable group-coverage and annotated-peak checkpoints before
+    running downstream motif statistics, conversion, and spatial analysis.
+    """
+
+    motif_coverages = motif_coverages_task(
+        gene_results_dir=results_dir,
+        project_name=project_name,
+    )
+
+    motif_peaks = motif_peaks_task(
+        motif_coverages_dir=motif_coverages,
+        project_name=project_name,
+        genome=genome,
+        include_y_chromosome=include_y_chromosome,
+    )
+
+    return motifs_task(
+        runs=runs,
+        results_dir=results_dir,
+        motif_peaks_dir=motif_peaks,
+        project_name=project_name,
+        genome=genome,
+        include_y_chromosome=include_y_chromosome,
+    )

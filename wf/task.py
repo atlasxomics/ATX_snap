@@ -973,11 +973,108 @@ def gene_stats_task(
     return LatchDir(str(delta_dir), results_root.remote_path)
 
 
-@custom_task(cpu=50, memory=700, storage_gib=2000)
+@custom_task(cpu=8, memory=700, storage_gib=2000)
+def motif_coverages_task(
+    gene_results_dir: LatchDir,
+    project_name: str,
+) -> LatchDir:
+    """Generate and persist the cluster group-coverage checkpoint."""
+    archrproj_remote_path = (
+        f"{gene_results_dir.remote_path.rstrip('/')}"
+        f"/{project_name}_ArchRProject"
+    )
+    archrproj_path = Path(LatchDir(archrproj_remote_path).local_path)
+    if not archrproj_path.exists():
+        raise FileNotFoundError(
+            f"Could not find ArchRProject at {archrproj_path}."
+        )
+
+    checkpoint_dir = _fresh_stage_dir(project_name, "motif_coverages")
+    checkpoint_project = checkpoint_dir / "ArchRProject"
+    subprocess.run(
+        [
+            "Rscript",
+            "/root/wf/R/archr_motif_coverages.R",
+            str(archrproj_path),
+            str(checkpoint_project),
+            "8",
+        ],
+        check=True,
+    )
+    checkpoint_rds = checkpoint_project / "Save-ArchR-Project.rds"
+    if not checkpoint_project.is_dir() or not checkpoint_rds.is_file():
+        raise FileNotFoundError(
+            "ArchR coverage checkpoint is incomplete; expected project file "
+            f"at {checkpoint_rds}."
+        )
+
+    checkpoint_remote_path = (
+        f"{gene_results_dir.remote_path.rstrip('/')}"
+        "/checkpoints/motifs/coverages"
+    )
+    logging.info("Uploading motif group-coverage checkpoint...")
+    return LatchDir(str(checkpoint_dir), checkpoint_remote_path)
+
+
+@custom_task(cpu=8, memory=700, storage_gib=2000)
+def motif_peaks_task(
+    motif_coverages_dir: LatchDir,
+    project_name: str,
+    genome: utils.Genome,
+    include_y_chromosome: bool,
+) -> LatchDir:
+    """Create peaks and motif annotations from the coverage checkpoint."""
+    coverage_project = Path(motif_coverages_dir.local_path) / "ArchRProject"
+    if not coverage_project.is_dir():
+        raise FileNotFoundError(
+            "Could not find the coverage-checkpoint ArchRProject at "
+            f"{coverage_project}."
+        )
+
+    genome_sizes = {
+        "hg38": 3.3e9,
+        "mm10": 3.0e9,
+        "mm39": 2.7e9,
+        "rnor6": 2.9e9,
+    }
+    genome_name = genome.value
+    if genome_name not in genome_sizes:
+        raise ValueError(f"No genome size configured for genome: {genome_name}")
+
+    checkpoint_dir = _fresh_stage_dir(project_name, "motif_peaks")
+    checkpoint_project = checkpoint_dir / "ArchRProject"
+    subprocess.run(
+        [
+            "Rscript",
+            "/root/wf/R/archr_motif_peaks.R",
+            str(coverage_project),
+            str(checkpoint_project),
+            genome_name,
+            str(include_y_chromosome).lower(),
+            str(genome_sizes[genome_name]),
+            "8",
+        ],
+        check=True,
+    )
+    checkpoint_rds = checkpoint_project / "Save-ArchR-Project.rds"
+    if not checkpoint_project.is_dir() or not checkpoint_rds.is_file():
+        raise FileNotFoundError(
+            "Annotated peak checkpoint is incomplete; expected project file "
+            f"at {checkpoint_rds}."
+        )
+
+    coverages_remote_path = motif_coverages_dir.remote_path.rstrip("/")
+    checkpoint_root = coverages_remote_path.rsplit("/", 1)[0]
+    checkpoint_remote_path = f"{checkpoint_root}/peaks"
+    logging.info("Uploading annotated motif peak checkpoint...")
+    return LatchDir(str(checkpoint_dir), checkpoint_remote_path)
+
+
+@custom_task(cpu=8, memory=700, storage_gib=2000)
 def motifs_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
-    gene_results_dir: LatchDir,
+    motif_peaks_dir: LatchDir,
     project_name: str,
     genome: utils.Genome,
     include_y_chromosome: bool,
@@ -992,11 +1089,13 @@ def motifs_task(
     # Create output dirs
     dirs = utils.create_output_directories(project_name)
 
-    # Download ArchRProject
-    archrproj_path = (
-        f"{gene_results_dir.remote_path.rstrip('/')}/{project_name}_ArchRProject"
-    )
-    archrproj_path = LatchDir(archrproj_path).local_path
+    # Load the durable ArchR checkpoint containing cluster peaks and motif
+    # annotations. Coverage generation and peak calling run in prior tasks.
+    archrproj_path = Path(motif_peaks_dir.local_path) / "ArchRProject"
+    if not archrproj_path.is_dir():
+        raise FileNotFoundError(
+            f"Could not find annotated motif ArchRProject at {archrproj_path}."
+        )
 
     logging.info("Running ArchR analysis...")
     # run subprocess R script to make .h5ad file
@@ -1006,7 +1105,7 @@ def motifs_task(
         project_name,
         genome,
         data_paths['obs'],
-        archrproj_path,
+        str(archrproj_path),
         str(include_y_chromosome).lower(),
     ]
 
