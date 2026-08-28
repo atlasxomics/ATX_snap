@@ -974,7 +974,7 @@ def gene_stats_task(
     return LatchDir(str(delta_dir), results_root.remote_path)
 
 
-@custom_task(cpu=8, memory=700, storage_gib=2000)
+@custom_task(cpu=8, memory=32, storage_gib=1000)
 def motif_coverages_task(
     gene_results_dir: LatchDir,
     project_name: str,
@@ -1017,7 +1017,7 @@ def motif_coverages_task(
     return LatchDir(str(checkpoint_dir), checkpoint_remote_path)
 
 
-@custom_task(cpu=8, memory=700, storage_gib=2000)
+@custom_task(cpu=8, memory=64, storage_gib=1000)
 def motif_peaks_task(
     motif_coverages_dir: LatchDir,
     project_name: str,
@@ -1071,7 +1071,7 @@ def motif_peaks_task(
     return LatchDir(str(checkpoint_dir), checkpoint_remote_path)
 
 
-@custom_task(cpu=8, memory=700, storage_gib=2000)
+@custom_task(cpu=8, memory=264, storage_gib=1000)
 def motifs_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
