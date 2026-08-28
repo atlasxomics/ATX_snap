@@ -608,7 +608,7 @@ def make_adata(
     return LatchDir(result_dir, output_dir), groups
 
 
-@custom_task(cpu=30, memory=384, storage_gib=2000)
+@custom_task(cpu=30, memory=150, storage_gib=2000)
 def gene_project_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
@@ -670,7 +670,7 @@ def gene_project_task(
     return LatchDir(str(delta_dir), results_dir.remote_path)
 
 
-@custom_task(cpu=24, memory=700, storage_gib=2000)
+@custom_task(cpu=24, memory=112, storage_gib=2000)
 def genes_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
@@ -743,7 +743,7 @@ def genes_task(
     return LatchDir(str(delta_dir), results_dir.remote_path)
 
 
-@custom_task(cpu=8, memory=500, storage_gib=2000)
+@custom_task(cpu=6, memory=300, storage_gib=2000)
 def combine_gene_h5ads_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
@@ -791,7 +791,7 @@ def combine_gene_h5ads_task(
     return LatchDir(str(checkpoint_dir), checkpoint_remote_path)
 
 
-@custom_task(cpu=16, memory=800, storage_gib=4000)
+@custom_task(cpu=16, memory=600, storage_gib=4000)
 def gene_spatial_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
@@ -900,7 +900,7 @@ def gene_spatial_task(
     return LatchDir(str(delta_dir), results_dir.remote_path)
 
 
-@custom_task(cpu=26, memory=960, storage_gib=4000)
+@custom_task(cpu=26, memory=500, storage_gib=4000)
 def gene_stats_task(
     runs: List[utils.Run],
     gene_results_dir: LatchDir,
