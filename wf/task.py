@@ -701,8 +701,8 @@ def genes_task(
     _archr_cmd.extend(_gene_export_run_args(runs))
     subprocess.run(_archr_cmd, check=True)
 
-    # SeuratDisk normally preserves the dense counts supplied above. Verify
-    # that representation and repair it one sample at a time if necessary.
+    # Seurat v5 stores assay counts sparsely. Convert each exported H5AD back
+    # to a dense X dataset and verify it before uploading the gene artifacts.
     for run in runs:
         _ensure_dense_h5ad_x(Path(f"{run.run_id}_g_converted.h5ad"))
 

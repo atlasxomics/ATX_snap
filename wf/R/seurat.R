@@ -74,18 +74,6 @@ build_atlas_seurat_object <- function(
     meta.data = as.data.frame(metadata)
   )
 
-  if (!sparse_counts) {
-    stored_counts <- Seurat::GetAssayData(
-      object = object,
-      assay = "Spatial",
-      slot = "counts"
-    )
-    if (inherits(stored_counts, "sparseMatrix")) {
-      stop("Dense gene counts were converted to sparse inside Seurat.")
-    }
-    rm(stored_counts)
-  }
-
   # Clean up
   rm(matrix_assay)
   gc(verbose = FALSE, full = TRUE)

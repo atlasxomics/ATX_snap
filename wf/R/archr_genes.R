@@ -477,7 +477,9 @@ export_gene_score_objects <- function(runs, metadata, run_chunk_dirs) {
       matrix = matrix,
       metadata = metadata,
       spatial_path = run[[5]],
-      sparse_counts = FALSE
+      # Seurat v5 stores assay counts sparsely. The task converts and verifies
+      # the exported per-run H5AD as dense immediately after this R script.
+      sparse_counts = TRUE
     )
     saveRDS(obj, file = paste0(run_id, "_SeuratObj.rds"))
 
