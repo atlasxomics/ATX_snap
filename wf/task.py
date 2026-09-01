@@ -251,6 +251,36 @@ def _copy_relative_files(
         shutil.copy2(source, destination)
 
 
+def _copy_archr_reports(
+    archr_project_dir: Path,
+    dirs: Dict[str, Path],
+) -> None:
+    """Promote small ArchR reports before their checkpoint is cleaned up."""
+    archr_project_dir = Path(archr_project_dir)
+    report_types = {
+        "*.csv": dirs["tables"],
+        "*.pdf": dirs["figures"],
+    }
+
+    for pattern, destination_dir in report_types.items():
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        for source in sorted(archr_project_dir.rglob(pattern)):
+            if not source.is_file():
+                continue
+
+            destination = destination_dir / source.name
+            if destination.exists():
+                # Preserve both reports if different ArchR subdirectories use
+                # the same basename, while keeping normal filenames unchanged.
+                relative_parent = source.parent.relative_to(archr_project_dir)
+                parent_prefix = "__".join(relative_parent.parts)
+                if parent_prefix:
+                    destination = destination_dir / f"{parent_prefix}__{source.name}"
+
+            shutil.copy2(source, destination)
+            logging.info(f"Preserved ArchR report: {destination}")
+
+
 def _fresh_stage_dir(project_name: str, stage_name: str) -> Path:
     stage_dir = Path(f"/root/{project_name}_{stage_name}_stage")
     if stage_dir.exists():
@@ -1173,6 +1203,11 @@ def motifs_task(
 
     # Organize outputs
     _organize_outputs(project_name, dirs, exclude_pattern="*_hm.csv")
+
+    # Peak calling runs in a checkpoint task. Preserve its small summary tables
+    # and figures in the final output before successful-workflow cleanup removes
+    # the large checkpoint project.
+    _copy_archr_reports(archrproj_path, dirs)
 
     # Save AnnData (combined objects go into the anndata/ subfolder)
     ft.save_anndata_objects(adata_motif, "_motifs", _anndata_dir(dirs['base']))
