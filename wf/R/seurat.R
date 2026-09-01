@@ -17,7 +17,8 @@ build_atlas_seurat_object <- function(
   run_id,
   matrix,
   metadata,
-  spatial_path
+  spatial_path,
+  sparse_counts = TRUE
 ) {
   #' Prepare and combine gene matrix, metadata, and image for SeuratObject
   #' for runs within a project.
@@ -38,11 +39,16 @@ build_atlas_seurat_object <- function(
   # Find indices for subsetting instead of creating a temporary vector with grep
   col_indices <- grep(pattern = run_id, colnames(matrix))
 
-  # Create sparse matrix directly from the subset to minimize memory usage
-  message("Subsetting matrix and converting to sparse format...")
-
-  # Option 1: If matrix is already in memory and very large
-  matrix_sparse <- as(matrix[, col_indices, drop = FALSE], "dgCMatrix")
+  if (sparse_counts) {
+    message("Subsetting matrix and converting to sparse format...")
+    assay_counts <- as(
+      matrix[, col_indices, drop = FALSE],
+      "dgCMatrix"
+    )
+  } else {
+    message("Subsetting matrix and preserving dense gene scores...")
+    assay_counts <- as.matrix(matrix[, col_indices, drop = FALSE])
+  }
 
   # Immediately remove references to free memory
   rm(col_indices)
@@ -52,12 +58,12 @@ build_atlas_seurat_object <- function(
   gc(verbose = FALSE, full = TRUE)
 
   # Set column names
-  colnames(matrix_sparse) <- rownames(metadata)
+  colnames(assay_counts) <- rownames(metadata)
 
   # Create assay object and immediately remove the source matrix
   message("Creating Seurat assay object...")
-  matrix_assay <- Seurat::CreateAssayObject(counts = matrix_sparse)
-  rm(matrix_sparse)
+  matrix_assay <- Seurat::CreateAssayObject(counts = assay_counts)
+  rm(assay_counts)
   gc(verbose = FALSE, full = TRUE)
 
   # Create Seurat object

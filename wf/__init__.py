@@ -3,19 +3,20 @@ from typing import List
 from atx_common import Genome
 from latch.resources.workflow import workflow
 from latch.types import LatchDir
-from latch.types.metadata import (
-    LatchAuthor,
-    LatchMetadata,
-    LatchParameter,
-    LatchRule,
-)
+from latch.types.metadata import LatchAuthor, LatchMetadata, LatchParameter, LatchRule
 
 from wf.task import (
+    cleanup_checkpoints_task,
     combine_gene_h5ads_task,
     complete_results_task,
+    gene_project_task,
+    gene_spatial_task,
     gene_stats_task,
     genes_task,
     make_adata,
+    make_anndata_dataset_task,
+    motif_coverages_task,
+    motif_peaks_task,
     motifs_task,
     registry_task,
 )
@@ -148,12 +149,25 @@ def snap_workflow(
     include_y_chromosome: bool = False,
     output_dir: LatchDir = LatchDir("latch:///atac_analysis_snap/"),
 ) -> LatchDir:
+    """Run the complete ATX Snap spatial ATAC analysis.
+
+    Produces SnapATAC2, gene, motif, spatial, and differential-analysis outputs.
     """
-    SnapATAC2 and ArchR analysis for spatial ATAC runs.
-    """
+
+    anndata_dataset = make_anndata_dataset_task(
+        runs=runs,
+        genome=genome,
+        project_name=project_name,
+        min_tss=min_tss,
+        min_frags=min_frags,
+        include_y_chromosome=include_y_chromosome,
+        tile_size=tile_size,
+        output_dir=output_dir,
+    )
 
     results, _groups = make_adata(
         runs=runs,
+        anndata_dataset=anndata_dataset,
         genome=genome,
         project_name=project_name,
         resolution=resolution,
@@ -169,7 +183,7 @@ def snap_workflow(
         output_dir=output_dir,
     )
 
-    gene_results = genes_task(
+    gene_project = gene_project_task(
         runs=runs,
         results_dir=results,
         project_name=project_name,
@@ -177,17 +191,44 @@ def snap_workflow(
         include_y_chromosome=include_y_chromosome,
     )
 
-    results_ge = combine_gene_h5ads_task(
+    gene_results = genes_task(
+        runs=runs,
+        results_dir=results,
+        gene_project_dir=gene_project,
+        project_name=project_name,
+        genome=genome,
+        include_y_chromosome=include_y_chromosome,
+    )
+
+    combined_gene = combine_gene_h5ads_task(
         runs=runs,
         results_dir=results,
         gene_results_dir=gene_results,
         project_name=project_name,
     )
 
-    results_motifs = motifs_task(
+    results_ge = gene_spatial_task(
         runs=runs,
         results_dir=results,
         gene_results_dir=gene_results,
+        gene_combined_dir=combined_gene,
+        project_name=project_name,
+    )
+
+    motif_coverages = motif_coverages_task(
+        gene_results_dir=gene_results,
+        project_name=project_name,
+    )
+    motif_peaks = motif_peaks_task(
+        motif_coverages_dir=motif_coverages,
+        project_name=project_name,
+        genome=genome,
+        include_y_chromosome=include_y_chromosome,
+    )
+    results_motifs = motifs_task(
+        runs=runs,
+        results_dir=results,
+        motif_peaks_dir=motif_peaks,
         project_name=project_name,
         genome=genome,
         include_y_chromosome=include_y_chromosome,
@@ -209,6 +250,5 @@ def snap_workflow(
         motif_results_dir=results_motifs,
     )
 
-    uploaded_results = registry_task(runs=runs, results=final_results)
-
-    return uploaded_results
+    cleaned_results = cleanup_checkpoints_task(results=final_results)
+    return registry_task(runs=runs, results=cleaned_results)

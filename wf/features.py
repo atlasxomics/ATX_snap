@@ -38,7 +38,7 @@ def add_spatial_offset(
 
     n_cols = min(2, max(1, n_samples))
     n_rows = math.ceil(n_samples / n_cols)
-    spatial = np.asarray(adata.obsm[spatial_key])
+    spatial = np.asarray(adata.obsm[spatial_key][:])
     offset = np.empty_like(spatial, dtype=float)
     grid_bounds = {}
     sample_positions = {}
@@ -268,10 +268,20 @@ def _sanitize_uns_for_h5ad(uns: Dict) -> None:
 
 
 def clean_index_columns(*adatas: anndata.AnnData) -> None:
-    """Remove _index columns from AnnData objects if they exist."""
+    """Remove reserved _index columns from AnnData dataframes."""
     for adata in adatas:
+        for frame_name, frame in [("obs", adata.obs), ("var", adata.var)]:
+            if "_index" in frame.columns:
+                logging.warning(
+                    f"Removing reserved '_index' column from AnnData {frame_name}."
+                )
+                frame.drop(columns=["_index"], inplace=True)
+
         if hasattr(adata, 'raw') and adata.raw is not None:
             if "_index" in adata.raw.var.columns:
+                logging.warning(
+                    "Removing reserved '_index' column from AnnData raw.var."
+                )
                 adata.raw.var.drop(columns=['_index'], inplace=True)
 
 
@@ -698,6 +708,46 @@ def transfer_obs_data(
         obs = pd.read_csv(obs_path, index_col=0)
         if obs.empty:
             return
+
+        expected_index = pd.Index(obs.index.astype(str))
+        current_index = pd.Index(adata.obs_names.astype(str))
+        if not current_index.is_unique or not current_index.isin(expected_index).all():
+            sample_key = next(
+                (key for key in ("sample", "Sample") if key in adata.obs.columns),
+                None,
+            )
+            if sample_key is None:
+                raise ValueError(
+                    "AnnData observation names do not match obs.csv and no sample "
+                    "column is available to reconstruct canonical cell IDs."
+                )
+
+            barcodes = pd.Series(current_index, dtype="string").map(
+                lambda value: value.split("#", 1)[-1]
+            )
+            barcodes = barcodes.map(
+                lambda value: value if value.endswith("-1") else f"{value}-1"
+            )
+            samples = pd.Series(
+                adata.obs[sample_key].astype(str).to_numpy(),
+                dtype="string",
+            )
+            canonical_index = pd.Index(
+                samples.str.cat(barcodes, sep="#").to_numpy()
+            )
+            missing = canonical_index[~canonical_index.isin(expected_index)]
+            if not canonical_index.is_unique or len(missing) > 0:
+                preview = ", ".join(map(str, missing[:5]))
+                raise ValueError(
+                    "Unable to align gene observation names to obs.csv. "
+                    f"Missing canonical IDs include: {preview}"
+                )
+
+            logging.warning(
+                "Restoring sample-prefixed observation names before auxiliary "
+                "data transfer."
+            )
+            adata.obs_names = canonical_index
 
         obs_aligned = obs.reindex(adata.obs.index)
         adata.obs = obs_aligned

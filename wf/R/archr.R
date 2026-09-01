@@ -12,6 +12,80 @@ library("S4Vectors")
 source("/root/wf/R/utils.R")
 
 
+rebase_group_coverage_paths <- function(
+  proj,
+  project_dir,
+  require_files = TRUE
+) {
+  #' Point ArchR group-coverage metadata at a relocated project directory.
+  #'
+  #' ArchR stores absolute HDF5 paths in projectMetadata. saveArchRProject()
+  #' copies those files but some ArchR versions retain the source paths in the
+  #' saved RDS, which makes an uploaded/downloaded checkpoint non-portable.
+  project_dir <- normalizePath(project_dir, mustWork = TRUE)
+  group_coverages <- proj@projectMetadata$GroupCoverages
+  if (is.null(group_coverages) || length(group_coverages) == 0) {
+    return(proj)
+  }
+
+  coverage_names <- names(group_coverages)
+  for (coverage_index in seq_along(group_coverages)) {
+    group_by <- coverage_names[[coverage_index]]
+    coverage_metadata <- group_coverages[[coverage_index]]$coverageMetadata
+    if (is.null(coverage_metadata) || nrow(coverage_metadata) == 0) {
+      next
+    }
+
+    rebased_files <- file.path(
+      project_dir,
+      "GroupCoverages",
+      group_by,
+      basename(as.character(coverage_metadata$File))
+    )
+    missing_files <- rebased_files[!file.exists(rebased_files)]
+    if (require_files && length(missing_files) > 0) {
+      stop(
+        "Relocated ArchR checkpoint is missing group coverage file(s): ",
+        paste(missing_files, collapse = ", ")
+      )
+    }
+
+    proj@projectMetadata$GroupCoverages[[
+      coverage_index
+    ]]$coverageMetadata$File <- rebased_files
+  }
+
+  message(
+    "Rebased ",
+    sum(vapply(
+      proj@projectMetadata$GroupCoverages,
+      function(x) {
+        if (is.null(x$coverageMetadata)) 0L else nrow(x$coverageMetadata)
+      },
+      integer(1)
+    )),
+    " group coverage path(s) to ",
+    project_dir
+  )
+  proj
+}
+
+
+rebase_saved_archr_project <- function(project_dir) {
+  #' Repair absolute group-coverage paths inside a saved ArchR project RDS.
+  project_dir <- normalizePath(project_dir, mustWork = TRUE)
+  project_rds <- file.path(project_dir, "Save-ArchR-Project.rds")
+  if (!file.exists(project_rds)) {
+    stop("Saved ArchR project RDS does not exist: ", project_rds)
+  }
+
+  saved_proj <- readRDS(project_rds)
+  saved_proj <- rebase_group_coverage_paths(saved_proj, project_dir)
+  saveRDS(saved_proj, project_rds)
+  invisible(project_rds)
+}
+
+
 safe_get_marker_features <- function(..., context = "marker features") {
   tryCatch(
     ArchR::getMarkerFeatures(...),

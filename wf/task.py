@@ -45,6 +45,113 @@ def _anndata_dir(base_dir: Path) -> Path:
     return d
 
 
+def _rebuild_gene_h5ad_from_rds(rds_path: Path, h5ad_path: Path) -> None:
+    """Recreate a legacy gene H5AD without rerunning ArchR imputation."""
+    import tempfile
+
+    rds_path = Path(rds_path)
+    h5ad_path = Path(h5ad_path)
+    if not rds_path.is_file():
+        raise FileNotFoundError(
+            f"Cannot rebuild {h5ad_path.name}; Seurat RDS is missing: {rds_path}"
+        )
+
+    with tempfile.TemporaryDirectory(
+        prefix="gene_h5ad_rebuild_",
+        dir=h5ad_path.parent,
+    ) as temporary_dir:
+        rebuilt_path = Path(temporary_dir) / h5ad_path.name
+        subprocess.run(
+            [
+                "Rscript",
+                "/root/wf/R/rebuild_gene_h5ad.R",
+                str(rds_path),
+                str(rebuilt_path),
+            ],
+            check=True,
+        )
+        if not rebuilt_path.is_file():
+            raise FileNotFoundError(
+                f"RDS conversion did not create expected H5AD: {rebuilt_path}"
+            )
+        os.replace(rebuilt_path, h5ad_path)
+
+
+def _ensure_dense_h5ad_x(
+    h5ad_path: Path,
+    recovery_rds_path: Optional[Path] = None,
+) -> None:
+    """Ensure a per-sample gene H5AD stores X as a dense HDF5 dataset."""
+    import anndata
+    import h5py
+    import scipy.sparse as sparse
+
+    h5ad_path = Path(h5ad_path)
+    if not h5ad_path.is_file():
+        if recovery_rds_path is not None:
+            logging.warning(
+                f"Rebuilding missing H5AD from Seurat RDS: {h5ad_path.name}"
+            )
+            _rebuild_gene_h5ad_from_rds(recovery_rds_path, h5ad_path)
+            _ensure_dense_h5ad_x(h5ad_path)
+            return
+        raise FileNotFoundError(f"Expected gene H5AD was not created: {h5ad_path}")
+
+    try:
+        with h5py.File(h5ad_path, "r") as handle:
+            x_node = handle.get("X")
+            if x_node is None:
+                raise ValueError(f"H5AD has no X matrix: {h5ad_path}")
+            if isinstance(x_node, h5py.Dataset):
+                logging.info(f"Verified dense H5AD X: {h5ad_path.name}")
+                return
+    except (OSError, ValueError) as error:
+        if recovery_rds_path is None:
+            raise
+        logging.warning(
+            f"Rebuilding unreadable H5AD from Seurat RDS: {h5ad_path.name}: "
+            f"{error}"
+        )
+        _rebuild_gene_h5ad_from_rds(recovery_rds_path, h5ad_path)
+        _ensure_dense_h5ad_x(h5ad_path)
+        return
+
+    if recovery_rds_path is not None:
+        logging.warning(
+            f"Rebuilding legacy sparse H5AD from Seurat RDS: {h5ad_path.name}"
+        )
+        _rebuild_gene_h5ad_from_rds(recovery_rds_path, h5ad_path)
+        _ensure_dense_h5ad_x(h5ad_path)
+        return
+
+    logging.info(f"Converting sparse H5AD X to dense: {h5ad_path.name}")
+    adata = anndata.read_h5ad(h5ad_path)
+    if sparse.issparse(adata.X):
+        adata.X = adata.X.toarray()
+
+    # Older SeuratDisk files can contain reserved `_index` columns and a raw
+    # copy of the same gene assay. The downstream workflow does not use raw and
+    # already removes it before final output, so discard that duplicate here.
+    ft.clean_index_columns(adata)
+    if adata.raw is not None:
+        logging.info(f"Dropping duplicate raw matrix from {h5ad_path.name}")
+        adata.raw = None
+
+    temporary_path = h5ad_path.with_name(
+        f".{h5ad_path.stem}.dense.tmp.h5ad"
+    )
+    try:
+        adata.write_h5ad(temporary_path, compression="gzip")
+        os.replace(temporary_path, h5ad_path)
+    finally:
+        if temporary_path.exists():
+            temporary_path.unlink()
+
+    with h5py.File(h5ad_path, "r") as handle:
+        if not isinstance(handle["X"], h5py.Dataset):
+            raise ValueError(f"Unable to store H5AD X densely: {h5ad_path}")
+
+
 def _dirs_for_base(base_dir: Path) -> Dict[str, Path]:
     figures_dir = base_dir / "figures"
     tables_dir = base_dir / "tables"
@@ -95,15 +202,16 @@ def _copy_directory_contents(source_dir: Path, destination_dir: Path) -> None:
             shutil.copy2(source, destination)
 
 
-def _copy_directory_delta(
+def _move_directory_delta(
     source_dir: Path,
     destination_dir: Path,
     skip_relative_paths: Set[Path],
 ) -> None:
+    """Stage generated files without retaining a second local copy."""
     destination_dir.mkdir(parents=True, exist_ok=True)
 
     if not source_dir.exists():
-        logging.warning(f"Directory does not exist and was not copied: {source_dir}")
+        logging.warning(f"Directory does not exist and was not staged: {source_dir}")
         return
 
     for source in source_dir.rglob("*"):
@@ -116,7 +224,7 @@ def _copy_directory_delta(
 
         destination = destination_dir / relative_path
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
+        shutil.move(str(source), str(destination))
 
 
 def _copy_relative_files(
@@ -143,6 +251,36 @@ def _copy_relative_files(
         shutil.copy2(source, destination)
 
 
+def _copy_archr_reports(
+    archr_project_dir: Path,
+    dirs: Dict[str, Path],
+) -> None:
+    """Promote small ArchR reports before their checkpoint is cleaned up."""
+    archr_project_dir = Path(archr_project_dir)
+    report_types = {
+        "*.csv": dirs["tables"],
+        "*.pdf": dirs["figures"],
+    }
+
+    for pattern, destination_dir in report_types.items():
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        for source in sorted(archr_project_dir.rglob(pattern)):
+            if not source.is_file():
+                continue
+
+            destination = destination_dir / source.name
+            if destination.exists():
+                # Preserve both reports if different ArchR subdirectories use
+                # the same basename, while keeping normal filenames unchanged.
+                relative_parent = source.parent.relative_to(archr_project_dir)
+                parent_prefix = "__".join(relative_parent.parts)
+                if parent_prefix:
+                    destination = destination_dir / f"{parent_prefix}__{source.name}"
+
+            shutil.copy2(source, destination)
+            logging.info(f"Preserved ArchR report: {destination}")
+
+
 def _fresh_stage_dir(project_name: str, stage_name: str) -> Path:
     stage_dir = Path(f"/root/{project_name}_{stage_name}_stage")
     if stage_dir.exists():
@@ -154,6 +292,54 @@ def _fresh_stage_dir(project_name: str, stage_name: str) -> Path:
 def _gene_stats_run_args(runs: List[utils.Run]) -> List[str]:
     return [
         f"{run.run_id},{run.sample_name}"
+        for run in runs
+    ]
+
+
+def _gene_project_run_args(runs: List[utils.Run]) -> List[str]:
+    """Build ArchR run arguments without downloading unused spatial inputs."""
+    return [
+        (
+            f"{run.run_id},"
+            f"{run.fragments_file.local_path},"
+            f"{utils.sanitize_condition(run.condition)},"
+            f"unused,unused,"
+            f"{run.sample_name}"
+        )
+        for run in runs
+    ]
+
+
+def _gene_export_run_args(runs: List[utils.Run]) -> List[str]:
+    """Build run arguments needed to construct per-sample spatial objects."""
+    position_files = {}
+    missing_positions = []
+
+    for run in runs:
+        position_file = utils.get_LatchFile(
+            run.spatial_dir, "tissue_positions_list.csv"
+        )
+        if position_file is None:
+            missing_positions.append(f"{run.run_id} ({run.spatial_dir.remote_path})")
+            continue
+        position_files[run.run_id] = position_file
+
+    if missing_positions:
+        missing_str = ", ".join(missing_positions)
+        raise FileNotFoundError(
+            "Unable to resolve 'tissue_positions_list.csv' for one or more runs: "
+            f"{missing_str}. Ensure each spatial directory contains exactly one "
+            "'tissue_positions_list.csv' file."
+        )
+
+    return [
+        (
+            f"{run.run_id},unused,"
+            f"{utils.sanitize_condition(run.condition)},"
+            f"{position_files[run.run_id].local_path},"
+            f"{run.spatial_dir.local_path},"
+            f"{run.sample_name}"
+        )
         for run in runs
     ]
 
@@ -212,9 +398,50 @@ def _organize_outputs(
     _move_files_to_directory(figures, dirs["figures"])
 
 
-@custom_task(cpu=62, memory=512, storage_gib=1000)
+@custom_task(cpu=32, memory=512, storage_gib=1000)
+def make_anndata_dataset_task(
+    runs: List[utils.Run],
+    genome: utils.Genome,
+    project_name: str,
+    min_tss: float,
+    min_frags: int,
+    include_y_chromosome: bool,
+    tile_size: int,
+    output_dir: LatchDir,
+) -> LatchDir:
+    """Create and upload the backed multi-sample dataset as its own stage."""
+    genome_name = genome.value
+    stage_dir = _fresh_stage_dir(project_name, "anndata_dataset")
+
+    logging.info("Creating AnnData objects...")
+    adatas = pp.make_anndatas(runs, genome_name, min_frags=min_frags)
+    adatas = pp.filter_adatas(adatas, min_tss=min_tss)
+
+    logging.info("Adding tile matrix to objects...")
+    excluded_chroms = ["chrM", "M"]
+    if not include_y_chromosome:
+        excluded_chroms.extend(["chrY", "Y"])
+    snap.pp.add_tile_matrix(
+        adatas,
+        bin_size=tile_size,
+        exclude_chroms=excluded_chroms,
+    )
+
+    samples = [run.run_id for run in runs]
+    logging.info("Persisting combined AnnDataSet before materialization...")
+    pp.persist_anndata_dataset(adatas, samples, stage_dir)
+
+    remote_path = (
+        f"{output_dir.remote_path.rstrip('/')}/{project_name}"
+        "/checkpoints/anndata_dataset"
+    )
+    return LatchDir(str(stage_dir), remote_path)
+
+
+@custom_task(cpu=48, memory=512, storage_gib=2000)
 def make_adata(
     runs: List[utils.Run],
+    anndata_dataset: LatchDir,
     genome: utils.Genome,
     project_name: str,
     resolution: float,
@@ -286,26 +513,14 @@ def make_adata(
             data={"title": "min_frags", "body": "Minimum fragments set to 0."},
         )
 
-    # Preprocessing -----------------------------------------------------------
-    logging.info("Creating AnnData objects...")
-    adatas = pp.make_anndatas(runs, genome, min_frags=min_frags)
-    adatas = pp.filter_adatas(adatas, min_tss=min_tss)
-
-    logging.info("Adding tile matrix to objects...")
-    excluded_chroms = ["chrM", "M"]
-    if not include_y_chromosome:
-        excluded_chroms.extend(["chrY", "Y"])
-    snap.pp.add_tile_matrix(
-        adatas,
-        bin_size=tile_size,
-        exclude_chroms=excluded_chroms,
+    # Materialization happens in a separate task from construction of the
+    # AnnDataSet, so the per-sample in-memory objects have already been freed.
+    # Keep the combined object in memory for compatibility with the existing
+    # analysis code; the task boundary still reduces the peak memory footprint.
+    combined_path = _anndata_dir(Path(result_dir)) / "combined.h5ad"
+    adata = pp.materialize_anndata_dataset(
+        anndata_dataset.local_path,
     )
-
-    if len(samples) > 1:
-        logging.info("Combining objects...")
-        adata = pp.combine_anndata(adatas, samples, filename="combined")
-    else:
-        adata = adatas[0]
 
     logging.info(
         f"Selecting features with {n_features} features and \
@@ -418,13 +633,13 @@ def make_adata(
     spectral_df.to_csv(f"{tables_dir}/spectral.csv")
 
     ft.add_spatial_offset(adata)
-    adata.write(f"{_anndata_dir(result_dir)}/combined.h5ad")
+    adata.write(combined_path)
 
     return LatchDir(result_dir, output_dir), groups
 
 
-@custom_task(cpu=30, memory=700, storage_gib=2000)
-def genes_task(
+@custom_task(cpu=30, memory=150, storage_gib=2000)
+def gene_project_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
     project_name: str,
@@ -441,8 +656,7 @@ def genes_task(
     dirs = utils.create_output_directories(project_name)
     _copy_required_input_tables(data_paths, dirs["tables"])
 
-    logging.info("Running ArchR analysis...")
-    # run subprocess R script to make .h5ad file
+    logging.info("Building checkpointed ArchR gene project...")
     _archr_cmd = [
         'Rscript',
         '/root/wf/R/archr_genes.R',
@@ -451,48 +665,100 @@ def genes_task(
         data_paths['obs'],
         data_paths['spectral'],
         str(include_y_chromosome).lower(),
+        'prepare',
     ]
-
-    position_files = {}
-    missing_positions = []
-    for run in runs:
-        position_file = utils.get_LatchFile(
-            run.spatial_dir, "tissue_positions_list.csv"
-        )
-        if position_file is None:
-            missing_positions.append(f"{run.run_id} ({run.spatial_dir.remote_path})")
-            continue
-        position_files[run.run_id] = position_file
-
-    if missing_positions:
-        missing_str = ", ".join(missing_positions)
-        raise FileNotFoundError(
-            "Unable to resolve 'tissue_positions_list.csv' for one or more runs: "
-            f"{missing_str}. Ensure each spatial directory contains exactly one "
-            "'tissue_positions_list.csv' file."
-        )
-
-    run_args = [
-        (
-            f'{run.run_id},'
-            f'{run.fragments_file.local_path},'
-            f'{utils.sanitize_condition(run.condition)},'
-            f'{position_files[run.run_id].local_path},'
-            f'{run.spatial_dir.local_path},'
-            f'{run.sample_name}'
-        )
-        for run in runs
-    ]
-    _archr_cmd.extend(run_args)
+    _archr_cmd.extend(_gene_project_run_args(runs))
     subprocess.run(_archr_cmd, check=True)
 
-    # Stage ArchRProject, Seurat objects, per-run h5ads, and R-side tables.
-    # Uses the local subdir-aware organizer so .rds and .h5ad objects land in
-    # seurat_objects/ and anndata/ respectively.
+    # Persist the project and its on-disk imputation weights before any dense
+    # GeneScoreMatrix extraction begins.
     _organize_outputs(project_name, dirs)
 
+    checkpoint_file = (
+        dirs["base"]
+        / f"{project_name}_ArchRProject"
+        / "Save-ArchR-Project.rds"
+    )
+    if not checkpoint_file.is_file():
+        raise FileNotFoundError(
+            f"ArchR gene-project checkpoint was not created at {checkpoint_file}."
+        )
+
+    delta_dir = _fresh_stage_dir(project_name, "gene_project_delta")
+    _move_directory_delta(
+        dirs["base"],
+        delta_dir,
+        {
+            Path("tables/obs.csv"),
+            Path("tables/spatial.csv"),
+            Path("tables/X_umap.csv"),
+            Path("tables/spectral.csv"),
+        },
+    )
+
+    logging.info("Uploading the ArchR gene-project checkpoint to Latch...")
+    return LatchDir(str(delta_dir), results_dir.remote_path)
+
+
+@custom_task(cpu=24, memory=112, storage_gib=2000)
+def genes_task(
+    runs: List[utils.Run],
+    results_dir: LatchDir,
+    gene_project_dir: LatchDir,
+    project_name: str,
+    genome: utils.Genome,
+    include_y_chromosome: bool,
+) -> LatchDir:
+
+    data_paths = utils.get_data_paths(results_dir)
+    genome = genome.value
+
+    dirs = utils.create_output_directories(project_name)
+    _copy_required_input_tables(data_paths, dirs["tables"])
+
+    logging.info("Exporting checkpointed ArchR gene scores in bounded chunks...")
+    _archr_cmd = [
+        'Rscript',
+        '/root/wf/R/archr_genes.R',
+        project_name,
+        genome,
+        data_paths['obs'],
+        data_paths['spectral'],
+        str(include_y_chromosome).lower(),
+        'export',
+        gene_project_dir.local_path,
+    ]
+    _archr_cmd.extend(_gene_export_run_args(runs))
+    subprocess.run(_archr_cmd, check=True)
+
+    # Seurat v5 stores assay counts sparsely. Convert each exported H5AD back
+    # to a dense X dataset and verify it before uploading the gene artifacts.
+    for run in runs:
+        _ensure_dense_h5ad_x(Path(f"{run.run_id}_g_converted.h5ad"))
+
+    # Stage Seurat objects, per-run h5ads, and R-side tables. The ArchRProject
+    # has already been persisted by gene_project_task at the same remote root.
+    _organize_outputs(project_name, dirs)
+
+    missing_outputs = []
+    seurat_dir = _seurat_dir(dirs["base"])
+    anndata_dir = _anndata_dir(dirs["base"])
+    for run in runs:
+        rds_path = seurat_dir / f"{run.run_id}_SeuratObj.rds"
+        h5ad_path = anndata_dir / f"{run.run_id}_g_converted.h5ad"
+        if not rds_path.is_file():
+            missing_outputs.append(str(rds_path))
+        if not h5ad_path.is_file():
+            missing_outputs.append(str(h5ad_path))
+
+    if missing_outputs:
+        raise FileNotFoundError(
+            "Gene export completed without all expected per-run outputs: "
+            + ", ".join(missing_outputs)
+        )
+
     delta_dir = _fresh_stage_dir(project_name, "genes_delta")
-    _copy_directory_delta(
+    _move_directory_delta(
         dirs["base"],
         delta_dir,
         {
@@ -507,36 +773,99 @@ def genes_task(
     return LatchDir(str(delta_dir), results_dir.remote_path)
 
 
-@custom_task(cpu=16, memory=512, storage_gib=2000)
+@custom_task(cpu=6, memory=300, storage_gib=2000)
 def combine_gene_h5ads_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
     gene_results_dir: LatchDir,
     project_name: str,
 ) -> LatchDir:
-
-    # Read in data tables from the original make_adata output.
-    data_paths = utils.get_data_paths(results_dir)
-    groups = utils.get_groups(runs)
-
     # Continue in the uploaded gene artifact directory so a combine failure
     # does not discard the already-materialized Seurat and per-run h5ad files.
     dirs = _dirs_for_base(Path(gene_results_dir.local_path))
-    _copy_required_input_tables(data_paths, dirs["tables"])
 
     # Load and combine data (per-run h5ads live in the anndata/ subfolder)
     anndata_dir = _anndata_dir(dirs["base"])
+    seurat_dir = _seurat_dir(dirs["base"])
+    for run in runs:
+        _ensure_dense_h5ad_x(
+            anndata_dir / f"{run.run_id}_g_converted.h5ad",
+            recovery_rds_path=seurat_dir / f"{run.run_id}_SeuratObj.rds",
+        )
+
     adata_gene = ft.load_and_combine_data(
         "g_converted",
         input_dir=anndata_dir,
         temp_dir=anndata_dir,
     )
 
-    # Transfer auxiliary data to combined AnnData
+    # Persist the expensive repair/combination result before any Squidpy work.
+    # The final gene-expression outputs are already float32, so cast at this
+    # checkpoint to halve its size without changing downstream precision.
+    ft._cast_X_dtype(adata_gene, "float32", "combined gene checkpoint")
+    checkpoint_dir = _fresh_stage_dir(project_name, "gene_combined")
+    checkpoint_path = (
+        _anndata_dir(checkpoint_dir) / "combined_g_pre_squidpy.h5ad"
+    )
+    logging.info(f"Saving dense pre-Squidpy checkpoint to {checkpoint_path}...")
+    adata_gene.write_h5ad(checkpoint_path)
+    if not checkpoint_path.is_file():
+        raise FileNotFoundError(
+            f"Dense pre-Squidpy checkpoint was not created: {checkpoint_path}"
+        )
+
+    logging.info("Uploading dense combined gene checkpoint...")
+    checkpoint_remote_path = (
+        f"{results_dir.remote_path.rstrip('/')}/checkpoints/gene_combined"
+    )
+    return LatchDir(str(checkpoint_dir), checkpoint_remote_path)
+
+
+@custom_task(cpu=16, memory=600, storage_gib=4000)
+def gene_spatial_task(
+    runs: List[utils.Run],
+    results_dir: LatchDir,
+    gene_results_dir: LatchDir,
+    gene_combined_dir: LatchDir,
+    project_name: str,
+) -> LatchDir:
+    import anndata
+
+    checkpoint_path = (
+        Path(gene_combined_dir.local_path)
+        / ANNDATA_SUBDIR
+        / "combined_g_pre_squidpy.h5ad"
+    )
+    if not checkpoint_path.is_file():
+        raise FileNotFoundError(
+            f"Could not find dense pre-Squidpy checkpoint at {checkpoint_path}."
+        )
+
+    logging.info(f"Loading dense pre-Squidpy checkpoint from {checkpoint_path}...")
+    adata_gene = anndata.read_h5ad(checkpoint_path)
+    groups = utils.get_groups(runs)
+    data_paths = utils.get_data_paths(results_dir)
+    dirs = _dirs_for_base(_fresh_stage_dir(project_name, "gene_spatial_work"))
+    anndata_dir = _anndata_dir(dirs["base"])
+
+    # Cell-ID alignment and auxiliary transfer are intentionally downstream of
+    # the durable dense checkpoint so failures here never repeat combination.
     ft.transfer_auxiliary_data(adata_gene, data_paths, groups)
+    missing_obsm = [
+        key for key in ("X_umap", "spatial") if key not in adata_gene.obsm
+    ]
+    if missing_obsm:
+        raise KeyError(
+            "Dense gene checkpoint is missing required auxiliary coordinates: "
+            + ", ".join(missing_obsm)
+        )
+    if not adata_gene.obs_names.is_unique:
+        raise ValueError(
+            "Gene observation names remain non-unique after auxiliary alignment."
+        )
 
     # Run spatial analysis
-    sample_key = "sample" if "sample" in groups else None
+    sample_key = "sample" if "sample" in adata_gene.obs.columns else None
     adata_gene = sp.run_squidpy_analysis(
         adata_gene,
         dirs["figures"],
@@ -568,10 +897,8 @@ def combine_gene_h5ads_task(
         adata_gene,
         "gene",
         groups,
-        input_dir=dirs["tables"],
+        input_dir=Path(gene_results_dir.local_path) / "tables",
     )
-    _organize_outputs(project_name, dirs, exclude_pattern="*_hm.csv")
-
     # Save AnnData (combined objects go into the anndata/ subfolder)
     ft.save_anndata_objects(
         adata_gene,
@@ -603,7 +930,7 @@ def combine_gene_h5ads_task(
     return LatchDir(str(delta_dir), results_dir.remote_path)
 
 
-@custom_task(cpu=26, memory=700, storage_gib=3000)
+@custom_task(cpu=26, memory=500, storage_gib=4000)
 def gene_stats_task(
     runs: List[utils.Run],
     gene_results_dir: LatchDir,
@@ -677,11 +1004,108 @@ def gene_stats_task(
     return LatchDir(str(delta_dir), results_root.remote_path)
 
 
-@custom_task(cpu=50, memory=512, storage_gib=2000)
+@custom_task(cpu=8, memory=32, storage_gib=1000)
+def motif_coverages_task(
+    gene_results_dir: LatchDir,
+    project_name: str,
+) -> LatchDir:
+    """Generate and persist the cluster group-coverage checkpoint."""
+    archrproj_remote_path = (
+        f"{gene_results_dir.remote_path.rstrip('/')}"
+        f"/{project_name}_ArchRProject"
+    )
+    archrproj_path = Path(LatchDir(archrproj_remote_path).local_path)
+    if not archrproj_path.exists():
+        raise FileNotFoundError(
+            f"Could not find ArchRProject at {archrproj_path}."
+        )
+
+    checkpoint_dir = _fresh_stage_dir(project_name, "motif_coverages")
+    checkpoint_project = checkpoint_dir / "ArchRProject"
+    subprocess.run(
+        [
+            "Rscript",
+            "/root/wf/R/archr_motif_coverages.R",
+            str(archrproj_path),
+            str(checkpoint_project),
+            "8",
+        ],
+        check=True,
+    )
+    checkpoint_rds = checkpoint_project / "Save-ArchR-Project.rds"
+    if not checkpoint_project.is_dir() or not checkpoint_rds.is_file():
+        raise FileNotFoundError(
+            "ArchR coverage checkpoint is incomplete; expected project file "
+            f"at {checkpoint_rds}."
+        )
+
+    checkpoint_remote_path = (
+        f"{gene_results_dir.remote_path.rstrip('/')}"
+        "/checkpoints/motifs/coverages"
+    )
+    logging.info("Uploading motif group-coverage checkpoint...")
+    return LatchDir(str(checkpoint_dir), checkpoint_remote_path)
+
+
+@custom_task(cpu=8, memory=64, storage_gib=1000)
+def motif_peaks_task(
+    motif_coverages_dir: LatchDir,
+    project_name: str,
+    genome: utils.Genome,
+    include_y_chromosome: bool,
+) -> LatchDir:
+    """Create peaks and motif annotations from the coverage checkpoint."""
+    coverage_project = Path(motif_coverages_dir.local_path) / "ArchRProject"
+    if not coverage_project.is_dir():
+        raise FileNotFoundError(
+            "Could not find the coverage-checkpoint ArchRProject at "
+            f"{coverage_project}."
+        )
+
+    genome_sizes = {
+        "hg38": 3.3e9,
+        "mm10": 3.0e9,
+        "mm39": 2.7e9,
+        "rnor6": 2.9e9,
+    }
+    genome_name = genome.value
+    if genome_name not in genome_sizes:
+        raise ValueError(f"No genome size configured for genome: {genome_name}")
+
+    checkpoint_dir = _fresh_stage_dir(project_name, "motif_peaks")
+    checkpoint_project = checkpoint_dir / "ArchRProject"
+    subprocess.run(
+        [
+            "Rscript",
+            "/root/wf/R/archr_motif_peaks.R",
+            str(coverage_project),
+            str(checkpoint_project),
+            genome_name,
+            str(include_y_chromosome).lower(),
+            str(genome_sizes[genome_name]),
+            "8",
+        ],
+        check=True,
+    )
+    checkpoint_rds = checkpoint_project / "Save-ArchR-Project.rds"
+    if not checkpoint_project.is_dir() or not checkpoint_rds.is_file():
+        raise FileNotFoundError(
+            "Annotated peak checkpoint is incomplete; expected project file "
+            f"at {checkpoint_rds}."
+        )
+
+    coverages_remote_path = motif_coverages_dir.remote_path.rstrip("/")
+    checkpoint_root = coverages_remote_path.rsplit("/", 1)[0]
+    checkpoint_remote_path = f"{checkpoint_root}/peaks"
+    logging.info("Uploading annotated motif peak checkpoint...")
+    return LatchDir(str(checkpoint_dir), checkpoint_remote_path)
+
+
+@custom_task(cpu=8, memory=264, storage_gib=1000)
 def motifs_task(
     runs: List[utils.Run],
     results_dir: LatchDir,
-    gene_results_dir: LatchDir,
+    motif_peaks_dir: LatchDir,
     project_name: str,
     genome: utils.Genome,
     include_y_chromosome: bool,
@@ -696,11 +1120,13 @@ def motifs_task(
     # Create output dirs
     dirs = utils.create_output_directories(project_name)
 
-    # Download ArchRProject
-    archrproj_path = (
-        f"{gene_results_dir.remote_path.rstrip('/')}/{project_name}_ArchRProject"
-    )
-    archrproj_path = LatchDir(archrproj_path).local_path
+    # Load the durable ArchR checkpoint containing cluster peaks and motif
+    # annotations. Coverage generation and peak calling run in prior tasks.
+    archrproj_path = Path(motif_peaks_dir.local_path) / "ArchRProject"
+    if not archrproj_path.is_dir():
+        raise FileNotFoundError(
+            f"Could not find annotated motif ArchRProject at {archrproj_path}."
+        )
 
     logging.info("Running ArchR analysis...")
     # run subprocess R script to make .h5ad file
@@ -710,7 +1136,7 @@ def motifs_task(
         project_name,
         genome,
         data_paths['obs'],
-        archrproj_path,
+        str(archrproj_path),
         str(include_y_chromosome).lower(),
     ]
 
@@ -778,6 +1204,11 @@ def motifs_task(
     # Organize outputs
     _organize_outputs(project_name, dirs, exclude_pattern="*_hm.csv")
 
+    # Peak calling runs in a checkpoint task. Preserve its small summary tables
+    # and figures in the final output before successful-workflow cleanup removes
+    # the large checkpoint project.
+    _copy_archr_reports(archrproj_path, dirs)
+
     # Save AnnData (combined objects go into the anndata/ subfolder)
     ft.save_anndata_objects(adata_motif, "_motifs", _anndata_dir(dirs['base']))
 
@@ -833,6 +1264,45 @@ def complete_results_task(
         motif_results_dir,
     )
     return base_results_dir
+
+
+@small_task(cache=False)
+def cleanup_checkpoints_task(results: LatchDir) -> LatchDir:
+    """Remove durable intermediates after every result branch succeeds."""
+    from latch.ldata.path import LPath
+
+    results_remote_path = results.remote_path
+    if results_remote_path is None:
+        raise ValueError("Cannot clean checkpoints without a remote results path.")
+
+    results_remote_path = results_remote_path.rstrip("/")
+    if not results_remote_path.startswith("latch://"):
+        raise ValueError(
+            "Checkpoint cleanup only supports Latch Data paths; got "
+            f"{results_remote_path}."
+        )
+
+    checkpoint_remote_path = f"{results_remote_path}/checkpoints"
+    if checkpoint_remote_path in {"latch://checkpoints", "latch:///checkpoints"}:
+        raise ValueError(
+            f"Refusing to clean unsafe checkpoint path: {checkpoint_remote_path}"
+        )
+
+    checkpoint_path = LPath(checkpoint_remote_path)
+    if checkpoint_path.exists():
+        logging.info(
+            "Removing completed workflow checkpoints from "
+            f"{checkpoint_remote_path}..."
+        )
+        checkpoint_path.rmr()
+        logging.info("Checkpoint cleanup complete.")
+    else:
+        logging.info(
+            f"No workflow checkpoints found at {checkpoint_remote_path}."
+        )
+
+    # Reuse the existing remote directory rather than uploading a local copy.
+    return LatchDir(results_remote_path)
 
 
 @small_task(cache=True)
