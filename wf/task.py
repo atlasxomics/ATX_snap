@@ -1220,15 +1220,15 @@ def motifs_task(
         bindings=PlotsArtifactBindings(
             plot_templates=[
                 PlotsArtifactTemplate(
-                    template_id="1420",
+                    template_id="1519",
                     widgets=[
                         Widget(
-                            transform_id="482153",
+                            transform_id="489849",
                             key="data_path",
                             value=results_dir.remote_path
                         ),
                         Widget(
-                            transform_id="482141",
+                            transform_id="489844",
                             key="coverages_genome",
                             value=genome
                         )
