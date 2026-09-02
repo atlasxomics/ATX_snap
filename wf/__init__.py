@@ -123,7 +123,7 @@ metadata = LatchMetadata(
         "output_dir": LatchParameter(
             display_name="output directory",
             description="Folder in Latch Data to save outputs; defaults to "
-            "`atac_analysis_snap`. Outputs are saved in a subfolder named "
+            "`epi_analysis_snap`. Outputs are saved in a subfolder named "
             "with the project name.",
             batch_table_column=True,
             hidden=True,
@@ -147,7 +147,7 @@ def snap_workflow(
     min_tss: float = 2.0,
     min_frags: int = 10,
     include_y_chromosome: bool = False,
-    output_dir: LatchDir = LatchDir("latch:///atac_analysis_snap/"),
+    output_dir: LatchDir = LatchDir("latch:///epi_analysis_snap/"),
 ) -> LatchDir:
     """Run the complete ATX Snap spatial ATAC analysis.
 

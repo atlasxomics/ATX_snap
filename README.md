@@ -61,12 +61,12 @@ The **ATX snap** workflow can be found in the [Workflows](https://wiki.latch.bio
 
 6. From the Executions tab, you can view the status of the launched Workflow.  Once the Workflow has completed running, the status will change to 'Succeeded'; if the workflow has the status 'Failed', please contact an AtlasXomics Support Scientist.  You can click on the Workflow execution to view a more granular Workflow status and see output logs.
 
-7. Workflow outputs are loaded into the LatchBio [Data module](https://wiki.latch.bio/wiki/data/overview) in the `atac_analysis_snap` directory.
+7. Workflow outputs are loaded into the LatchBio [Data module](https://wiki.latch.bio/wiki/data/overview) in the `epi_analysis_snap` directory.
 
 
 ## Outputs
 
-Outputs from **ATX snap** are loaded into LatchBio [Data module](https://wiki.latch.bio/wiki/data/overview) in the `atac_analysis_snap` directory.
+Outputs from **ATX snap** are loaded into LatchBio [Data module](https://wiki.latch.bio/wiki/data/overview) in the `epi_analysis_snap` directory.
 AnnData `.h5ad` objects are collected in the `anndata/` subfolder and Seurat `.rds` objects in the `seurat_objects/` subfolder.
 Intermediate files are stored under `checkpoints/` while the workflow is running.
 They remain available after a failed execution for recovery, but are automatically
