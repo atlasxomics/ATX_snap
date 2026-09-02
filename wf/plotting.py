@@ -444,7 +444,7 @@ def plot_svg_spatial(
     output_path: str,
     modality: str,
     top_n: int = 10,
-    pt_size: int = 75,
+    pt_size: int = 25,
     html_output_path: Optional[str] = None,
 ) -> None:
     """Spatial scatter plots for the top N spatially variable features."""
