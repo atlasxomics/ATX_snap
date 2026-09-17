@@ -828,6 +828,7 @@ def gene_spatial_task(
     gene_results_dir: LatchDir,
     gene_combined_dir: LatchDir,
     project_name: str,
+    svg_point_size: float = 12.5,
 ) -> LatchDir:
     import anndata
 
@@ -885,6 +886,7 @@ def gene_spatial_task(
             str(dirs["figures"] / "svg_spatial_genes.png"),
             modality="Genes",
             top_n=10,
+            pt_size=svg_point_size,
             html_output_path=str(dirs["figures"] / "svg_spatial_genes.html"),
         )
     except Exception as e:
@@ -1109,6 +1111,7 @@ def motifs_task(
     project_name: str,
     genome: utils.Genome,
     include_y_chromosome: bool,
+    svg_point_size: float = 12.5,
 ) -> LatchDir:
 
     # Read in data tables
@@ -1191,6 +1194,7 @@ def motifs_task(
             str(dirs["figures"] / "svg_spatial_motifs.png"),
             modality="Motifs",
             top_n=10,
+            pt_size=svg_point_size,
             html_output_path=str(dirs["figures"] / "svg_spatial_motifs.html"),
         )
     except Exception as e:

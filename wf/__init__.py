@@ -120,6 +120,13 @@ metadata = LatchMetadata(
             batch_table_column=True,
             hidden=True,
         ),
+        "svg_point_size": LatchParameter(
+            display_name="SVG point size",
+            description="Point size for spatially variable gene and motif plots. "
+            "Defaults to 12.5; passed to the spatial scatter size argument.",
+            batch_table_column=True,
+            hidden=True,
+        ),
         "output_dir": LatchParameter(
             display_name="output directory",
             description="Folder in Latch Data to save outputs; defaults to "
@@ -148,6 +155,7 @@ def snap_workflow(
     min_frags: int = 10,
     include_y_chromosome: bool = False,
     output_dir: LatchDir = LatchDir("latch:///epi_analysis_snap/"),
+    svg_point_size: float = 12.5,
 ) -> LatchDir:
     """Run the complete ATX Snap spatial ATAC analysis.
 
@@ -213,6 +221,7 @@ def snap_workflow(
         gene_results_dir=gene_results,
         gene_combined_dir=combined_gene,
         project_name=project_name,
+        svg_point_size=svg_point_size,
     )
 
     motif_coverages = motif_coverages_task(
@@ -232,6 +241,7 @@ def snap_workflow(
         project_name=project_name,
         genome=genome,
         include_y_chromosome=include_y_chromosome,
+        svg_point_size=svg_point_size,
     )
 
     results_with_gene_stats = gene_stats_task(
