@@ -82,6 +82,7 @@ output_root <- file.path("/root", project_name)
 addArchRThreads(threads = num_threads)
 
 proj <- loadArchRProject(archrproj_path)
+proj <- rebase_group_coverage_paths(proj, archrproj_path)
 
 # Ensure cluster labels are character (e.g., keep "-1" as label, not index)
 if (!is.character(proj$Clusters)) {
@@ -679,4 +680,28 @@ all_m <- rename_cells(seurat_objs_m)
 # Convert Seurat to h5ad and save ----
 for (obj in all_m) {
   seurat_to_h5ad(obj, FALSE, paste0(unique(obj$Sample), "_m"))  # from utils.R
+}
+
+# Publish the completed project, including its Arrow matrices and peak files.
+# The input project lives under checkpoints/, which is deleted after success;
+# without this save the final results retain only the gene-stage project.
+final_project_dir <- file.path(output_root, paste0(project_name, "_ArchRProject"))
+dir.create(output_root, recursive = TRUE, showWarnings = FALSE)
+ArchR::saveArchRProject(
+  ArchRProj = proj,
+  outputDirectory = final_project_dir,
+  load = FALSE
+)
+rebase_saved_archr_project(final_project_dir)
+
+# Check the saved artifact, not just the in-memory object, before allowing
+# downstream checkpoint cleanup.
+saved_proj <- ArchR::loadArchRProject(
+  final_project_dir, force = TRUE, showLogo = FALSE
+)
+if (length(saved_proj@peakSet) == 0) {
+  stop("The final ArchRProject does not contain a peak set.")
+}
+if (!"PeakMatrix" %in% ArchR::getAvailableMatrices(saved_proj)) {
+  stop("The final ArchRProject does not contain a PeakMatrix.")
 }

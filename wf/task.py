@@ -1204,9 +1204,17 @@ def motifs_task(
     # Organize outputs
     _organize_outputs(project_name, dirs, exclude_pattern="*_hm.csv")
 
-    # Peak calling runs in a checkpoint task. Preserve its small summary tables
-    # and figures in the final output before successful-workflow cleanup removes
-    # the large checkpoint project.
+    # The R script saves the completed ArchRProject directly under dirs["base"].
+    # Require that artifact before uploading results and allowing cleanup.
+    final_project_rds = (
+        dirs["base"] / f"{project_name}_ArchRProject" / "Save-ArchR-Project.rds"
+    )
+    if not final_project_rds.is_file():
+        raise FileNotFoundError(
+            f"Final motif ArchRProject was not saved at {final_project_rds}."
+        )
+
+    # Also promote the peak checkpoint's summary tables and figures.
     _copy_archr_reports(archrproj_path, dirs)
 
     # Save AnnData (combined objects go into the anndata/ subfolder)
