@@ -120,6 +120,13 @@ metadata = LatchMetadata(
             batch_table_column=True,
             hidden=True,
         ),
+        "disable_harmony": LatchParameter(
+            display_name="disable Harmony",
+            description="Skip Harmony batch correction and use the uncorrected "
+            "spectral embedding. Defaults to False.",
+            batch_table_column=True,
+            hidden=True,
+        ),
         "svg_point_size": LatchParameter(
             display_name="SVG point size",
             description="Point size for spatially variable gene and motif plots. "
@@ -156,6 +163,7 @@ def snap_workflow(
     include_y_chromosome: bool = False,
     output_dir: LatchDir = LatchDir("latch:///epi_analysis_snap/"),
     svg_point_size: float = 12.5,
+    disable_harmony: bool = False,
 ) -> LatchDir:
     """Run the complete ATX Snap spatial ATAC analysis.
 
@@ -189,6 +197,7 @@ def snap_workflow(
         n_features=n_features,
         clustering_iters=clustering_iters,
         output_dir=output_dir,
+        disable_harmony=disable_harmony,
     )
 
     gene_project = gene_project_task(

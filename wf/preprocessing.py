@@ -23,6 +23,7 @@ def add_clusters(
     n_comps: int,
     leiden_iters: int,
     min_cluster_size: int,
+    disable_harmony: bool = False,
 ) -> Tuple[anndata.AnnData, str]:
     """Perform dimensionality reduction, batch correction, umap, clustering."""
 
@@ -36,11 +37,15 @@ def add_clusters(
             f"Exception {e}: Please add metadata to combined AnnData."
         )
 
-    if n_runs > 1:
+    if n_runs > 1 and not disable_harmony:
         logging.info("Performing batch correction with Harmony...")
         snap.pp.harmony(adata, batch="sample", max_iter_harmony=20)
         rep = "X_spectral_harmony"
     else:
+        logging.info(
+            "Skipping Harmony: %s.",
+            "disabled by parameter" if disable_harmony else "single run",
+        )
         rep = "X_spectral"
 
     # Add umap, nearest neightbors, clusters to .obs

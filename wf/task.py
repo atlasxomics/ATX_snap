@@ -454,7 +454,8 @@ def make_adata(
     tile_size: int,
     n_features: int,
     clustering_iters: int,
-    output_dir: LatchDir
+    output_dir: LatchDir,
+    disable_harmony: bool = False,
 ) -> tuple[LatchDir, List[str]]:
     import pandas as pd
 
@@ -535,7 +536,8 @@ def make_adata(
 
     logging.info("Performing dimensionality reduction...")
     adata, spectral_key = pp.add_clusters(
-        adata, resolution, n_comps, leiden_iters, min_cluster_size
+        adata, resolution, n_comps, leiden_iters, min_cluster_size,
+        disable_harmony=disable_harmony,
     )
 
     adata = sp.add_spatial(adata)  # Add spatial coordinates to tixels
