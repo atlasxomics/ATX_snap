@@ -3,7 +3,9 @@ from typing import List
 from atx_common import Genome
 from latch.resources.workflow import workflow
 from latch.types import LatchDir
-from latch.types.metadata import LatchAuthor, LatchMetadata, LatchParameter, LatchRule
+from latch.types.metadata import (
+    LatchAuthor, LatchMetadata, LatchParameter, LatchRule
+)
 
 from wf.task import (
     cleanup_checkpoints_task,
@@ -162,7 +164,7 @@ def snap_workflow(
     min_frags: int = 10,
     include_y_chromosome: bool = False,
     output_dir: LatchDir = LatchDir("latch:///epi_analysis_snap/"),
-    svg_point_size: float = 12.5,
+    svg_point_size: float = 2.0,
     disable_harmony: bool = False,
 ) -> LatchDir:
     """Run the complete ATX Snap spatial ATAC analysis.
