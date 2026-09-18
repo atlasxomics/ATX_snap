@@ -1,146 +1,38 @@
-from typing import List
-
 from atx_common import Genome
 from latch.resources.workflow import workflow
 from latch.types import LatchDir
 from latch.types.metadata import LatchAuthor, LatchMetadata, LatchParameter, LatchRule
 
-from wf.task import (
-    cleanup_checkpoints_task,
-    combine_gene_h5ads_task,
-    complete_results_task,
-    gene_project_task,
-    gene_spatial_task,
-    gene_stats_task,
-    genes_task,
-    make_adata,
-    make_anndata_dataset_task,
-    motif_coverages_task,
-    motif_peaks_task,
-    motifs_task,
-    registry_task,
-)
-from wf.utils import Run
+from wf.peak_recovery import restore_peaks_task
 
 
 metadata = LatchMetadata(
-    display_name="atx_snap",
-    author=LatchAuthor(
-        name="James McGann",
-        email="jamesm@atlasxomics.com",
-        github="github.com/atlasxomics",
-    ),
+    display_name="ArchR peak recovery",
+    author=LatchAuthor(name="AtlasXomics Inc.", email="jamesm@atlasxomics.com",
+                       github="https://github.com/atlasxomics"),
     repository="https://github.com/atlasxomics/ATX_snap",
     license="MIT",
     parameters={
-        "runs": LatchParameter(
-            display_name="runs",
-            description="List of runs to be analyzed; each run must contain a "
-            "run_id and fragments.tsv file; optional: condition, alternative "
-            "sample name. Spaces in condition labels are normalized to '_' for "
-            "downstream ArchR grouping.",
-            batch_table_column=True,
-            samplesheet=True,
+        "archr_project": LatchParameter(
+            display_name="existing ArchRProject",
+            description="Select the project folder containing Save-ArchR-Project.rds "
+            "and ArrowFiles, not the parent results folder.",
         ),
-        "genome": LatchParameter(
-            display_name="genome",
-            description="Reference genome for runs.",
-            batch_table_column=True,
-        ),
+        "genome": LatchParameter(display_name="genome", description="Genome used by the original workflow."),
         "project_name": LatchParameter(
-            display_name="project name",
-            description="Name of subfolder in output directory.",
-            batch_table_column=True,
-            rules=[
-                LatchRule(
-                    regex="^[^/].*", message="project name cannot start with a '/'"
-                )
-            ],
+            display_name="output project name",
+            rules=[LatchRule(regex=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+                             message="Use letters, numbers, dots, underscores or hyphens; start with a letter or number.")],
         ),
-        "tile_size": LatchParameter(
-            display_name="tile size",
-            description="The size of the tiles used for binning counts in the "
-            "tile matrix.",
-            batch_table_column=True,
-        ),
-        "n_features": LatchParameter(
-            display_name="number of features",
-            description="Number of features to be selected as most accessible "
-            "in the tile matrix.",
-            batch_table_column=True,
-        ),
-        "n_comps": LatchParameter(
-            display_name="number of components",
-            description="Number of components/dimensions to keep during "
-            "dimensionality reduction with `snap.tl.spectral`.",
-            batch_table_column=True,
-        ),
-        "resolution": LatchParameter(
-            display_name="clustering resolution",
-            description="Clustering resolution for Leiden algorithm; higher "
-            "values result in more clusters.",
-            batch_table_column=True,
-        ),
-        "clustering_iters": LatchParameter(
-            display_name="clustering iterations",
-            description="Iterations performed when selecting variable features "
-            "for tile matrix.",
-            batch_table_column=True,
-        ),
-        "leiden_iters": LatchParameter(
-            display_name="leiden iterations",
-            description="Number of iterations for the leiden algorithm.",
-            batch_table_column=True,
-            hidden=True,
-        ),
-        "min_cluster_size": LatchParameter(
-            display_name="minimum cells per cluster",
-            description="Minimum number of cells in a cluster.",
-            batch_table_column=True,
-            hidden=True,
-        ),
-        "min_tss": LatchParameter(
-            display_name="minimum TSS",
-            description="Minimum transcription start site enrichment score "
-            "required for a cell to pass filtering.",
-            batch_table_column=True,
-            hidden=True,
-        ),
-        "min_frags": LatchParameter(
-            display_name="minimum fragments",
-            description="Minimum number of mapped fragments required per cell "
-            "to pass filtering.",
-            batch_table_column=True,
-            hidden=True,
+        "output_dir": LatchParameter(display_name="output directory"),
+        "group_by": LatchParameter(
+            display_name="peak grouping override",
+            description="Leave empty to select the last group from the original workflow: "
+            "last condition column, Sample, or Clusters. Override if a later group failed in the original run.",
         ),
         "include_y_chromosome": LatchParameter(
-            display_name="include y chromosome",
-            description="Include Y chromosome regions in SnapATAC2 and ArchR "
-            "matrices/peak calling. Defaults to excluding Y chromosome regions.",
-            batch_table_column=True,
-            hidden=True,
-        ),
-        "disable_harmony": LatchParameter(
-            display_name="disable Harmony",
-            description="Skip Harmony batch correction and use the uncorrected "
-            "spectral embedding. Defaults to False.",
-            batch_table_column=True,
-            hidden=True,
-        ),
-        "svg_point_size": LatchParameter(
-            display_name="SVG point size",
-            description="Point size for spatially variable gene and motif plots. "
-            "Defaults to 12.5; passed to the spatial scatter size argument.",
-            batch_table_column=True,
-            hidden=True,
-        ),
-        "output_dir": LatchParameter(
-            display_name="output directory",
-            description="Folder in Latch Data to save outputs; defaults to "
-            "`epi_analysis_snap`. Outputs are saved in a subfolder named "
-            "with the project name.",
-            batch_table_column=True,
-            hidden=True,
+            display_name="include Y chromosome", hidden=True,
+            description="Use the same setting as the original analysis.",
         ),
     },
 )
@@ -148,126 +40,23 @@ metadata = LatchMetadata(
 
 @workflow(metadata)
 def snap_workflow(
-    runs: List[Run],
+    archr_project: LatchDir,
     genome: Genome,
     project_name: str,
-    tile_size: int = 5000,
-    n_features: int = 25000,
-    n_comps: int = 30,
-    resolution: float = 1.0,
-    clustering_iters: int = 1,
-    leiden_iters: int = -1,
-    min_cluster_size: int = 20,
-    min_tss: float = 2.0,
-    min_frags: int = 10,
+    output_dir: LatchDir = LatchDir("latch:///archr_peak_recovery/"),
+    group_by: str = "",
     include_y_chromosome: bool = False,
-    output_dir: LatchDir = LatchDir("latch:///epi_analysis_snap/"),
-    svg_point_size: float = 12.5,
-    disable_harmony: bool = False,
 ) -> LatchDir:
-    """Run the complete ATX Snap spatial ATAC analysis.
+    """Restore ArchR peak calling results.
 
-    Produces SnapATAC2, gene, motif, spatial, and differential-analysis outputs.
+    Reuse an existing ArchRProject's Arrow files to rebuild its active peak set,
+    PeakMatrix and motif annotations, saving the repaired project separately.
     """
-
-    anndata_dataset = make_anndata_dataset_task(
-        runs=runs,
+    return restore_peaks_task(
+        archr_project=archr_project,
         genome=genome,
         project_name=project_name,
-        min_tss=min_tss,
-        min_frags=min_frags,
-        include_y_chromosome=include_y_chromosome,
-        tile_size=tile_size,
         output_dir=output_dir,
-    )
-
-    results, _groups = make_adata(
-        runs=runs,
-        anndata_dataset=anndata_dataset,
-        genome=genome,
-        project_name=project_name,
-        resolution=resolution,
-        leiden_iters=leiden_iters,
-        n_comps=n_comps,
-        min_cluster_size=min_cluster_size,
-        min_tss=min_tss,
-        min_frags=min_frags,
-        include_y_chromosome=include_y_chromosome,
-        tile_size=tile_size,
-        n_features=n_features,
-        clustering_iters=clustering_iters,
-        output_dir=output_dir,
-        disable_harmony=disable_harmony,
-    )
-
-    gene_project = gene_project_task(
-        runs=runs,
-        results_dir=results,
-        project_name=project_name,
-        genome=genome,
+        group_by=group_by,
         include_y_chromosome=include_y_chromosome,
     )
-
-    gene_results = genes_task(
-        runs=runs,
-        results_dir=results,
-        gene_project_dir=gene_project,
-        project_name=project_name,
-        genome=genome,
-        include_y_chromosome=include_y_chromosome,
-    )
-
-    combined_gene = combine_gene_h5ads_task(
-        runs=runs,
-        results_dir=results,
-        gene_results_dir=gene_results,
-        project_name=project_name,
-    )
-
-    results_ge = gene_spatial_task(
-        runs=runs,
-        results_dir=results,
-        gene_results_dir=gene_results,
-        gene_combined_dir=combined_gene,
-        project_name=project_name,
-        svg_point_size=svg_point_size,
-    )
-
-    motif_coverages = motif_coverages_task(
-        gene_results_dir=gene_results,
-        project_name=project_name,
-    )
-    motif_peaks = motif_peaks_task(
-        motif_coverages_dir=motif_coverages,
-        project_name=project_name,
-        genome=genome,
-        include_y_chromosome=include_y_chromosome,
-    )
-    results_motifs = motifs_task(
-        runs=runs,
-        results_dir=results,
-        motif_peaks_dir=motif_peaks,
-        project_name=project_name,
-        genome=genome,
-        include_y_chromosome=include_y_chromosome,
-        svg_point_size=svg_point_size,
-    )
-
-    results_with_gene_stats = gene_stats_task(
-        runs=runs,
-        gene_results_dir=gene_results,
-        gene_expression_results_dir=results_ge,
-        results_root=results,
-        project_name=project_name,
-    )
-
-    final_results = complete_results_task(
-        base_results_dir=results,
-        gene_results_dir=gene_results,
-        gene_expression_results_dir=results_ge,
-        gene_stats_results_dir=results_with_gene_stats,
-        motif_results_dir=results_motifs,
-    )
-
-    cleaned_results = cleanup_checkpoints_task(results=final_results)
-    return registry_task(runs=runs, results=cleaned_results)
