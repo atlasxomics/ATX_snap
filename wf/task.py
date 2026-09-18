@@ -699,7 +699,10 @@ def gene_project_task(
     )
 
     logging.info("Uploading the ArchR gene-project checkpoint to Latch...")
-    return LatchDir(str(delta_dir), results_dir.remote_path)
+    return LatchDir(
+        str(delta_dir),
+        f"{results_dir.remote_path.rstrip('/')}/checkpoints/gene_project",
+    )
 
 
 @custom_task(cpu=24, memory=112, storage_gib=2000)
@@ -739,8 +742,12 @@ def genes_task(
         _ensure_dense_h5ad_x(Path(f"{run.run_id}_g_converted.h5ad"))
 
     # Stage Seurat objects, per-run h5ads, and R-side tables. The ArchRProject
-    # has already been persisted by gene_project_task at the same remote root.
+    # lives at its own checkpoint path and must not be uploaded to the final root.
     _organize_outputs(project_name, dirs)
+    for folder in ("figures", "tables"):
+        _copy_directory_contents(Path(gene_project_dir.local_path) / folder, dirs[folder])
+    if (dirs["base"] / f"{project_name}_ArchRProject").exists():
+        raise RuntimeError("Gene artifacts must not include an ArchRProject upload.")
 
     missing_outputs = []
     seurat_dir = _seurat_dir(dirs["base"])
@@ -937,7 +944,7 @@ def gene_spatial_task(
 @custom_task(cpu=26, memory=500, storage_gib=4000)
 def gene_stats_task(
     runs: List[utils.Run],
-    gene_results_dir: LatchDir,
+    gene_project_dir: LatchDir,
     gene_expression_results_dir: LatchDir,
     results_root: LatchDir,
     project_name: str,
@@ -945,7 +952,7 @@ def gene_stats_task(
 
     import anndata
 
-    local_gene_results = Path(gene_results_dir.local_path)
+    local_gene_results = Path(gene_project_dir.local_path)
     local_gene_expression = Path(gene_expression_results_dir.local_path)
     archrproj_path = local_gene_results / f"{project_name}_ArchRProject"
     if not archrproj_path.exists():
@@ -1010,15 +1017,12 @@ def gene_stats_task(
 
 @custom_task(cpu=8, memory=32, storage_gib=1000)
 def motif_coverages_task(
-    gene_results_dir: LatchDir,
+    gene_project_dir: LatchDir,
+    results_dir: LatchDir,
     project_name: str,
 ) -> LatchDir:
     """Generate and persist the cluster group-coverage checkpoint."""
-    archrproj_remote_path = (
-        f"{gene_results_dir.remote_path.rstrip('/')}"
-        f"/{project_name}_ArchRProject"
-    )
-    archrproj_path = Path(LatchDir(archrproj_remote_path).local_path)
+    archrproj_path = Path(gene_project_dir.local_path) / f"{project_name}_ArchRProject"
     if not archrproj_path.exists():
         raise FileNotFoundError(
             f"Could not find ArchRProject at {archrproj_path}."
@@ -1044,7 +1048,7 @@ def motif_coverages_task(
         )
 
     checkpoint_remote_path = (
-        f"{gene_results_dir.remote_path.rstrip('/')}"
+        f"{results_dir.remote_path.rstrip('/')}"
         "/checkpoints/motifs/coverages"
     )
     logging.info("Uploading motif group-coverage checkpoint...")
@@ -1114,7 +1118,7 @@ def motifs_task(
     genome: utils.Genome,
     include_y_chromosome: bool,
     svg_point_size: float = 12.5,
-) -> LatchDir:
+) -> tuple[LatchDir, LatchDir]:
 
     # Read in data tables
     data_paths = utils.get_data_paths(results_dir)
@@ -1259,8 +1263,18 @@ def motifs_task(
     with open(artifacts_dir / "artifact.json", "w") as f:
         json.dump(artifact_dict, f, indent=2)
 
-    logging.info("Uploading data to Latch...")
-    return LatchDir(str(dirs['base']), results_dir.remote_path)
+    # Keep the completed project out of all shared-root artifact uploads.
+    # Only publish_archr_project_task may write the final project path.
+    project_stage = _fresh_stage_dir(project_name, "completed_archr") / "ArchRProject"
+    shutil.move(str(final_project_rds.parent), str(project_stage))
+    logging.info("Uploading motif artifacts and the separate completed project...")
+    return (
+        LatchDir(str(dirs['base']), results_dir.remote_path),
+        LatchDir(
+            str(project_stage),
+            f"{results_dir.remote_path.rstrip('/')}/checkpoints/completed_archr",
+        ),
+    )
 
 
 @small_task(cache=True)
@@ -1277,7 +1291,48 @@ def complete_results_task(
         gene_stats_results_dir,
         motif_results_dir,
     )
-    return base_results_dir
+    # A dependency barrier, not an upload of a potentially stale local copy.
+    return LatchDir(base_results_dir.remote_path)
+
+
+@custom_task(cpu=4, memory=32, storage_gib=2000, cache=False, retries=0)
+def publish_archr_project_task(
+    completed_project: LatchDir,
+    results: LatchDir,
+    project_name: str,
+) -> tuple[LatchDir, str]:
+    from wf.project_artifacts import write_project_manifest
+
+    project = Path(completed_project.local_path)
+    subprocess.run(
+        ["Rscript", "/root/wf/R/validate_archr_project.R", str(project)], check=True
+    )
+    manifest_hash = write_project_manifest(project)
+    return (
+        LatchDir(
+            str(project),
+            f"{results.remote_path.rstrip('/')}/{project_name}_ArchRProject",
+        ),
+        manifest_hash,
+    )
+
+
+@custom_task(cpu=4, memory=32, storage_gib=2000, cache=False, retries=0)
+def verify_published_archr_task(
+    published_project: LatchDir,
+    manifest_hash: str,
+    results: LatchDir,
+) -> LatchDir:
+    from wf.project_artifacts import verify_project_manifest
+
+    # This separate task downloads the published destination after upload has
+    # completed. Do not inspect the publisher's local staging copy.
+    project = Path(LatchDir(published_project.remote_path).local_path)
+    verify_project_manifest(project, manifest_hash)
+    subprocess.run(
+        ["Rscript", "/root/wf/R/validate_archr_project.R", str(project)], check=True
+    )
+    return LatchDir(results.remote_path)
 
 
 @small_task(cache=False)

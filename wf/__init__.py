@@ -20,6 +20,8 @@ from wf.task import (
     motif_coverages_task,
     motif_peaks_task,
     motifs_task,
+    publish_archr_project_task,
+    verify_published_archr_task,
     registry_task,
 )
 from wf.utils import Run
@@ -236,7 +238,8 @@ def snap_workflow(
     )
 
     motif_coverages = motif_coverages_task(
-        gene_results_dir=gene_results,
+        gene_project_dir=gene_project,
+        results_dir=results,
         project_name=project_name,
     )
     motif_peaks = motif_peaks_task(
@@ -245,7 +248,7 @@ def snap_workflow(
         genome=genome,
         include_y_chromosome=include_y_chromosome,
     )
-    results_motifs = motifs_task(
+    results_motifs, completed_project = motifs_task(
         runs=runs,
         results_dir=results,
         motif_peaks_dir=motif_peaks,
@@ -257,7 +260,7 @@ def snap_workflow(
 
     results_with_gene_stats = gene_stats_task(
         runs=runs,
-        gene_results_dir=gene_results,
+        gene_project_dir=gene_project,
         gene_expression_results_dir=results_ge,
         results_root=results,
         project_name=project_name,
@@ -271,5 +274,15 @@ def snap_workflow(
         motif_results_dir=results_motifs,
     )
 
-    cleaned_results = cleanup_checkpoints_task(results=final_results)
+    published_project, manifest_hash = publish_archr_project_task(
+        completed_project=completed_project,
+        results=final_results,
+        project_name=project_name,
+    )
+    verified_results = verify_published_archr_task(
+        published_project=published_project,
+        manifest_hash=manifest_hash,
+        results=final_results,
+    )
+    cleaned_results = cleanup_checkpoints_task(results=verified_results)
     return registry_task(runs=runs, results=cleaned_results)

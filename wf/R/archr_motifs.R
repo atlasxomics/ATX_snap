@@ -19,6 +19,7 @@ library("TxDb.Mmusculus.UCSC.mm39.knownGene")
 library("org.Mm.eg.db")
 
 source("/root/wf/R/archr.R")
+source("/root/wf/R/complete_archr.R")
 source("/root/wf/R/seurat.R")
 source("/root/wf/R/utils.R")
 source("/root/wf/R/getDeviation_ArchR.R")
@@ -348,6 +349,7 @@ proj <- addDeviationsMatrix(
   peakAnnotation = "Motif",
   force = TRUE
 )
+validate_arrow_matrices(ArchR::getArrowFiles(proj), "MotifMatrix")
 
 markers_motifs <- getMarkerFeatures(
   ArchRProj = proj,
@@ -497,8 +499,7 @@ if (n_samples > 1) {
       include_y_chromosome = include_y_chromosome
     ),
     error = function(e) {
-      message("Sample-level peak calling failed: ", e$message)
-      NULL
+      stop("Sample-level peak calling failed; Arrow files may be partially updated: ", e$message)
     }
   )
 
@@ -546,13 +547,12 @@ if (n_cond > 1) {
         include_y_chromosome = include_y_chromosome
       ),
       error = function(e) {
-        message(
+        stop(
           "Condition-level peak calling failed for ",
           treatment[i],
           ": ",
           e$message
         )
-        NULL
       }
     )
 
@@ -687,21 +687,4 @@ for (obj in all_m) {
 # without this save the final results retain only the gene-stage project.
 final_project_dir <- file.path(output_root, paste0(project_name, "_ArchRProject"))
 dir.create(output_root, recursive = TRUE, showWarnings = FALSE)
-ArchR::saveArchRProject(
-  ArchRProj = proj,
-  outputDirectory = final_project_dir,
-  load = FALSE
-)
-rebase_saved_archr_project(final_project_dir)
-
-# Check the saved artifact, not just the in-memory object, before allowing
-# downstream checkpoint cleanup.
-saved_proj <- ArchR::loadArchRProject(
-  final_project_dir, force = TRUE, showLogo = FALSE
-)
-if (length(saved_proj@peakSet) == 0) {
-  stop("The final ArchRProject does not contain a peak set.")
-}
-if (!"PeakMatrix" %in% ArchR::getAvailableMatrices(saved_proj)) {
-  stop("The final ArchRProject does not contain a PeakMatrix.")
-}
+save_complete_archr_project(proj, final_project_dir)

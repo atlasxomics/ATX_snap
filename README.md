@@ -64,13 +64,55 @@ The **ATX snap** workflow can be found in the [Workflows](https://wiki.latch.bio
 7. Workflow outputs are loaded into the LatchBio [Data module](https://wiki.latch.bio/wiki/data/overview) in the `epi_analysis_snap` directory.
 
 
+## Repairing incomplete ArchR projects
+
+Intermediate gene and completed motif projects have separate checkpoint paths.
+After every result branch finishes, one task publishes the completed ArchRProject.
+A separate task downloads that final destination and verifies a SHA-256 manifest
+against the publisher's manifest hash, then checks readable `GeneScoreMatrix`,
+`PeakMatrix` and `MotifMatrix` data across all Arrow files and project-cell coverage.
+Checkpoint cleanup runs only after verification succeeds; failures retain the
+checkpoints. Verification adds upload/download and file-reading work, not another
+peak call or motif deviation calculation. Imputation weights are preserved when
+saving the project to a different directory.
+
+The full workflow retains its existing calculation order: motif scores use
+cluster peaks, while subsequent sample/condition peak calls determine the final
+active peak set. Upload validation does not claim those scores were calculated
+from that later peak set.
+
+To repair an already returned project, run this inside the workflow image:
+
+```sh
+Rscript /root/wf/R/repair_archr_project.R \
+  /path/to/existing_ArchRProject /path/to/new_repaired_ArchRProject mm10
+```
+
+Supply the actual reference genome (`mm10`, `mm39`, `hg38` or `rnor6`). The input
+must be the complete project directory, including Arrow files; the output must
+be a new directory. The script works on a copy, preserves existing active peaks,
+rebuilds their PeakMatrix and motif annotations/backgrounds/deviations, and
+rebuilds gene scores with the original default model only if their matrix cannot
+be read. Existing metadata and embeddings are retained.
+
+If no peak set exists, it calls the original workflow's last grouping: the last
+`condition_*` column when there are multiple conditions, otherwise `Sample` for
+multiple samples, otherwise `Clusters`. An optional fourth argument specifies a
+grouping explicitly and forces peak recalling. The fifth argument controls Y
+chromosome inclusion (default `false`); the sixth sets threads (default `8`).
+
+This restores a usable project, not necessarily numerically identical historical
+scores. The repair script's rebuilt motifs use the repaired project's active peak
+set; the full workflow's motif H5AD/Seurat objects use cluster peaks. Use
+the same peak set and motif definitions when comparing deviation scores.
+
 ## Outputs
 
 Outputs from **ATX snap** are loaded into LatchBio [Data module](https://wiki.latch.bio/wiki/data/overview) in the `epi_analysis_snap` directory.
 AnnData `.h5ad` objects are collected in the `anndata/` subfolder and Seurat `.rds` objects in the `seurat_objects/` subfolder.
 Intermediate files are stored under `checkpoints/` while the workflow is running.
 They remain available after a failed execution for recovery, but are automatically
-deleted after every result-producing task succeeds.
+deleted after all result-producing tasks and final uploaded-project verification succeed.
 * anndata/combined.h5ad: combined (all runs) AnnData object with .X as a tile matrix.
 * anndata/combined_ge.h5ad: combined (all runs) AnnData object with .X as a gene accessibility matrix; created with [`snapatac2.pp.make_gene_matrix`](https://kzhang.org/SnapATAC2/api/_autosummary/snapatac2.pp.make_gene_matrix.html).
 * anndata/combined_motifs.h5ad: combined (all runs) AnnData object with .X as a motif deviation matrix; created with [`pychromvar.compute_deviations`](https://pychromvar.readthedocs.io/en/latest/generated/pychromvar.compute_deviations.html#pychromvar.compute_deviations);

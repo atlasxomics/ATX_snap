@@ -1,0 +1,11 @@
+library("ArchR")
+source("/root/wf/R/archr.R")
+source("/root/wf/R/complete_archr.R")
+
+args <- commandArgs(trailingOnly = TRUE)
+if (length(args) != 1) stop("Usage: validate_archr_project.R <project_directory>")
+project_dir <- normalizePath(args[[1]], mustWork = TRUE)
+proj <- ArchR::loadArchRProject(project_dir, force = FALSE, showLogo = FALSE)
+proj <- rebase_group_coverage_paths(proj, project_dir)
+validate_complete_archr_project(proj)
+message("Validated saved gene, peak and motif matrices in: ", project_dir)
