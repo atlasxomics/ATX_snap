@@ -1,40 +1,39 @@
-# ArchR peak recovery
+# ArchR motif recovery
 
-This branch repairs an ArchRProject produced by the workflow that omitted peak
-results from its final saved project. It runs only group coverages, reproducible
-peak calling, PeakMatrix construction and peak motif annotations, using the
-original peak-calling settings. It does not rerun preprocessing, Harmony,
-clustering, gene analysis, motif deviations or spatial analysis.
+This branch repairs missing or incomplete motif data in an existing ArchRProject
+that already contains peaks and a PeakMatrix. It rebuilds motif annotations,
+background peaks, and MotifMatrix (both `z` deviation scores and raw `deviations`)
+once, using the existing active peak set.
 
 ## Inputs
 
-- `archr_project`: the complete existing project folder containing
-  `Save-ArchR-Project.rds` and `ArrowFiles/`. The RDS alone is insufficient.
-- `genome`: the same reference genome as the original analysis.
-- `project_name`: the name for the recovered output.
-- `output_dir`: defaults to `latch:///archr_peak_recovery/`.
-- `group_by`: leave empty to select the final grouping from the original
-  workflow. This is the last `condition_*` column in metadata order when there
-  are multiple conditions; otherwise `Sample` for multiple samples, otherwise
-  `Clusters`. Only this one grouping is called.
-- `include_y_chromosome`: hidden; defaults to false. Match the original setting.
+- `archr_project`: the complete project folder containing
+  `Save-ArchR-Project.rds` and `ArrowFiles/`. Select the project with restored peaks.
+- `genome`: the same genome used by the original analysis.
+- `project_name`: the name for the repaired output.
+- `output_dir`: defaults to `latch:///archr_motif_recovery/`.
 
-Automatic grouping assumes the original sample/condition calls succeeded. If a
-later grouping failed in the original run, use `group_by` to select its last
-successful grouping explicitly. Recovery fails on peak-calling errors rather
-than silently returning a different active set.
+Existing genes, peak coordinates, PeakMatrix, cell metadata, reduced dimensions,
+embeddings and available imputation weights are retained. There is no peak calling,
+clustering, Harmony, gene-score calculation, enrichment analysis or spatial analysis.
+The workflow fails clearly if the supplied project lacks peaks or readable gene/peak
+matrices. The earlier peak-group and Y-chromosome parameters are no longer needed:
+the supplied peak set determines the regions used for motif recovery.
 
 ## Outputs
 
 Results are written to `<output_dir>/<project_name>/`:
 
-- `<project_name>_ArchRProject/`: complete saved project with restored peak set,
-  PeakMatrix, motif annotations, coverage files and peak-calling reports.
-- `<group_by>_peak_beds/`: exported peak BED files.
-- `peak_recovery_summary.csv`: selected grouping, genome and peak count.
+- `<project_name>_ArchRProject/`: saved project with rebuilt motif annotations,
+  background peaks and MotifMatrix in its Arrow files.
+- `motif_recovery_summary.csv`: genome and peak, motif and cell counts.
 
-The task works on a copy of the supplied project. Its metadata and embeddings
-are reused, and the input project is not overwritten. The saved output is
-reloaded and checked for peaks and PeakMatrix before upload. This reconstructs
-results from the Arrow files; it does not guarantee byte-identical results to
-an earlier run.
+The task works on a copy and does not overwrite the input. Before upload, it reloads
+the output and checks motif feature metadata, completion flags, agreement across
+Arrow files and coverage of all project cells. Actual matrix data are read for one
+cell per sample, and gene/peak values for those cells are compared before and after
+repair. Cell metadata, embeddings and peak coordinates are also checked.
+
+Scores are recomputed from the existing active peaks. They need not equal historical
+scores computed from a different peak set (for example, cluster peaks). This workflow
+does not update separately exported motif H5AD or Seurat objects.

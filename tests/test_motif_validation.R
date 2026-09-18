@@ -1,0 +1,28 @@
+library(rhdf5)
+source('wf/R/validate_motifs.R')
+root <- tempfile('motif-check-'); dir.create(root)
+arrows <- file.path(root, c('one.arrow', 'two.arrow'))
+features <- data.frame(seqnames=c('z','deviations'), idx=c(1L,1L), name=c('TF1','TF1'))
+for (arrow in arrows) {
+  h5createFile(arrow)
+  h5createGroup(arrow, 'MotifMatrix'); h5createGroup(arrow, 'MotifMatrix/Info')
+  h5write(features, arrow, 'MotifMatrix/Info/FeatureDF')
+  h5write('Finished', arrow, 'MotifMatrix/Info/Completed')
+}
+validate_motif_arrow_files(arrows)
+expect_error <- function(expr, pattern) {
+  error <- tryCatch({force(expr); NULL}, error=identity)
+  stopifnot(inherits(error, 'error'), grepl(pattern, conditionMessage(error)))
+}
+h5delete(arrows[2], 'MotifMatrix/Info/FeatureDF')
+expect_error(validate_motif_arrow_files(arrows), 'Incomplete MotifMatrix.*two.arrow')
+h5write(features, arrows[2], 'MotifMatrix/Info/FeatureDF')
+h5write('Started', arrows[2], 'MotifMatrix/Info/Completed')
+expect_error(validate_motif_arrow_files(arrows), 'Unfinished MotifMatrix')
+h5write('Finished', arrows[2], 'MotifMatrix/Info/Completed')
+h5delete(arrows[2], 'MotifMatrix/Info/FeatureDF')
+features$name <- c('TF2','TF2')
+h5write(features, arrows[2], 'MotifMatrix/Info/FeatureDF')
+expect_error(validate_motif_arrow_files(arrows), 'Motif features differ')
+h5closeAll(); unlink(root, recursive=TRUE)
+cat('Motif HDF5 validation checks passed\n')
