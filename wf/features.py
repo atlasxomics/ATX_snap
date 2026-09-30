@@ -219,10 +219,37 @@ def rechunk_dense_x_for_gene_access(
             dset.attrs[key] = value
 
 
+def _make_dataframe_columns_unique(df) -> None:
+    """Preserve every column while disambiguating labels for H5AD storage."""
+    if not df.columns.is_unique:
+        original = df.columns.tolist()
+        df.columns = anndata.utils.make_index_unique(df.columns)
+        logging.warning(
+            "Disambiguated duplicate DataFrame columns for H5AD: %s -> %s",
+            original,
+            df.columns.tolist(),
+        )
+
+
 def _sanitize_dataframe_for_h5ad(df) -> None:
     """Ensure object columns can be written as H5AD string arrays."""
     import pandas as pd
 
+    # Duplicate labels make df[col] a DataFrame and cannot be stored in H5AD.
+    _make_dataframe_columns_unique(df)
+    if "_index" in df.columns:
+        # AnnData reserves this key for the row index. Avoid both existing
+        # columns and the index name when choosing a replacement.
+        suffix = 1
+        replacement = f"_index-{suffix}"
+        while replacement in df.columns or replacement == df.index.name:
+            suffix += 1
+            replacement = f"_index-{suffix}"
+        df.rename(columns={"_index": replacement}, inplace=True)
+        logging.warning(
+            "Renamed reserved DataFrame column '_index' to '%s' for H5AD",
+            replacement,
+        )
     obj_cols = df.select_dtypes(include=["object"]).columns
     if len(obj_cols) == 0:
         return
@@ -435,6 +462,8 @@ def _remap_sample_labels_in_df(df, sample_name_map: Dict[str, str]):
         sample_name_map.get(str(idx), idx) for idx in remapped.index
     ]
 
+    # Multiple runs may share a sample_name. Keep each run's values separate.
+    _make_dataframe_columns_unique(remapped)
     obj_cols = remapped.select_dtypes(include=["object"]).columns
     for col in obj_cols:
         remapped[col] = remapped[col].map(
