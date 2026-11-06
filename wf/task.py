@@ -74,6 +74,8 @@ def _rebuild_gene_h5ad_from_rds(rds_path: Path, h5ad_path: Path) -> None:
             raise FileNotFoundError(
                 f"RDS conversion did not create expected H5AD: {rebuilt_path}"
             )
+        # Keep the original until the replacement is dense and fully readable.
+        _ensure_dense_h5ad_x(rebuilt_path)
         os.replace(rebuilt_path, h5ad_path)
 
 
@@ -81,7 +83,7 @@ def _ensure_dense_h5ad_x(
     h5ad_path: Path,
     recovery_rds_path: Optional[Path] = None,
 ) -> None:
-    """Ensure a per-sample gene H5AD stores X as a dense HDF5 dataset."""
+    """Ensure gene X is dense and all stored datasets can actually be read."""
     import anndata
     import h5py
     import scipy.sparse as sparse
@@ -93,7 +95,6 @@ def _ensure_dense_h5ad_x(
                 f"Rebuilding missing H5AD from Seurat RDS: {h5ad_path.name}"
             )
             _rebuild_gene_h5ad_from_rds(recovery_rds_path, h5ad_path)
-            _ensure_dense_h5ad_x(h5ad_path)
             return
         raise FileNotFoundError(f"Expected gene H5AD was not created: {h5ad_path}")
 
@@ -103,9 +104,12 @@ def _ensure_dense_h5ad_x(
             if x_node is None:
                 raise ValueError(f"H5AD has no X matrix: {h5ad_path}")
             if isinstance(x_node, h5py.Dataset):
+                # Opening X alone never reads its chunk index or payload.
+                # Check all arrays because concat also reads layers and obsm.
+                ft.validate_h5ad_readable(h5ad_path)
                 logging.info(f"Verified dense H5AD X: {h5ad_path.name}")
                 return
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, KeyError) as error:
         if recovery_rds_path is None:
             raise
         logging.warning(
@@ -113,7 +117,6 @@ def _ensure_dense_h5ad_x(
             f"{error}"
         )
         _rebuild_gene_h5ad_from_rds(recovery_rds_path, h5ad_path)
-        _ensure_dense_h5ad_x(h5ad_path)
         return
 
     if recovery_rds_path is not None:
@@ -121,7 +124,6 @@ def _ensure_dense_h5ad_x(
             f"Rebuilding legacy sparse H5AD from Seurat RDS: {h5ad_path.name}"
         )
         _rebuild_gene_h5ad_from_rds(recovery_rds_path, h5ad_path)
-        _ensure_dense_h5ad_x(h5ad_path)
         return
 
     logging.info(f"Converting sparse H5AD X to dense: {h5ad_path.name}")
@@ -142,6 +144,7 @@ def _ensure_dense_h5ad_x(
     )
     try:
         adata.write_h5ad(temporary_path, compression="gzip")
+        ft.validate_h5ad_readable(temporary_path)
         os.replace(temporary_path, h5ad_path)
     finally:
         if temporary_path.exists():

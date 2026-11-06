@@ -2,6 +2,7 @@ import logging
 import gc
 import glob
 import math
+from itertools import product
 
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -310,6 +311,57 @@ def clean_index_columns(*adatas: anndata.AnnData) -> None:
                     "Removing reserved '_index' column from AnnData raw.var."
                 )
                 adata.raw.var.drop(columns=['_index'], inplace=True)
+
+
+def validate_h5ad_readable(path: Path, max_block_bytes: int = 16 * 1024**2) -> None:
+    """Read every HDF5 dataset, including chunk indexes missed by metadata checks.
+
+    Fixed-width read buffers are bounded by ``max_block_bytes`` (or one element).
+    Variable-length strings and HDF5's internal decompression buffers may be larger.
+    This verifies readability, not the scientific contents of the file.
+    """
+    import h5py
+
+    if max_block_bytes < 1:
+        raise ValueError("max_block_bytes must be positive")
+
+    def check_dataset(name, node):
+        if not isinstance(node, h5py.Dataset):
+            return
+        selection = ()
+        try:
+            if node.shape is None:  # HDF5 null dataset
+                return
+            if not node.shape:  # Scalar dataset
+                node[()]
+                return
+            if any(size == 0 for size in node.shape):
+                return
+            block = list(node.chunks or node.shape)
+            remaining = max(1, max_block_bytes // max(1, node.dtype.itemsize))
+            for axis in reversed(range(node.ndim)):
+                block[axis] = min(block[axis], remaining)
+                remaining = max(1, remaining // block[axis])
+            for starts in product(*(
+                range(0, size, width) for size, width in zip(node.shape, block)
+            )):
+                selection = tuple(
+                    slice(start, min(start + width, size))
+                    for start, width, size in zip(starts, block, node.shape)
+                )
+                node[selection]
+        except (OSError, ValueError, KeyError) as error:
+            raise OSError(
+                f"Unreadable H5AD {path}, dataset /{name}, "
+                f"selection {selection}: {error}"
+            ) from error
+
+    logging.info("Reading all H5AD datasets to verify integrity: %s", path)
+    try:
+        with h5py.File(path, "r") as handle:
+            handle.visititems(check_dataset)
+    except (OSError, ValueError, KeyError) as error:
+        raise OSError(f"H5AD integrity check failed for {path}: {error}") from error
 
 
 def _ensure_anndata_root_encoding(path: Path) -> None:
