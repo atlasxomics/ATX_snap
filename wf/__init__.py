@@ -169,7 +169,70 @@ def snap_workflow(
 ) -> LatchDir:
     """Run the complete ATX Snap spatial ATAC analysis.
 
-    Produces SnapATAC2, gene, motif, spatial, and differential-analysis outputs.
+    SnapATAC2 generates tile matrices, clusters, embeddings, and coverage tracks.
+    ArchR provides gene accessibility, peaks, motif deviations, and differential
+    statistics. Squidpy provides spatial neighborhood and autocorrelation analyses.
+
+    ## Outputs
+
+    Results are saved in Latch Data under `[output_dir]/[project_name]/`, defaulting to `epi_analysis_snap/[project_name]/`. Paths below are relative to that project folder. Bracketed names are placeholders for run IDs, groups, or condition labels; `[i]` identifies a condition grouping and `[page]` is a three-digit page number such as `001`.
+
+    ### Analysis objects and browser tracks
+
+    | Output | Contents |
+    | --- | --- |
+    | `anndata/combined.h5ad` | Combined SnapATAC2 tile matrix, cell metadata, embeddings, and spatial coordinates. |
+    | `anndata/combined_ge.h5ad` | Combined gene accessibility AnnData object derived from ArchR gene scores. |
+    | `anndata/combined_motifs.h5ad` | Combined motif AnnData object derived from ArchR chromVAR deviation scores. |
+    | `anndata/[run_id]_g_converted.h5ad`, `anndata/[run_id]_m_converted.h5ad` | Per-run gene accessibility and motif AnnData objects. |
+    | `anndata/combined_sm_ge.h5ad`, `anndata/combined_sm_motifs.h5ad` | Reduced objects for plotting, with analysis tables stored in `.uns`; the reduced gene object receives the final gene differential statistics. |
+    | `seurat_objects/[run_id]_SeuratObj.rds`, `seurat_objects/[run_id]_SeuratObjMotif.rds` | Per-run gene and motif Seurat objects. |
+    | `seurat_objects/seqlogo.rds` | Motif probability matrices for sequence logos from the genome-specific ArchR motif annotation. |
+    | `[project_name]_ArchRProject/` | Saved ArchR project containing the final peak and motif analysis. |
+    | `[group]_coverages/` | BigWig (`.bw`) coverage tracks grouped by cluster, sample, or condition. Sample tracks may also have copies labeled with supplied sample names. |
+    | `[group]_peak_beds/` | Peak BED (`.peaks.bed`) files exported from the ArchR peak set for available groupings. |
+    | `Launch_Plots/artifact.json` | Configuration for opening the results in the ATX Latch Plot Template. |
+
+    ### Figures
+
+    | Output | Contents |
+    | --- | --- |
+    | `figures/umap.png` | UMAP embeddings colored by available analysis groups. |
+    | `figures/spatial_dim_[page].png` | Spatial scatter plots colored by cluster. |
+    | `figures/spatial_qc_[page].png` | Spatial scatter plots of fragment counts, log10 fragment counts, and TSS enrichment. |
+    | `umap.html`, `spatial_dim.html`, `spatial_qc.html` | HTML galleries for the corresponding PNG pages, saved at the project root. |
+    | `figures/all_neighborhoods.pdf` | Spatial neighborhood enrichment across clusters. |
+    | `figures/heatmap_genes.pdf` | ArchR cluster marker-gene heatmap (`Pval <= 0.05`, `Log2FC >= 0.1`). |
+    | `figures/heatmaps_peaks-motifs.pdf` | Cluster peak and motif enrichment heatmaps. |
+    | `figures/volcano_plots_[condition].pdf` | Gene differential-analysis volcano plots for condition comparisons. |
+    | `figures/volcano_plots_motifs_[i]_[condition].pdf` | Motif differential-analysis volcano plots for condition comparisons. |
+    | `figures/svg_spatial_genes_[page].png`, `figures/svg_spatial_motifs_[page].png` | Spatial plots of top features ranked by Moran's I, with corresponding `svg_spatial_genes.html` and `svg_spatial_motifs.html` galleries in `figures/`. |
+
+    ArchR peak-calling PDF reports are also preserved in `figures/` before checkpoint cleanup.
+
+    ### Tables
+
+    All tables below are saved in `tables/`.
+
+    | Output | Contents |
+    | --- | --- |
+    | `input_parameters.csv` | Recorded project, genome, tile, feature-selection, clustering, and QC parameters. |
+    | `obs.csv` | Cell metadata from the combined tile object, including sample/group labels, clusters, QC metrics, and spatial information. |
+    | `X_umap.csv`, `spectral.csv`, `spatial.csv` | Cell-indexed UMAP embedding, spectral embedding used for clustering, and spatial coordinates. |
+    | `medians.csv` | Per-run median TSS enrichment, fragment count, and fraction of reads in peaks (FRIP), plus condition. |
+    | `ranked_genes_per_[group].csv` | ArchR gene-score marker statistics, including P values, FDR, and log2 fold changes; exported with `FDR <= 1` and no log2 fold-change threshold. Groups include `cluster`, `sample`, `sample_name`, and `condition_[i]` when applicable. |
+    | `genes_per_[group]_hm.csv` | Gene heatmap matrices filtered at `Pval <= 0.05` and `Log2FC >= 0.1`. |
+    | `marker_peaks_per_[group].csv` | ArchR marker peaks filtered at `Pval <= 0.05` and `Log2FC >= 0.1`. Groups are `cluster`, `sample`, or `condition-[i]` (with a hyphen). |
+    | `complete_peak_list_[group].csv` | Marker peaks joined to peak-set coordinates and annotations, using the same group names as the marker-peak tables. |
+    | `enrichedMotifs_[group].csv` | Motif enrichment in marker peaks for `cluster`, `sample`, or `condition_[i]`. |
+    | `volcanoMarkers_genes_[i]_[condition].csv` | Gene differential statistics for a condition versus the other conditions, across all cells and eligible clusters, using log2 fold change. |
+    | `volcanoMarkers_motifs_[i]_[condition].csv` | Motif differential statistics for a condition versus the other conditions, across all cells and eligible clusters, using mean deviation differences. |
+    | `svg_genes.csv`, `svg_motifs.csv` | Spatial autocorrelation results ranked by Moran's I. |
+    | `Clusters_Peak-Call-Summary.csv` and related ArchR reports | Peak-calling summaries preserved from the motif checkpoint. |
+
+    Sample-level gene and motif enrichment comparisons require multiple runs; sample-name gene tables also require supplied sample names. Condition comparisons require multiple conditions. Spatial autocorrelation tables and plots are produced when that analysis succeeds. Marker tables or heatmaps can be empty when no usable results are available. Motif heatmap matrices (`motif_per_*_hm.csv`) are loaded into motif AnnData `.uns` and are not exported as standalone tables.
+
+    Intermediate files remain under `checkpoints/` after a failed execution for recovery. The workflow deletes that folder after all result-producing tasks succeed, retaining the final objects, tables, figures, and ArchR project.
     """
 
     anndata_dataset = make_anndata_dataset_task(

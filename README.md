@@ -1,8 +1,8 @@
 # ATX snap
 
-**ATX snap** is a [LatchBio](https://latch.bio/) Workflow for generating Python objects and data for analysis of epigenomic [DBiT-seq](https://www.nature.com/articles/s41586-022-05094-1) experiments.  Provided a fragment file from a single-cell ATAC-seq preprocessing and alignment tool (i.e., [Chromap](https://github.com/haowenz/chromap)) and spatial information, **ATX snap** performs routine processing with [SnapATAC2](https://kzhang.org/SnapATAC2/) and [Scanpy](https://scanpy.readthedocs.io/en/stable/), returning files that can be easily input into custom scripts for more neuanced analysis without the need to perform intensive computation.
+**ATX snap** is a [LatchBio](https://latch.bio/) Workflow for generating Python objects and data for analysis of epigenomic [DBiT-seq](https://www.nature.com/articles/s41586-022-05094-1) experiments.  Provided a fragment file from a single-cell ATAC-seq preprocessing and alignment tool (i.e., [Chromap](https://github.com/haowenz/chromap)) and spatial information, **ATX snap** performs routine processing with [SnapATAC2](https://kzhang.org/SnapATAC2/) and [Scanpy](https://scanpy.readthedocs.io/en/stable/), returning files that can be easily input into custom scripts for more nuanced analysis without the need to perform intensive computation.
 
-The Workflow utilizes SnapATAC2 for AnnData object generation, quality control, dimensionality reduction/clustering, peak calling, and gene experssion analysis.  Scanpy is used to identify differential features.  [pychromVAR](https://github.com/pinellolab/pychromVAR) is used to create a motif deviation matrix.  The Workflow can take data from either a single tissue-sample analyzed via DBiT-seq or multiple tissue-samples; in ATX parlance, tissue-samples analyzed via DBIT-seq are termed 'Runs'.  All Runs input to **ATX snap** are merged into a single AnnData object for analysis.  
+The Workflow uses SnapATAC2 for tile-matrix generation, quality control, dimensionality reduction, clustering, and coverage tracks. ArchR generates gene accessibility scores, calls peaks, and performs gene, peak, and motif analyses, including chromVAR motif deviations. Squidpy provides spatial neighborhood enrichment and spatial autocorrelation analysis. The Workflow accepts a single tissue sample or multiple tissue samples; in ATX parlance, tissue samples analyzed via DBiT-seq are termed 'Runs'. Runs are combined for analysis, with per-run and combined objects exported.
 
 
 ## Inputs
@@ -61,45 +61,69 @@ The **ATX snap** workflow can be found in the [Workflows](https://wiki.latch.bio
 
 6. From the Executions tab, you can view the status of the launched Workflow.  Once the Workflow has completed running, the status will change to 'Succeeded'; if the workflow has the status 'Failed', please contact an AtlasXomics Support Scientist.  You can click on the Workflow execution to view a more granular Workflow status and see output logs.
 
-7. Workflow outputs are loaded into the LatchBio [Data module](https://wiki.latch.bio/wiki/data/overview) in the `epi_analysis_snap` directory.
+7. Workflow outputs are loaded into the LatchBio [Data module](https://wiki.latch.bio/wiki/data/overview) under `[output_dir]/[project_name]/`, defaulting to `epi_analysis_snap/[project_name]/`.
 
 
 ## Outputs
 
-Outputs from **ATX snap** are loaded into LatchBio [Data module](https://wiki.latch.bio/wiki/data/overview) in the `epi_analysis_snap` directory.
-AnnData `.h5ad` objects are collected in the `anndata/` subfolder and Seurat `.rds` objects in the `seurat_objects/` subfolder.
-Intermediate files are stored under `checkpoints/` while the workflow is running.
-They remain available after a failed execution for recovery, but are automatically
-deleted after every result-producing task succeeds.
-* anndata/combined.h5ad: combined (all runs) AnnData object with .X as a tile matrix.
-* anndata/combined_ge.h5ad: combined (all runs) AnnData object with .X as a gene accessibility matrix; created with [`snapatac2.pp.make_gene_matrix`](https://kzhang.org/SnapATAC2/api/_autosummary/snapatac2.pp.make_gene_matrix.html).
-* anndata/combined_motifs.h5ad: combined (all runs) AnnData object with .X as a motif deviation matrix; created with [`pychromvar.compute_deviations`](https://pychromvar.readthedocs.io/en/latest/generated/pychromvar.compute_deviations.html#pychromvar.compute_deviations);
-* anndata/[run_id]_g_converted.h5ad and anndata/[run_id]_m_converted.h5ad: per-run gene-accessibility and motif AnnData objects.
-* anndata/combined_sm_ge.h5ad and anndata/combined_sm_motifs.h5ad: reduced combined objects for plotting/visualization.
-* seurat_objects/[run_id]_SeuratObj.rds and seurat_objects/[run_id]_SeuratObjMotif.rds: per-run gene and motif Seurat objects.
-* seurat_objects/seqlogo.rds: motif probability matrices for plotting sequence logos, generated from the genome-specific ArchR motif annotation (including mouse CIS-BP motifs for mm39).
-* [group]_coverage/: folder containing bedgraph files for coverages grouped by cluster, sample, or condition. Browser tracks can be natively viewed in Latch Data.
+Results are saved in Latch Data under `[output_dir]/[project_name]/`, defaulting to `epi_analysis_snap/[project_name]/`. Paths below are relative to that project folder. Bracketed names are placeholders for run IDs, groups, or condition labels; `[i]` identifies a condition grouping and `[page]` is a three-digit page number such as `001`.
 
-Figures generated by the Workflow can be found in the 'figures/' directory.
-* matrixplot_genes.pdf: Heatmap of top 5 genes per group (cluster, sample, or condition), ranked by the scanpy 'scores' value from `scanpy.tl.rank_genes_groups`; see [`scanpy.pl.rank_genes_groups_matrixplot`](https://scanpy.readthedocs.io/en/latest/api/generated/scanpy.pl.rank_genes_groups_matrixplot.html).
-* matrixplot_motifs.pdf: Heatmap of top 5 motifs per group (cluster, sample, or condition), ranked by the scanpy 'scores' value from `scanpy.tl.rank_genes_groups`; see [`scanpy.pl.rank_genes_groups_matrixplot`](https://scanpy.readthedocs.io/en/latest/api/generated/scanpy.pl.rank_genes_groups_matrixplot.html).
-* neighborhood_enrichemnt.pdf: See [`squidpy.pl.nhood_enrichment`](https://squidpy.readthedocs.io/en/stable/api/squidpy.pl.nhood_enrichment.html).
-* ripleys_L.pdf: See [`squidpy.pl.ripley`](https://squidpy.readthedocs.io/en/stable/api/squidpy.pl.ripley.html).
-* spatial_dim.pdf: Spatial scatter plot for each Run colored by cluster; see [`squidpy.pl.spatial_scatter`](https://squidpy.readthedocs.io/en/stable/api/squidpy.pl.spatial_scatter.html#squidpy.pl.spatial_scatter).
-* spatial_qc.pdf: Spatial scatter plot for each Run colored by number of fragments, log10(number of fragments), and TSS Enrichment score; see [`squidpy.pl.spatial_scatter`](https://squidpy.readthedocs.io/en/stable/api/squidpy.pl.spatial_scatter.html#squidpy.pl.spatial_scatter).
-* umap.pdf: UMAP embedding from SnapATAC2 colored by cluster; see [`snapatac2.pl.umap`](https://kzhang.org/SnapATAC2/api/_autosummary/snapatac2.pl.umap.html).
-* ArchR peak-calling PDF reports are preserved from the temporary motif checkpoint before checkpoint cleanup.
+### Analysis objects and browser tracks
 
-Tables generated by the Workflow can be found in the 'tables/' directory.
-* Clusters_Peak-Call-Summary.csv and related ArchR peak-call summary tables are preserved from the temporary motif checkpoint.
-* differential_genes_per_[group]_counts.csv: Count of differential (pval_adj<0.05, log2fc_min>0.1) genes per group (cluster, sample, or condition).
-* differential_motifs_per_[group]_counts.csv: Count of differential (pval_adj<0.05, log2fc_min>0.1) motifs per group (cluster, sample, or condition).
-* gene_metadata.csv: Cell metadata containing gene metrics generated via [`scanpy.pp.calculate_qc_metrics`](https://scanpy.readthedocs.io/en/latest/generated/scanpy.pp.calculate_qc_metrics.html).
-* marker_peaks_per_[group].csv: Defining peaks per group (cluster, sample, or condition) with pval<0.05, log2fc_min>0.1; see [`scanpy.tl.filter_rank_genes_groups`](https://scanpy.readthedocs.io/en/latest/generated/scanpy.tl.filter_rank_genes_groups.html).
-* medians.csv: Median n_fragment, TSS Enrichment, and fraction-of-reads-in-peaks (frip) scores for each Run.
-* metadata.csv: Workflow input parameters.
-* ranked_genes_per_[group].csv: Gene output of [`scanpy.get.rank_genes_groups_df`](https://scanpy.readthedocs.io/en/latest/generated/scanpy.get.rank_genes_groups_df.html) with no filters.
-* ranked_motifs_per_[group].csv: Motif output of [`scanpy.get.rank_genes_groups_df`](https://scanpy.readthedocs.io/en/latest/generated/scanpy.get.rank_genes_groups_df.html) with no filters.
+| Output | Contents |
+| --- | --- |
+| `anndata/combined.h5ad` | Combined SnapATAC2 tile matrix, cell metadata, embeddings, and spatial coordinates. |
+| `anndata/combined_ge.h5ad` | Combined gene accessibility AnnData object derived from ArchR gene scores. |
+| `anndata/combined_motifs.h5ad` | Combined motif AnnData object derived from ArchR chromVAR deviation scores. |
+| `anndata/[run_id]_g_converted.h5ad`, `anndata/[run_id]_m_converted.h5ad` | Per-run gene accessibility and motif AnnData objects. |
+| `anndata/combined_sm_ge.h5ad`, `anndata/combined_sm_motifs.h5ad` | Reduced objects for plotting, with analysis tables stored in `.uns`; the reduced gene object receives the final gene differential statistics. |
+| `seurat_objects/[run_id]_SeuratObj.rds`, `seurat_objects/[run_id]_SeuratObjMotif.rds` | Per-run gene and motif Seurat objects. |
+| `seurat_objects/seqlogo.rds` | Motif probability matrices for sequence logos from the genome-specific ArchR motif annotation. |
+| `[project_name]_ArchRProject/` | Saved ArchR project containing the final peak and motif analysis. |
+| `[group]_coverages/` | BigWig (`.bw`) coverage tracks grouped by cluster, sample, or condition. Sample tracks may also have copies labeled with supplied sample names. |
+| `[group]_peak_beds/` | Peak BED (`.peaks.bed`) files exported from the ArchR peak set for available groupings. |
+| `Launch_Plots/artifact.json` | Configuration for opening the results in the ATX Latch Plot Template. |
+
+### Figures
+
+| Output | Contents |
+| --- | --- |
+| `figures/umap.png` | UMAP embeddings colored by available analysis groups. |
+| `figures/spatial_dim_[page].png` | Spatial scatter plots colored by cluster. |
+| `figures/spatial_qc_[page].png` | Spatial scatter plots of fragment counts, log10 fragment counts, and TSS enrichment. |
+| `umap.html`, `spatial_dim.html`, `spatial_qc.html` | HTML galleries for the corresponding PNG pages, saved at the project root. |
+| `figures/all_neighborhoods.pdf` | Spatial neighborhood enrichment across clusters. |
+| `figures/heatmap_genes.pdf` | ArchR cluster marker-gene heatmap (`Pval <= 0.05`, `Log2FC >= 0.1`). |
+| `figures/heatmaps_peaks-motifs.pdf` | Cluster peak and motif enrichment heatmaps. |
+| `figures/volcano_plots_[condition].pdf` | Gene differential-analysis volcano plots for condition comparisons. |
+| `figures/volcano_plots_motifs_[i]_[condition].pdf` | Motif differential-analysis volcano plots for condition comparisons. |
+| `figures/svg_spatial_genes_[page].png`, `figures/svg_spatial_motifs_[page].png` | Spatial plots of top features ranked by Moran's I, with corresponding `svg_spatial_genes.html` and `svg_spatial_motifs.html` galleries in `figures/`. |
+
+ArchR peak-calling PDF reports are also preserved in `figures/` before checkpoint cleanup.
+
+### Tables
+
+All tables below are saved in `tables/`.
+
+| Output | Contents |
+| --- | --- |
+| `input_parameters.csv` | Recorded project, genome, tile, feature-selection, clustering, and QC parameters. |
+| `obs.csv` | Cell metadata from the combined tile object, including sample/group labels, clusters, QC metrics, and spatial information. |
+| `X_umap.csv`, `spectral.csv`, `spatial.csv` | Cell-indexed UMAP embedding, spectral embedding used for clustering, and spatial coordinates. |
+| `medians.csv` | Per-run median TSS enrichment, fragment count, and fraction of reads in peaks (FRIP), plus condition. |
+| `ranked_genes_per_[group].csv` | ArchR gene-score marker statistics, including P values, FDR, and log2 fold changes; exported with `FDR <= 1` and no log2 fold-change threshold. Groups include `cluster`, `sample`, `sample_name`, and `condition_[i]` when applicable. |
+| `genes_per_[group]_hm.csv` | Gene heatmap matrices filtered at `Pval <= 0.05` and `Log2FC >= 0.1`. |
+| `marker_peaks_per_[group].csv` | ArchR marker peaks filtered at `Pval <= 0.05` and `Log2FC >= 0.1`. Groups are `cluster`, `sample`, or `condition-[i]` (with a hyphen). |
+| `complete_peak_list_[group].csv` | Marker peaks joined to peak-set coordinates and annotations, using the same group names as the marker-peak tables. |
+| `enrichedMotifs_[group].csv` | Motif enrichment in marker peaks for `cluster`, `sample`, or `condition_[i]`. |
+| `volcanoMarkers_genes_[i]_[condition].csv` | Gene differential statistics for a condition versus the other conditions, across all cells and eligible clusters, using log2 fold change. |
+| `volcanoMarkers_motifs_[i]_[condition].csv` | Motif differential statistics for a condition versus the other conditions, across all cells and eligible clusters, using mean deviation differences. |
+| `svg_genes.csv`, `svg_motifs.csv` | Spatial autocorrelation results ranked by Moran's I. |
+| `Clusters_Peak-Call-Summary.csv` and related ArchR reports | Peak-calling summaries preserved from the motif checkpoint. |
+
+Sample-level gene and motif enrichment comparisons require multiple runs; sample-name gene tables also require supplied sample names. Condition comparisons require multiple conditions. Spatial autocorrelation tables and plots are produced when that analysis succeeds. Marker tables or heatmaps can be empty when no usable results are available. Motif heatmap matrices (`motif_per_*_hm.csv`) are loaded into motif AnnData `.uns` and are not exported as standalone tables.
+
+Intermediate files remain under `checkpoints/` after a failed execution for recovery. The workflow deletes that folder after all result-producing tasks succeed, retaining the final objects, tables, figures, and ArchR project.
 
 ## Next Steps
 
